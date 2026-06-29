@@ -491,9 +491,11 @@ function initApp() {
     renderReports();
     updateCustomerDropdown();
     document.getElementById('rDate').textContent = new Date().toLocaleDateString('uz-UZ');
-    // Reveal functionality removed for classic tab behavior
-    // Init salary module
     SalaryModule.init();
+    // New: init orders and account
+    renderOrders();
+    if (currentUser?.role === 'customer') renderAccountPage();
+    renderHomeFeatured();
 }
 
 function showLoginScreen() {
@@ -516,7 +518,7 @@ function setupRoleBasedNav() {
     document.querySelectorAll('.nav-item, .nav-section').forEach(el => {
         const raw = el.getAttribute('data-role') || 'admin,cashier,manager';
         const roles = raw.split(',').map(r => r.trim()).filter(Boolean);
-        const visible = roles.includes(role) || roles.includes('all');
+        const visible = roles.includes(role) || roles.includes('all') || roles.includes('guest');
         if (visible) {
             el.classList.add('visible');
             el.style.display = '';
@@ -525,11 +527,12 @@ function setupRoleBasedNav() {
             el.style.display = 'none';
         }
     });
-
-    const visibleItems = Array.from(document.querySelectorAll('.nav-item.visible'));
-    if (visibleItems.length > 0) {
-        visibleItems[0].classList.add('active');
-    }
+    // Guest-only home nav item: show only when NOT logged in
+    const navHome = document.getElementById('nav-home');
+    if (navHome) navHome.style.display = !currentUser ? '' : 'none';
+    // Customer account nav: show only for customer role
+    const navAcc = document.getElementById('nav-account');
+    if (navAcc) navAcc.style.display = (role === 'customer') ? '' : 'none';
 }
 
 // ============================================================
@@ -596,6 +599,9 @@ function goTo(pageId, el) {
     // 5) sarlavha (title/subtitle) yangilash - key sifatida pageId dan qismini olamiz
     const key = pageId.replace(/^page-/, '');
     const titles = {
+        home: ['Bosh Sahifa', 'Texno Park â€” Mahsulotlar dunyosi'],
+        account: ['Mening Akkauntim', 'Profil, buyurtmalar va bonuslar'],
+        orders: ['Buyurtmalar', 'Online buyurtmalarni boshqarish'],
         dashboard: ['Dashboard', 'Xush kelibsiz, bugun ham yaxshi kun!'],
         shop: ['Do\'kon', 'Mahsulot tanlang va buyurtma bering'],
         pos: ['Kassa (POS)', "F2=To'lov | Esc=Tozala | F3=Kassa | F8=Chek"],
@@ -644,7 +650,8 @@ function goTo(pageId, el) {
 }
 
 function canAccessPage(pageId) {
-    if (!currentUser) return pageId === 'page-shop';
+    // Guest can access home and shop
+    if (!currentUser) return pageId === 'page-shop' || pageId === 'page-home';
     const nav = Array.from(document.querySelectorAll('.nav-item')).find(item => {
         const handler = item.getAttribute('onclick') || '';
         return handler.includes(`'${pageId}'`) || handler.includes(`"${pageId}"`);
@@ -2522,3 +2529,340 @@ const SalaryModule = (() => {
 applySavedTheme();
 initApp();
 goTo('page-shop', document.getElementById('nav-shop'));
+
+// ============================================================
+// ORDERS DATA STORAGE
+// ============================================================
+let onlineOrders = JSON.parse(localStorage.getItem('tp_online_orders') || '[]');
+
+function saveOrders() {
+    try { localStorage.setItem('tp_online_orders', JSON.stringify(onlineOrders)); } catch(e) {}
+}
+
+const ORDER_STATUS = {
+    pending: { label: 'Kutilmoqda', icon: 'fa-clock', cls: 'pending' },
+    processing: { label: 'Tayyorlanmoqda', icon: 'fa-cog', cls: 'processing' },
+    delivered: { label: 'Yetkazildi', icon: 'fa-check-circle', cls: 'delivered' },
+    cancelled: { label: 'Bekor qilindi', icon: 'fa-times-circle', cls: 'cancelled' }
+};
+
+// Override checkoutShopOrder to also save online order with status
+const _origCheckoutShopOrder = typeof checkoutShopOrder === 'function' ? checkoutShopOrder : null;
+function checkoutShopOrder() {
+    if (!shopCart || shopCart.length === 0) {
+        playError();
+        showNotif('error', 'Xato!', 'Savat bo\u0027sh!');
+        return;
+    }
+    const total = shopCart.reduce((s, i) => s + i.price * i.qty, 0);
+    const payType = document.getElementById('shopPayType')?.value || 'click';
+    const orderId = 'ORD-' + Date.now();
+    const order = {
+        id: orderId,
+        date: new Date().toISOString(),
+        customer: currentUser ? currentUser.name : 'Anonim',
+        customerId: currentUser?.id || null,
+        items: shopCart.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+        total,
+        payType,
+        status: 'pending'
+    };
+    // Reduce stock
+    shopCart.forEach(ci => {
+        const p = products.find(x => x.id === ci.id);
+        if (p) p.stock = Math.max(0, p.stock - ci.qty);
+    });
+    onlineOrders.unshift(order);
+    saveOrders();
+    saveToStorage();
+    // Add bonus for logged-in customer
+    if (currentUser?.role === 'customer') {
+        const bonus = Math.floor(total / 100);
+        const cust = customers.find(c => c.id === currentUser.id);
+        if (cust) { cust.bonus = (cust.bonus || 0) + bonus; saveToStorage(); }
+        else {
+            // store bonus in localStorage linked to user id
+            const key = 'tp_bonus_' + currentUser.id;
+            const cur = parseInt(localStorage.getItem(key) || '0');
+            localStorage.setItem(key, cur + bonus);
+        }
+    }
+    addLog('Online buyurtma', `${order.customer}: ${fmt(total)} so\u2019m — ${orderId}`);
+    updateOrdersBadge();
+    renderOrders();
+    shopCart = [];
+    updateShopCart();
+    renderShop();
+    playCheckout();
+    showNotif('success', 'Buyurtma qabul qilindi! \ud83c\udf89', `Buyurtma raqami: ${orderId}`);
+}
+
+function updateOrdersBadge() {
+    const pending = onlineOrders.filter(o => o.status === 'pending').length;
+    const badge = document.getElementById('ordersNavBadge');
+    if (!badge) return;
+    if (pending > 0) { badge.textContent = pending; badge.style.display = ''; badge.className = 'nav-badge'; }
+    else { badge.style.display = 'none'; }
+}
+
+// ============================================================
+// ADMIN ORDERS PAGE
+// ============================================================
+function renderOrders() {
+    updateOrdersBadge();
+    const filter = document.getElementById('orderStatusFilter')?.value || '';
+    const list = filter ? onlineOrders.filter(o => o.status === filter) : onlineOrders;
+
+    // Stats
+    const setText2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText2('ord-pending', onlineOrders.filter(o => o.status === 'pending').length);
+    setText2('ord-processing', onlineOrders.filter(o => o.status === 'processing').length);
+    setText2('ord-delivered', onlineOrders.filter(o => o.status === 'delivered').length);
+    setText2('ord-cancelled', onlineOrders.filter(o => o.status === 'cancelled').length);
+
+    const tbody = document.getElementById('ordersTable');
+    if (!tbody) return;
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)"><i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>Buyurtmalar yo\u02bcq</td></tr>';
+        return;
+    }
+    const payLabels = { cash: 'Naqd', card: 'Karta', click: 'Click', credit: 'Kredit' };
+    tbody.innerHTML = list.map((o, i) => {
+        const st = ORDER_STATUS[o.status] || ORDER_STATUS.pending;
+        const itemsStr = o.items?.map(x => `${escapeHTML(x.name)} x${x.qty}`).join(', ') || '—';
+        const d = new Date(o.date);
+        return `<tr>
+            <td>#${i + 1}</td>
+            <td style="font-size:12px">${d.toLocaleDateString('uz-UZ')}<br><span style="color:var(--muted)">${d.toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</span></td>
+            <td><strong>${escapeHTML(o.customer)}</strong></td>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${escapeHTML(itemsStr)}</td>
+            <td><strong>${fmt(o.total)} so\u02bcm</strong></td>
+            <td>${payLabels[o.payType] || o.payType}</td>
+            <td><span class="order-status ${st.cls}"><i class="fas ${st.icon}"></i> ${st.label}</span></td>
+            <td>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <select class="form-control" style="padding:4px 8px;font-size:11px;width:auto" onchange="updateOrderStatus('${o.id}', this.value)">
+                        ${Object.entries(ORDER_STATUS).map(([k, v]) => `<option value="${k}" ${o.status === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                    </select>
+                    <button class="btn btn-outline btn-sm" style="padding:4px 8px;font-size:11px" onclick="showOrderDetail('${o.id}')"><i class="fas fa-eye"></i></button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function updateOrderStatus(orderId, status) {
+    const order = onlineOrders.find(o => o.id === orderId);
+    if (!order) return;
+    order.status = status;
+    saveOrders();
+    renderOrders();
+    if (currentUser?.role === 'customer') renderAccountPage();
+    showNotif('success', 'Yangilandi!', `Buyurtma holati: ${ORDER_STATUS[status]?.label}`);
+}
+
+function showOrderDetail(orderId) {
+    const order = onlineOrders.find(o => o.id === orderId);
+    if (!order) return;
+    const st = ORDER_STATUS[order.status] || ORDER_STATUS.pending;
+    const d = new Date(order.date);
+    const content = document.getElementById('orderDetailContent');
+    if (!content) return;
+    content.innerHTML = `
+        <div style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <div><strong>${order.id}</strong><br><span style="color:var(--muted);font-size:13px">${d.toLocaleString('uz-UZ')}</span></div>
+                <span class="order-status ${st.cls}"><i class="fas ${st.icon}"></i> ${st.label}</span>
+            </div>
+        </div>
+        <div style="margin-bottom:16px"><strong>Mijoz:</strong> ${escapeHTML(order.customer)}</div>
+        <div style="margin-bottom:16px"><strong>To\u02bclov:</strong> ${order.payType}</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+            <thead><tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:8px 4px">Mahsulot</th><th style="text-align:right;padding:8px 4px">Soni</th><th style="text-align:right;padding:8px 4px">Narx</th><th style="text-align:right;padding:8px 4px">Jami</th></tr></thead>
+            <tbody>${(order.items || []).map(it => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 4px">${escapeHTML(it.name)}</td><td style="text-align:right;padding:8px 4px">${it.qty}</td><td style="text-align:right;padding:8px 4px">${fmt(it.price)}</td><td style="text-align:right;padding:8px 4px;font-weight:700">${fmt(it.price * it.qty)}</td></tr>`).join('')}</tbody>
+        </table>
+        <div style="text-align:right;font-size:18px;font-weight:900;color:var(--primary)">Jami: ${fmt(order.total)} so\u02bcm</div>
+    `;
+    document.getElementById('orderDetailModal').classList.add('active');
+}
+
+function printOrderDetail() {
+    window.print();
+}
+
+function exportOrdersCSV() {
+    const headers = ['ID', 'Sana', 'Mijoz', 'Summa', 'To\u02bclov', 'Holat'];
+    const rows = onlineOrders.map(o => [o.id, new Date(o.date).toLocaleString('uz-UZ'), o.customer, o.total, o.payType, ORDER_STATUS[o.status]?.label || o.status]);
+    const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }));
+    a.download = `buyurtmalar_${Date.now()}.csv`;
+    a.click();
+}
+
+// ============================================================
+// GUEST HOME PAGE
+// ============================================================
+function renderHomeFeatured() {
+    const container = document.getElementById('homeFeaturedProducts');
+    if (!container) return;
+    const icons = { 'Muzlatgichlar': '\u2744\ufe0f', 'Kir Yuvish Mashinalari': '\ud83e\uddba', 'Konditsionerlar': '\ud83d\udca8', 'Televizorlar': '\ud83d\udcfa', 'Changyutgichlar': '\ud83c\udf00', 'Pechlar': '\ud83d\udd25', 'Mikrotolqinli Pechlar': '\ud83d\udce1', 'Aksessuarlar': '\ud83d\udd0c' };
+    const top = [...products].filter(p => p.stock > 0).sort((a, b) => b.price - a.price).slice(0, 6);
+    container.innerHTML = top.map(p => {
+        const imgSrc = productImageSrc(p.img);
+        return `<div class="product-card shop-product-card" onclick="goTo('page-shop', document.getElementById('nav-shop'))">
+            ${imgSrc ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">` : ''}
+            <div class="product-card-img-placeholder" style="${imgSrc ? 'display:none' : ''}">${icons[p.cat] || '\ud83d\udce6'}</div>
+            <div class="product-card-body">
+                <div class="product-card-name">${escapeHTML(p.name)}</div>
+                <div class="product-card-price">${fmt(p.price)} so\u02bcm</div>
+                <div class="product-card-stock">Qoldiq: <strong>${p.stock}</strong></div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================================
+// CUSTOMER ACCOUNT PAGE
+// ============================================================
+function renderAccountPage() {
+    if (!currentUser) return;
+    // Header
+    const av = document.getElementById('accountAvatar');
+    const nm = document.getElementById('accountName');
+    const rl = document.getElementById('accountRole');
+    const bn = document.getElementById('accountBonus');
+    if (av) { av.textContent = currentUser.name[0]; av.style.background = `linear-gradient(135deg,${currentUser.color},#7c3aed)`; }
+    if (nm) nm.textContent = currentUser.name;
+    if (rl) rl.textContent = ROLES[currentUser.role] || currentUser.role;
+
+    // Get bonus
+    const cust = customers.find(c => c.id === currentUser.id);
+    const bonus = cust?.bonus || parseInt(localStorage.getItem('tp_bonus_' + currentUser.id) || '0');
+    if (bn) bn.textContent = fmt(bonus);
+    const bb = document.getElementById('bonusBalance'); if (bb) bb.textContent = fmt(bonus);
+
+    // Fill profile fields
+    const setVal2 = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    setVal2('profileName', currentUser.name);
+    setVal2('profilePhone', cust?.phone || '');
+    setVal2('profileEmail', cust?.email || '');
+
+    // My orders
+    const myOrders = onlineOrders.filter(o => o.customerId === currentUser.id);
+    const setText3 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText3('myOrdersCount', myOrders.length);
+    setText3('myOrdersPending', myOrders.filter(o => o.status === 'pending').length);
+    setText3('myOrdersTotal', fmt(myOrders.reduce((s, o) => s + o.total, 0)));
+
+    const tbody = document.getElementById('myOrdersTable');
+    if (tbody) {
+        if (!myOrders.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)"><i class="fas fa-box" style="font-size:28px;display:block;margin-bottom:8px;opacity:.3"></i>Hali buyurtma yo\u02bcq</td></tr>';
+        } else {
+            tbody.innerHTML = myOrders.map((o, i) => {
+                const st = ORDER_STATUS[o.status] || ORDER_STATUS.pending;
+                const itemsStr = (o.items || []).map(x => `${escapeHTML(x.name)} x${x.qty}`).join(', ');
+                return `<tr>
+                    <td>${i + 1}</td>
+                    <td style="font-size:12px">${new Date(o.date).toLocaleDateString('uz-UZ')}</td>
+                    <td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHTML(itemsStr)}</td>
+                    <td><strong>${fmt(o.total)} so\u02bcm</strong></td>
+                    <td>${o.payType}</td>
+                    <td><span class="order-status ${st.cls}"><i class="fas ${st.icon}"></i> ${st.label}</span></td>
+                </tr>`;
+            }).join('');
+        }
+    }
+
+    // Bonus history
+    const bhl = document.getElementById('bonusHistoryList');
+    if (bhl) {
+        const bonusOrders = myOrders.filter(o => o.total > 0);
+        if (!bonusOrders.length) {
+            bhl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)"><i class="fas fa-coins" style="font-size:32px;opacity:.3;display:block;margin-bottom:12px"></i>Hali bonus balllar yo\u02bcq</div>';
+        } else {
+            bhl.innerHTML = bonusOrders.map(o => `
+                <div class="bonus-history-item">
+                    <div><strong>${o.id}</strong><br><span class="bhi-date">${new Date(o.date).toLocaleDateString('uz-UZ')}</span></div>
+                    <div class="bhi-amount">+${fmt(Math.floor(o.total / 100))} ball</div>
+                </div>`).join('');
+        }
+    }
+}
+
+function switchAccTab(tabId, btn) {
+    document.querySelectorAll('.acc-tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.acc-tab').forEach(b => b.classList.remove('active'));
+    const tab = document.getElementById(tabId);
+    if (tab) tab.classList.add('active');
+    if (btn) btn.classList.add('active');
+}
+
+function saveProfile() {
+    if (!currentUser) return;
+    const name = cleanText(document.getElementById('profileName')?.value, 120);
+    const phone = cleanText(document.getElementById('profilePhone')?.value, 40);
+    const email = cleanText(document.getElementById('profileEmail')?.value, 120);
+    if (!name) { playError(); showNotif('error', 'Xato!', 'Ism kiritilmagan'); return; }
+    currentUser.name = name;
+    const cust = customers.find(c => c.id === currentUser.id);
+    if (cust) { cust.name = name; cust.phone = phone; cust.email = email; saveToStorage(); }
+    document.getElementById('sideUser').textContent = name;
+    document.getElementById('accountName').textContent = name;
+    const av = document.getElementById('accountAvatar'); if (av) av.textContent = name[0];
+    const sav = document.getElementById('sideAvatar'); if (sav) sav.textContent = name[0];
+    playSuccess();
+    showNotif('success', 'Saqlandi!', 'Profil ma\u02bcmulotlari yangilandi');
+}
+
+// ============================================================
+// REGISTER (DEMO — localStorage based)
+// ============================================================
+function openRegisterModal() {
+    document.getElementById('registerModal')?.classList.add('active');
+}
+
+function doRegister() {
+    const name = cleanText(document.getElementById('reg-name')?.value, 120);
+    const phone = cleanText(document.getElementById('reg-phone')?.value, 40);
+    const email = cleanText(document.getElementById('reg-email')?.value, 120);
+    const city = cleanText(document.getElementById('reg-city')?.value, 80);
+    const login = cleanText(document.getElementById('reg-login')?.value, 80).toLowerCase();
+    const pass = document.getElementById('reg-pass')?.value || '';
+
+    if (!name || !phone || !login || !pass) {
+        playError(); showNotif('error', 'Xato!', 'Barcha majburiy maydonlarni to\u02bcldiring'); return;
+    }
+    if (pass.length < 4) { playError(); showNotif('error', 'Xato!', 'Parol kamida 4 ta belgi bo\u02bcsin'); return; }
+    if (USERS.find(u => u.login === login)) { playError(); showNotif('error', 'Xato!', 'Bu login allaqachon mavjud'); return; }
+
+    const newId = Date.now();
+    const newUser = { id: newId, login, passHash: btoa(pass), name, role: 'customer', color: '#7c3aed' };
+    USERS.push(newUser);
+
+    const newCust = normalizeCustomer({ id: newId, name, phone, email, orders: 0, total: 0, bonus: 0, status: 'active' });
+    customers.push(newCust);
+    saveToStorage();
+    addLog('Ro\u02bcyxat', `Yangi foydalanuvchi: ${name} (${login})`);
+
+    closeModal('registerModal');
+    // Auto login
+    document.getElementById('loginUser').value = login;
+    document.getElementById('loginPass').value = pass;
+    doLogin();
+    playSuccess();
+    showNotif('success', 'Muvaffaqiyatli! \ud83c\udf89', `Xush kelibsiz, ${name}! Akkauntingiz yaratildi.`);
+}
+
+// Init: show home page or shop for guest on page load
+(function initGuestHome() {
+    const app = document.getElementById('app');
+    const loginPage = document.getElementById('loginPage');
+    if (app && loginPage) {
+        // app is in market-mode by default (class set in HTML), login page is hidden
+        // render home featured on load
+        setTimeout(renderHomeFeatured, 100);
+        setTimeout(updateOrdersBadge, 200);
+    }
+})();
