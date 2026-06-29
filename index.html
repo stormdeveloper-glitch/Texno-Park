@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="uz" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Tehno Park POS — Premium</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css?v=1.0.1">
+</head>
+
+<body>
+
+  <!-- PRINT AREA (hidden, shown only during print) -->
+  <div id="printArea" style="display:none;"></div>
+
+  <!-- ============================================================
+     LOGIN PAGE
+     ============================================================ -->
+  <div id="loginPage">
+    <div class="login-box">
+      <div class="login-logo">
+        <div class="logo-icon"><i class="fas fa-plug"></i></div>
+        <h1>TEHNO PARK</h1>
+        <p>Xodimlar uchun kirish</p>
+      </div>
+      <div class="form-group">
+        <label>Foydalanuvchi</label>
+        <input type="text" id="loginUser" placeholder="admin / cashier / manager / customer" autocomplete="username" readonly>
+        <i class="fas fa-user input-icon"></i>
+      </div>
+      <div class="quick-login">
+        <p>Foydalanuvchi tanlang</p>
+        <div class="quick-sections">
+          <button type="button" class="quick-section admin-section" onclick="selectUser('admin')">
+            <div class="section-icon"><i class="fas fa-user-shield"></i></div>
+            <div class="section-title">Admin</div>
+            <div class="section-role">Administrator</div>
+          </button>
+          <button type="button" class="quick-section cashier-section" onclick="selectUser('cashier')">
+            <div class="section-icon"><i class="fas fa-user-tie"></i></div>
+            <div class="section-title">Cashier</div>
+            <div class="section-role">Kassa xodimi</div>
+          </button>
+          <button type="button" class="quick-section manager-section" onclick="selectUser('manager')">
+            <div class="section-icon"><i class="fas fa-user-cog"></i></div>
+            <div class="section-title">Manager</div>
+            <div class="section-role">Menejer</div>
+          </button>
+          <button type="button" class="quick-section customer-section" onclick="selectUser('customer')">
+            <div class="section-icon"><i class="fas fa-shopping-bag"></i></div>
+            <div class="section-title">Xaridor</div>
+            <div class="section-role">Oddiy foydalanuvchi</div>
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Parol</label>
+        <input type="password" id="loginPass" placeholder="••••••" autocomplete="current-password">
+        <i class="fas fa-lock input-icon"></i>
+        <button type="button" class="pass-toggle" onclick="togglePassword()"><i class="fas fa-eye"></i></button>
+      </div>
+      <button class="btn-login" onclick="doLogin()"><i class="fas fa-sign-in-alt"></i> Kirish</button>
+    </div>
+  </div>
+
+  <!-- ============================================================
+     MAIN APP
+     ============================================================ -->
+  <div id="app" class="market-mode">
+
+    <!-- OFFLINE BAR -->
+    <div id="offlineBar"><i class="fas fa-wifi" style="text-decoration:line-through"></i> Internet aloqasi yo'q — Oflayn
+      rejim</div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-sq"><i class="fas fa-plug"></i></div>
+        <div>
+          <span>TEHNO PARK</span>
+          <small>POS System v3.0</small>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section"><span class="nav-section-label">Asosiy</span></div>
+        <div class="nav-item active" onclick="goTo('page-shop',this)" id="nav-shop" data-role="all">
+          <i class="fas fa-store"></i><span>Do'kon</span>
+          <span class="nav-badge green">Online</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-dashboard',this)" data-role="admin,cashier,manager">
+          <i class="fas fa-th-large"></i><span>Dashboard</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="admin,cashier,manager">
+          <i class="fas fa-cash-register"></i><span>Kassa (POS)</span>
+          <span class="nav-badge green">Live</span>
+        </div>
+
+        <div class="nav-section" id="sec-data" data-role="admin,cashier"><span
+            class="nav-section-label">Ma'lumotlar</span></div>
+        <div class="nav-item" onclick="goTo('page-products',this)" id="nav-products" data-role="admin">
+          <i class="fas fa-tv"></i><span>Mahsulotlar</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers" data-role="admin,cashier">
+          <i class="fas fa-users"></i><span>Mijozlar</span>
+          <span class="nav-badge">124</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-employees',this)" id="nav-employees" data-role="admin,manager">
+          <i class="fas fa-id-badge"></i><span>Xodimlar</span>
+        </div>
+
+        <div class="nav-section" id="sec-analysis" data-role="admin,manager"><span
+            class="nav-section-label">Tahlil</span></div>
+        <div class="nav-item" onclick="goTo('page-reports',this)" id="nav-reports" data-role="admin,manager">
+          <i class="fas fa-chart-line"></i><span>Hisobotlar</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-sms',this)" id="nav-sms" data-role="admin">
+          <i class="fas fa-comment-dots"></i><span>SMS Tizimi</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-logs',this)" id="nav-logs" data-role="admin">
+          <i class="fas fa-history"></i><span>Loglar</span>
+        </div>
+
+        <div class="nav-section" id="sec-settings" data-role="admin"><span class="nav-section-label">Sozlama</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-settings',this)" id="nav-settings" data-role="admin">
+          <i class="fas fa-cog"></i><span>Sozlamalar</span>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-card" onclick="doLogout()">
+          <div class="user-avatar" id="sideAvatar" style="background:linear-gradient(135deg,#ff6b35,#f7931e)">A</div>
+          <div class="user-info">
+            <strong id="sideUser">Admin</strong>
+            <span id="sideRole">Administrator</span>
+          </div>
+          <i class="fas fa-sign-out-alt" style="color:var(--muted);font-size:14px"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="page-title">
+        <span id="pageTitle">Dashboard</span>
+        <small id="pageSubtitle">Xush kelibsiz, bugun ham yaxshi kun!</small>
+      </div>
+      <div class="topbar-search">
+        <i class="fas fa-search"></i>
+        <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="globalSearch(this.value)" id="globalSearchInput">
+      </div>
+      <div class="topbar-actions">
+        <div class="icon-btn" onclick="toggleNotif()" title="Bildirishnomalar">
+          <i class="fas fa-bell"></i>
+          <span class="notif-dot"></span>
+        </div>
+        <div class="icon-btn" onclick="printReceipt()" title="Chek chop (F8)">
+          <i class="fas fa-print"></i>
+        </div>
+        <button type="button" onclick="toggleTheme()" class="icon-btn btn-icon" title="Tema o'zgartirish">
+          <i class="fas fa-moon" id="themeIcon"></i>
+        </button>
+        <button type="button" onclick="openEmployeeLogin()" class="btn btn-outline btn-sm employee-login-btn">
+          <i class="fas fa-user-tie"></i> Xodim
+        </button>
+        <div class="topbar-clock" id="clock">00:00:00</div>
+      </div>
+    </div>
+
+    <!-- HOTKEYS BAR -->
+    <div class="hotkeys-bar">
+      <div class="hk"><kbd>F2</kbd> To'lov</div>
+      <div class="hk"><kbd>F3</kbd> Kassa</div>
+      <div class="hk"><kbd>Esc</kbd> Yopish</div>
+      <div class="hk"><kbd>F8</kbd> Chek chop</div>
+      <div class="hk"><kbd>F1</kbd> Yordam</div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main">
+
+      <!-- ===== DASHBOARD ===== -->
+      <div class="page" id="page-dashboard">
+        <!-- ADMIN DASHBOARD -->
+        <div id="admin-dashboard" style="display:none">
+          <div style="margin-bottom:20px">
+            <h2 style="color:var(--primary);margin-bottom:10px">📊 Administrator Dashboard</h2>
+            <p style="color:var(--muted)">Barcha ko'rsatkichlarni nazorat qiling</p>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
+              <div class="stat-icon" style="background:rgba(255,107,53,.15);color:#ff8a5b"><i
+                  class="fas fa-chart-line"></i></div>
+              <div class="stat-num" id="d-sales">0</div>
+              <div class="stat-label">Bugungi Savdo (so'm)</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> +18.5% o'tgan haftaga nisbatan</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
+              <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
+                  class="fas fa-shopping-cart"></i></div>
+              <div class="stat-num" id="d-orders">0</div>
+              <div class="stat-label">Bugungi Buyurtmalar</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> +12 bugun</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
+              <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i class="fas fa-users"></i>
+              </div>
+              <div class="stat-num">124</div>
+              <div class="stat-label">Jami Mijozlar</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> +5 yangi bu oy</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(239,68,68,.12)">
+              <div class="stat-icon" style="background:rgba(239,68,68,.15);color:#FCA5A5"><i class="fas fa-tv"></i>
+              </div>
+              <div class="stat-num" id="d-products">0</div>
+              <div class="stat-label">Mahsulotlar</div>
+              <div class="stat-change down"><i class="fas fa-arrow-down"></i> 3 ta kam qoldi</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
+              <div class="stat-icon" style="background:rgba(255,107,53,.15);color:#ff8a5b"><i class="fas fa-coins"></i>
+              </div>
+              <div class="stat-num" id="d-profit">3.2M</div>
+              <div class="stat-label">Jami Foyda</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> +22% oldingi oyga nisbatan</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
+              <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i
+                  class="fas fa-users-cog"></i></div>
+              <div class="stat-num">3</div>
+              <div class="stat-label">Faol Xodimlar</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> 100% ishda</div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel-header">
+                <h3><i class="fas fa-chart-area" style="color:var(--primary)"></i> Haftalik Savdo</h3>
+                <button class="btn btn-outline btn-sm" onclick="exportReport('pdf')">PDF</button>
+              </div>
+              <div class="panel-body">
+                <div class="chart-wrap"><canvas id="salesChart"></canvas></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3><i class="fas fa-pie-chart" style="color:var(--accent)"></i> To'lov Turlari</h3>
+              </div>
+              <div class="panel-body">
+                <div class="chart-wrap"><canvas id="payChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel-header">
+                <h3><i class="fas fa-clock" style="color:var(--accent)"></i> Oxirgi Sotuvlar</h3>
+                <button class="btn btn-outline btn-sm" onclick="goTo('page-pos',document.getElementById('navPos'))">+
+                  Yangi</button>
+              </div>
+              <div class="panel-body" style="padding:0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Mijoz</th>
+                        <th>Summa</th>
+                        <th>To'lov</th>
+                        <th>Vaqt</th>
+                      </tr>
+                    </thead>
+                    <tbody id="recentSales"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3><i class="fas fa-fire" style="color:var(--warning)"></i> Top Mahsulotlar</h3>
+              </div>
+              <div class="panel-body" id="topProducts"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CASHIER DASHBOARD -->
+        <div id="cashier-dashboard" style="display:none">
+          <div style="margin-bottom:20px">
+            <h2 style="color:var(--primary);margin-bottom:10px">💳 Kassir Dashboard</h2>
+            <p style="color:var(--muted)">Bugungi savdo ko'rsatkichlaringiz</p>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
+              <div class="stat-icon" style="background:rgba(255,107,53,.15);color:#ff8a5b"><i class="fas fa-coins"></i>
+              </div>
+              <div class="stat-num" id="d-sales-cashier">0 so'm</div>
+              <div class="stat-label">Bugungi Savdo</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> Kun statistikasi</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
+              <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
+                  class="fas fa-receipt"></i></div>
+              <div class="stat-num" id="d-orders-cashier">0</div>
+              <div class="stat-label">Cheklar soni</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> Bugungi</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
+              <div class="stat-icon" style="background:rgba(255,107,53,.15);color:#ff8a5b"><i
+                  class="fas fa-money-bill-wave"></i></div>
+              <div class="stat-num" id="d-avg-cashier">0 so'm</div>
+              <div class="stat-label">O'rtacha Chek</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> Kunlik statistika</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-history" style="color:var(--accent)"></i> Mening Sotuvlarim</h3>
+              <button class="btn btn-outline btn-sm" onclick="goTo('page-pos',document.getElementById('navPos'))">+
+                Yangi Savdo</button>
+            </div>
+            <div class="panel-body" style="padding:0">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Chek #</th>
+                      <th>Vaqt</th>
+                      <th>Summa</th>
+                      <th>To'lov Turi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cashier-sales"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MANAGER DASHBOARD -->
+        <div id="manager-dashboard" style="display:none">
+          <div style="margin-bottom:20px">
+            <h2 style="color:var(--primary);margin-bottom:10px">📊 Manager Dashboard</h2>
+            <p style="color:var(--muted)">Xodimlar va sotuvlar bo'yicha hisobot</p>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
+              <div class="stat-icon" style="background:rgba(255,107,53,.15);color:#ff8a5b"><i class="fas fa-coins"></i>
+              </div>
+              <div class="stat-num">3.2M</div>
+              <div class="stat-label">Bugungi Jami Savdo</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> +18.5%</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
+              <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i
+                  class="fas fa-users-cog"></i></div>
+              <div class="stat-num">3</div>
+              <div class="stat-label">Faol Xodimlar</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> Barchasi online</div>
+            </div>
+            <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
+              <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i class="fas fa-trophy"></i>
+              </div>
+              <div class="stat-num">Karimov</div>
+              <div class="stat-label">Eng Yaxshi Kassa</div>
+              <div class="stat-change up"><i class="fas fa-arrow-up"></i> 47 ta sotuvlar</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-users" style="color:var(--accent)"></i> Xodimlar Reytingi</h3>
+            </div>
+            <div class="panel-body" style="padding:0">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Xodim</th>
+                      <th>Sotuvlar</th>
+                      <th>Jami So'm</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="manager-employees"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CUSTOMER SHOP ===== -->
+      <div class="page active" id="page-shop">
+        <div class="market-shell">
+          <div class="market-top">
+            <div class="market-brand">
+              <div class="market-logo"><i class="fas fa-bolt"></i></div>
+              <div>
+                <strong>TEHNO PARK</strong>
+                <span>Online market</span>
+              </div>
+            </div>
+            <div class="market-search">
+              <i class="fas fa-search"></i>
+              <input type="text" id="marketSearch" placeholder="Mahsulot va turkumlarni qidirish..." oninput="syncShopSearch(this.value)">
+            </div>
+            <button type="button" class="market-cart-btn" onclick="document.querySelector('.shop-cart')?.scrollIntoView({behavior:'smooth'})">
+              <i class="fas fa-shopping-cart"></i>
+              <span>Savat</span>
+            </button>
+          </div>
+          <div class="market-banner">
+            <div>
+              <span class="market-chip">Tezkor chegirmalar</span>
+              <h2>Texnika va maishiy mahsulotlar bir joyda</h2>
+              <p>Telefon, televizor, maishiy texnika va aksessuarlarni qulay savat bilan tanlang.</p>
+            </div>
+            <div class="market-banner-art">
+              <i class="fas fa-mobile-screen-button"></i>
+              <i class="fas fa-tv"></i>
+              <i class="fas fa-snowflake"></i>
+            </div>
+          </div>
+          <div class="market-section-title">
+            <h3>Ommabop mahsulotlar</h3>
+            <span>Qoldiqdagi barcha mahsulotlar</span>
+          </div>
+        </div>
+        <div class="shop-layout market-layout">
+          <div class="shop-main">
+            <div class="shop-hero market-filterbar">
+              <div>
+                <h2>Katalog</h2>
+                <p>Kategoriya tanlang yoki qidiruvdan foydalaning.</p>
+              </div>
+              <div class="shop-search">
+                <i class="fas fa-search"></i>
+                <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="renderShop()">
+              </div>
+            </div>
+            <div class="cat-tabs" id="shopCatTabs"></div>
+            <div class="product-grid" id="shopProductGrid"></div>
+          </div>
+          <div class="shop-cart">
+            <div class="cart-header">
+              <div>
+                <h3><i class="fas fa-shopping-basket" style="color:var(--primary)"></i> Mening Savatim</h3>
+                <p id="shopCartCount">0 ta mahsulot</p>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="clearShopCart()">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+            <div class="cart-items" id="shopCartItems">
+              <div class="cart-empty"><i class="fas fa-shopping-basket"></i><p>Savat bo'sh</p></div>
+            </div>
+            <div class="cart-summary">
+              <div class="cart-row total"><span>Jami</span><span id="shopCartTotal">0 so'm</span></div>
+              <div class="form-col" style="margin:12px 0">
+                <label>To'lov turi</label>
+                <select class="form-control" id="shopPayType">
+                  <option value="click">Click</option>
+                  <option value="card">Karta</option>
+                  <option value="cash">Naqd (yetkazishda)</option>
+                </select>
+              </div>
+              <button class="btn btn-success btn-lg" style="width:100%;font-size:16px;font-weight:800"
+                onclick="checkoutShopOrder()">
+                <i class="fas fa-check-circle"></i> BUYURTMA BERISH
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== POS / KASSA ===== -->
+      <div class="page" id="page-pos">
+        <div class="pos-layout">
+          <div class="pos-left">
+            <!-- Barcode scanner indicator -->
+            <div class="barcode-indicator" id="barcodeIndicator">
+              <i class="fas fa-barcode"></i>
+              <span id="barcodeStatus">Barkod skaner tayyor — USB/Bluetooth ulang</span>
+            </div>
+            <div class="pos-search">
+              <i class="fas fa-search"></i>
+              <input type="text" placeholder="Mahsulot nomi, kodi yoki barkod..."
+                oninput="debouncedSearchProducts(this.value)" id="posSearch" autocomplete="off">
+            </div>
+            <div class="cat-tabs" id="catTabs"></div>
+            <div class="product-grid" id="productGrid"></div>
+          </div>
+          <div class="pos-right">
+            <div class="cart-header">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div>
+                  <h3><i class="fas fa-shopping-cart" style="color:var(--primary)"></i> Savat</h3>
+                  <p id="cartCount">0 ta mahsulot</p>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="clearCart()" title="Savatni tozalash (Esc)">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+            <div class="cart-items" id="cartItems">
+              <div class="cart-empty"><i class="fas fa-shopping-basket"></i>
+                <p>Savat bo'sh</p><small style="font-size:11px;margin-top:4px">F3 — Kassaga o'tish</small>
+              </div>
+            </div>
+            <div class="cart-footer">
+              <div class="cart-totals">
+                <div class="cart-row"><span>Jami</span><span id="cartSubtotal">0 so'm</span></div>
+                <div class="cart-row"><span>Soliq (12%)</span><span id="cartTax" style="color:var(--muted)">0
+                    so'm</span></div>
+                <div class="cart-row"><span>Chegirma</span><span id="cartDiscountShow" style="color:var(--danger)">-0
+                    so'm</span></div>
+                <div class="cart-row total"><span>TO'LOV</span><span id="cartTotal">0 so'm</span></div>
+              </div>
+              <div class="discount-row">
+                <input type="number" id="discountInput" placeholder="Chegirma %" min="0" max="100"
+                  oninput="updateCart()">
+                <select id="cartCustomer" class="form-control" style="flex:1.2">
+                  <option value="">Mijoz tanlanmagan</option>
+                </select>
+              </div>
+              <div class="pay-types">
+                <button class="pay-type active" onclick="setPayType('cash',this)"><i
+                    class="fas fa-money-bill"></i>Naqd</button>
+                <button class="pay-type" onclick="setPayType('card',this)"><i
+                    class="fas fa-credit-card"></i>Karta</button>
+                <button class="pay-type" onclick="setPayType('click',this)"><i
+                    class="fas fa-mobile-alt"></i>Click</button>
+                <button class="pay-type" onclick="setPayType('credit',this)"><i
+                    class="fas fa-hand-holding-usd"></i>Kredit</button>
+              </div>
+              <!-- Kredit dynamic panel (hidden until 'Kredit' selected) -->
+              <div id="creditPanel" class="credit-panel"
+                style="display:none;margin:12px 0 14px;border-radius:12px;padding:12px;border:1px solid var(--border);background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent)">
+                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                  <div style="flex:1;min-width:160px">
+                    <label
+                      style="display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Tan
+                      to'lov (Boshlang'ich)</label>
+                    <input id="creditDown" type="number" min="0" class="form-control" placeholder="0"
+                      oninput="updateCreditCalculations()">
+                  </div>
+                  <div style="flex:1;min-width:160px">
+                    <label
+                      style="display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Muddat
+                      (Oylar)</label>
+                    <select id="creditMonths" class="form-control" onchange="updateCreditCalculations()">
+                      <option value="3">3 oy</option>
+                      <option value="6">6 oy</option>
+                      <option value="9">9 oy</option>
+                      <option value="12">12 oy</option>
+                    </select>
+                  </div>
+                  <div style="flex:1;min-width:160px">
+                    <label
+                      style="display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Qoldiq</label>
+                    <div id="creditRemaining" style="font-weight:800;color:var(--primary);">0 so'm</div>
+                  </div>
+                  <div style="flex:1;min-width:160px">
+                    <label
+                      style="display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Oylik
+                      to'lov</label>
+                    <div id="creditMonthly" style="font-weight:800;color:var(--accent);">0 so'm / oy</div>
+                  </div>
+                </div>
+              </div>
+
+              <button class="btn btn-success btn-lg" style="width:100%;font-size:16px;font-weight:800"
+                onclick="checkout()" id="checkoutBtn">
+                <i class="fas fa-check-circle"></i> TO'LOV QILISH <kbd
+                  style="background:rgba(255,255,255,.2);border-radius:4px;padding:2px 6px;font-size:11px;margin-left:8px">F2</kbd>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PRODUCTS ===== -->
+      <div class="page" id="page-products">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">Mahsulotlar Boshqaruvi</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulot qo'shish, tahrirlash va o'chirish</p>
+          </div>
+          <button class="btn btn-primary" onclick="openProductModal()"><i class="fas fa-plus"></i> Yangi
+            Mahsulot</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3><i class="fas fa-tv" style="color:var(--primary)"></i> Mahsulotlar Ro'yxati (<span
+                id="productCount">0</span>)</h3>
+            <div style="display:flex;gap:8px">
+              <select class="form-control" style="width:150px;padding:7px 12px" onchange="filterByCategory(this.value)"
+                id="catFilter">
+                <option value="">Barcha</option>
+              </select>
+              <input type="text" class="form-control" placeholder="Qidirish..." style="width:200px;padding:7px 12px"
+                oninput="debouncedFilterProducts(this.value)">
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rasm</th>
+                    <th>Nomi</th>
+                    <th>Kategoriya</th>
+                    <th>Narxi</th>
+                    <th>Qoldiq</th>
+                    <th>Holati</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="productsTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CUSTOMERS ===== -->
+      <div class="page" id="page-customers">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">Mijozlar</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Barcha mijozlar va ularning ma'lumotlari</p>
+          </div>
+          <button class="btn btn-primary" onclick="openCustomerModal()"><i class="fas fa-user-plus"></i> Yangi
+            Mijoz</button>
+        </div>
+        <div class="stat-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i class="fas fa-users"></i>
+            </div>
+            <div class="stat-num">124</div>
+            <div class="stat-label">Jami Mijozlar</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
+                class="fas fa-user-check"></i></div>
+            <div class="stat-num">89</div>
+            <div class="stat-label">Faol Mijozlar</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FCD34D"><i class="fas fa-star"></i>
+            </div>
+            <div class="stat-num">23</div>
+            <div class="stat-label">VIP Mijozlar</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(239,68,68,.15);color:#FCA5A5"><i
+                class="fas fa-user-times"></i></div>
+            <div class="stat-num">12</div>
+            <div class="stat-label">Nofaol</div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-bottom:20px">
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-chart-pie" style="color:var(--primary)"></i> Mijozlar Turlari</h3>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap"><canvas id="customerTypeChart"></canvas></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-chart-line" style="color:var(--accent)"></i> Xarid Statistikasi</h3>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap"><canvas id="purchaseChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3><i class="fas fa-users" style="color:var(--primary)"></i> Mijozlar Ro'yxati</h3>
+            <input type="text" class="form-control" placeholder="Qidirish..." style="width:200px;padding:7px 12px"
+              oninput="debouncedFilterCustomers(this.value)">
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mijoz</th>
+                    <th>Telefon</th>
+                    <th>Buyurtmalar</th>
+                    <th>Jami xarid</th>
+                    <th>Bonus</th>
+                    <th>Holat</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="customersTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== EMPLOYEES ===== -->
+      <div class="page" id="page-employees">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">Xodimlar</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Xodimlar boshqaruvi va reytingi</p>
+          </div>
+          <button class="btn btn-primary" onclick="openEmployeeModal()"><i class="fas fa-user-plus"></i> Yangi
+            Xodim</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3><i class="fas fa-id-badge" style="color:var(--primary)"></i> Xodimlar Ro'yxati</h3>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Ism</th>
+                    <th>Rol</th>
+                    <th>Sotuvlar</th>
+                    <th>Daromad</th>
+                    <th>Login</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="employeesTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== SALARY SECTION (moved to Xodimlar sahifasi) ===== -->
+        <div
+          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700;display:flex;align-items:center;gap:10px">
+              <span
+                style="background:linear-gradient(135deg,#10b981,#059669);width:38px;height:38px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">💸</span>
+              Oylik Maoshlarni Rejalashtirish
+            </h2>
+            <p style="color:var(--text-secondary);font-size:13px;margin-top:4px;margin-left:48px" id="salary-subtitle">
+              Xodimlarning maosh holati va to'lov jadvali</p>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <select class="form-control" id="salary-month-filter" onchange="SalaryModule.applyFilter()"
+              style="padding:8px 14px;font-size:13px;width:auto">
+              <option value="">Barcha oylar</option>
+            </select>
+            <button class="btn btn-outline" onclick="SalaryModule.exportCSV()">
+              <i class="fas fa-file-export"></i> Eksport
+            </button>
+            <button class="btn btn-primary" onclick="SalaryModule.openAddModal()">
+              <i class="fas fa-plus"></i> Xodim Qo'shish
+            </button>
+          </div>
+        </div>
+
+        <!-- STAT CARDS -->
+        <div class="salary-stats" id="salary-stat-cards"></div>
+
+        <!-- FILTER TOOLBAR -->
+        <div class="salary-toolbar">
+          <button class="salary-filter-btn active" onclick="SalaryModule.setFilter('all', this)">
+            <i class="fas fa-list" style="margin-right:5px"></i>Barchasi
+          </button>
+          <button class="salary-filter-btn" onclick="SalaryModule.setFilter('today', this)">
+            <i class="fas fa-bell" style="margin-right:5px;color:#60a5fa"></i>Bugun to'lanadi
+          </button>
+          <button class="salary-filter-btn" onclick="SalaryModule.setFilter('overdue', this)">
+            <i class="fas fa-exclamation-triangle" style="margin-right:5px;color:#f87171"></i>Kechikkan
+          </button>
+          <button class="salary-filter-btn" onclick="SalaryModule.setFilter('pending', this)">
+            <i class="fas fa-clock" style="margin-right:5px;color:#fbbf24"></i>Kutilmoqda
+          </button>
+          <button class="salary-filter-btn" onclick="SalaryModule.setFilter('paid', this)">
+            <i class="fas fa-check-circle" style="margin-right:5px;color:#4ade80"></i>To'langan
+          </button>
+          <div style="margin-left:auto">
+            <input type="text" class="form-control" placeholder="🔍 Qidirish..."
+              oninput="SalaryModule.search(this.value)" style="padding:7px 12px;width:180px;font-size:13px">
+          </div>
+        </div>
+
+        <!-- MAIN TABLE -->
+        <div class="panel">
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table id="salaryTable">
+                <thead>
+                  <tr>
+                    <th style="width:40px">#</th>
+                    <th>Xodim</th>
+                    <th>Rol</th>
+                    <th>Oylik Maosh</th>
+                    <th>Navbatdagi To'lov</th>
+                    <th>Holat</th>
+                    <th>Oy Davomiyligi</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="salaryTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- HISTORY CHART PANEL -->
+        <div class="grid-2" style="margin-top:22px">
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-chart-bar" style="color:var(--primary)"></i> Oylik To'lovlar Tarixi</h3>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap"><canvas id="salaryHistoryChart"></canvas></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-history" style="color:var(--text-secondary)"></i> So'nggi To'lovlar</h3>
+              <span id="salary-recent-count" style="font-size:12px;color:var(--text-muted)"></span>
+            </div>
+            <div class="panel-body" style="padding:0 0 8px">
+              <div id="salary-recent-list" style="padding:0 16px;max-height:280px;overflow-y:auto"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== REPORTS ===== -->
+      <div class="page" id="page-reports">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">Hisobotlar</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Savdo tahlili va statistika</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <select class="form-control" style="padding:7px 12px">
+              <option>Bu oy</option>
+              <option>O'tgan oy</option>
+              <option>Bu yil</option>
+            </select>
+            <button class="btn btn-outline" onclick="exportReport('excel')"><i class="fas fa-file-excel"></i>
+              Excel</button>
+            <button class="btn btn-primary" onclick="loadReport()"><i class="fas fa-filter"></i> Filtrlash</button>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-bottom:22px">
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-bar-chart" style="color:var(--primary)"></i> Oylik Savdo</h3>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap"><canvas id="monthChart"></canvas></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-line-chart" style="color:var(--accent)"></i> Daromad vs Xarajat</h3>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap"><canvas id="incomeChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3><i class="fas fa-trophy" style="color:var(--warning)"></i> Xodimlar Reytingi</h3>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Xodim</th>
+                    <th>Sotuvlar</th>
+                    <th>Jami</th>
+                    <th>Ko'rsatkich</th>
+                  </tr>
+                </thead>
+                <tbody id="employeeRank"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SMS ===== -->
+      <div class="page" id="page-sms">
+        <div style="margin-bottom:20px">
+          <h2 style="font-size:20px;font-weight:700">SMS Tizimi</h2>
+          <p style="color:var(--muted);font-size:13px;margin-top:3px">Mijozlarga SMS yuborish</p>
+        </div>
+        <div class="grid-2">
+          <div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3><i class="fas fa-edit" style="color:var(--primary)"></i> SMS Yozish</h3>
+              </div>
+              <div class="panel-body">
+                <div class="form-col" style="margin-bottom:14px">
+                  <label>Kimga</label>
+                  <select class="form-control" id="smsTo">
+                    <option>Barcha Mijozlar (124)</option>
+                    <option>VIP Mijozlar (23)</option>
+                    <option>Faol Mijozlar (89)</option>
+                    <option>Nofaol Mijozlar (12)</option>
+                  </select>
+                </div>
+                <div class="form-col" style="margin-bottom:14px">
+                  <label>Xabar</label>
+                  <textarea class="form-control" id="smsText" rows="5" placeholder="SMS matni..."></textarea>
+                  <small id="smsCount" style="color:var(--muted);font-size:11px">0/160 belgi</small>
+                </div>
+                <button class="btn btn-primary" onclick="sendSMS()" style="width:100%">
+                  <i class="fas fa-paper-plane"></i> Yuborish
+                </button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="panel">
+              <div class="panel-header">
+                <h3><i class="fas fa-clipboard-list" style="color:var(--accent)"></i> Shablonlar</h3>
+              </div>
+              <div class="panel-body" id="smsTemplates"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:22px">
+          <div class="panel-header">
+            <h3><i class="fas fa-history" style="color:var(--muted)"></i> Yuborilgan SMS Tarixi</h3>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Vaqt</th>
+                    <th>Kimga</th>
+                    <th>Matn</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="smsHistory"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== LOGS ===== -->
+      <div class="page" id="page-logs">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">Faollik Loglari</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Barcha amallar tarixi</p>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="clearLogs()"><i class="fas fa-trash"></i> Tozalash</button>
+        </div>
+        <div class="panel">
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Vaqt</th>
+                    <th>Foydalanuvchi</th>
+                    <th>Amal</th>
+                    <th>Tafsilot</th>
+                  </tr>
+                </thead>
+                <tbody id="logsTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SETTINGS ===== -->
+      <div class="page" id="page-settings">
+        <div style="margin-bottom:20px">
+          <h2 style="font-size:20px;font-weight:700">Sozlamalar</h2>
+          <p style="color:var(--muted);font-size:13px;margin-top:3px">Tizim sozlamalari</p>
+        </div>
+        <div class="tabs">
+          <div class="tab active" onclick="showTab('tab-company',this)">Kompaniya</div>
+          <div class="tab" onclick="showTab('tab-system',this)">Tizim</div>
+          <div class="tab" onclick="showTab('tab-sms',this)">SMS API</div>
+          <div class="tab" onclick="showTab('tab-receipt',this)">Chek</div>
+        </div>
+        <div id="tab-company">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Kompaniya Ma'lumotlari</h3>
+            </div>
+            <div class="panel-body">
+              <div class="form-row">
+                <div class="form-col"><label>Kompaniya Nomi</label><input class="form-control" value="Tehno Park"></div>
+                <div class="form-col"><label>Telefon</label><input class="form-control" value="+998 90 123 45 67"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-col"><label>Manzil</label><input class="form-control" value="Chilonzor 12, Toshkent">
+                </div>
+                <div class="form-col"><label>INN</label><input class="form-control" value="123456789"></div>
+              </div>
+              <div class="form-col" style="margin-bottom:16px">
+                <label>Logo</label>
+                <div class="img-upload" onclick="this.querySelector('input').click()">
+                  <i class="fas fa-cloud-upload-alt"></i>
+                  <p>Rasm yuklash</p>
+                  <input type="file" accept="image/*" onchange="previewLogo(this)">
+                </div>
+              </div>
+              <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Saqlash</button>
+            </div>
+          </div>
+        </div>
+        <div id="tab-system" style="display:none">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Tizim Sozlamalari</h3>
+            </div>
+            <div class="panel-body">
+              <div class="form-row">
+                <div class="form-col">
+                  <label>Soliq (QQS %)</label>
+                  <input class="form-control" type="number" id="taxRate" value="12">
+                </div>
+                <div class="form-col">
+                  <label>Valyuta</label>
+                  <select class="form-control">
+                    <option>UZS (So'm)</option>
+                    <option>USD</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-col">
+                  <label>Barkod Skaner Vaqti (ms)</label>
+                  <input class="form-control" type="number" value="50" id="barcodeTimeout">
+                </div>
+                <div class="form-col">
+                  <label>Chek Printer</label>
+                  <select class="form-control">
+                    <option>80mm Termal</option>
+                    <option>58mm Termal</option>
+                  </select>
+                </div>
+              </div>
+              <div
+                style="display:flex;align-items:center;gap:16px;margin-bottom:16px;padding:16px;background:var(--bg);border-radius:12px">
+                <div>
+                  <strong>Ovozli signal</strong>
+                  <p style="color:var(--muted);font-size:12px">Skaner va to'lov ovozlari</p>
+                </div>
+                <label style="margin-left:auto;cursor:pointer">
+                  <input type="checkbox" id="soundEnabled" checked style="width:20px;height:20px">
+                </label>
+              </div>
+              <div
+                style="display:flex;align-items:center;gap:16px;margin-bottom:16px;padding:16px;background:var(--bg);border-radius:12px">
+                <div>
+                  <strong>To'lovdan so'ng avtomatik chek</strong>
+                  <p style="color:var(--muted);font-size:12px">Har bir to'lovdan so'ng chek chiqarish</p>
+                </div>
+                <label style="margin-left:auto;cursor:pointer">
+                  <input type="checkbox" id="autoPrint" checked style="width:20px;height:20px">
+                </label>
+              </div>
+
+              <div style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:12px">
+                <strong style="display:block;margin-bottom:8px">Ma'lumotlar Zaxirasi (Backup)</strong>
+                <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Barcha ma'lumotlarni fayl ko'rinishida
+                  yuklab oling yoki qayta tiklang. Brauzer xotirasi o'chganda ma'lumotlarni tiklash uchun muhim.</p>
+                <div style="display:flex;gap:10px">
+                  <button class="btn btn-outline" onclick="exportData()"><i class="fas fa-download"></i> Eksport
+                    (Yuklash)</button>
+                  <button class="btn btn-outline" onclick="document.getElementById('importDataInput').click()"><i
+                      class="fas fa-upload"></i> Import (Tiklash)</button>
+                  <input type="file" id="importDataInput" style="display:none" accept=".json"
+                    onchange="importData(this)">
+                </div>
+              </div>
+
+              <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Saqlash</button>
+            </div>
+          </div>
+        </div>
+        <div id="tab-sms" style="display:none">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>SMS API Sozlamalari</h3>
+            </div>
+            <div class="panel-body">
+              <div class="form-row">
+                <div class="form-col"><label>API Kalit</label><input class="form-control" type="password"
+                    placeholder="API key..."></div>
+                <div class="form-col"><label>Sender Nomi</label><input class="form-control" value="TechnoPark"></div>
+              </div>
+              <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Saqlash</button>
+            </div>
+          </div>
+        </div>
+        <div id="tab-receipt" style="display:none">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Chek Dizayni</h3>
+            </div>
+            <div class="panel-body">
+              <div class="form-row">
+                <div class="form-col"><label>Chek Sarlavhasi</label><input class="form-control" value="TEHNO PARK">
+                </div>
+                <div class="form-col"><label>Footer Matni</label><input class="form-control"
+                    value="Rahmat xarid uchun!"></div>
+              </div>
+              <div class="form-col" style="margin-bottom:14px">
+                <label>Chek Ko'rinishi (Preview)</label>
+                <div class="receipt">
+                  <h2>TEHNO PARK</h2>
+                  <div class="r-center">Chilonzor 12, Toshkent<br>+998 90 123 45 67</div>
+                  <hr>
+                  <div class="r-row"><span>Sana:</span><span id="rDate"></span></div>
+                  <div class="r-row"><span>Chek #:</span><span>00001</span></div>
+                  <hr>
+                  <div class="r-row"><span>Muzlatgich Samsung x1</span><span>4,500,000</span></div>
+                  <div class="r-row"><span>Konditsioner Artel x1</span><span>3,200,000</span></div>
+                  <hr>
+                  <div class="r-row"><span>Jami:</span><span>7,700,000</span></div>
+                  <div class="r-row"><span>QQS (12%):</span><span>924,000</span></div>
+                  <div class="r-row r-total"><span>TO'LOV:</span><span>7,700,000</span></div>
+                  <div class="r-barcode">|||||||||||||</div>
+                  <hr>
+                  <div class="r-center">Rahmat xarid uchun!<br>⭐⭐⭐⭐⭐<br>www.tehnopark.uz</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /app -->
+
+  <!-- ===== SALARY MODALS ===== -->
+
+  <!-- Pay / Edit Modal -->
+  <div class="modal-overlay" id="salaryPayModal">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-header">
+        <h3 id="salaryModalTitle"><i class="fas fa-money-check-alt"
+            style="color:var(--primary);margin-right:8px"></i>Maosh To'lash</h3>
+        <button class="modal-close" onclick="closeModal('salaryPayModal')">✕</button>
+      </div>
+
+      <!-- Employee info card -->
+      <div class="salary-modal-emp-info" id="salary-modal-emp-info">
+        <div class="salary-modal-emp-avatar" id="salary-modal-avatar">A</div>
+        <div>
+          <div class="salary-modal-emp-name" id="salary-modal-name">—</div>
+          <div class="salary-modal-emp-role" id="salary-modal-role">—</div>
+          <div style="margin-top:6px" id="salary-modal-status-badge"></div>
+        </div>
+        <div class="salary-modal-emp-amount">
+          <div class="amount-num" id="salary-modal-amount">0</div>
+          <div class="amount-label">oylik maosh</div>
+        </div>
+      </div>
+
+      <!-- Summary rows -->
+      <div
+        style="margin-bottom:20px;background:var(--bg);border-radius:var(--radius-md);padding:14px 16px;border:1px solid var(--border)">
+        <div class="salary-summary-row">
+          <span class="label">Joriy oy:</span>
+          <span class="value" id="salary-modal-cur-month">—</span>
+        </div>
+        <div class="salary-summary-row">
+          <span class="label">To'lov sana:</span>
+          <span class="value" id="salary-modal-cur-date">—</span>
+        </div>
+        <div class="salary-summary-row">
+          <span class="label">Holat:</span>
+          <span id="salary-modal-cur-status">—</span>
+        </div>
+        <div class="salary-summary-row total">
+          <span class="label">To'lanishi kerak:</span>
+          <span class="value" id="salary-modal-total-due">0 so'm</span>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+        <div class="form-col">
+          <label>Keyingi to'lov sanasi</label>
+          <input type="date" class="form-control" id="salary-modal-next-date">
+        </div>
+        <div class="form-col">
+          <label>To'lov miqdori (ixtiyoriy)</label>
+          <input type="number" class="form-control" id="salary-modal-pay-amount" placeholder="Standart maosh">
+        </div>
+      </div>
+
+      <div class="form-col" style="margin-bottom:20px">
+        <label>Izoh</label>
+        <textarea class="form-control" id="salary-modal-note" rows="2" placeholder="To'lov haqida izoh..."></textarea>
+      </div>
+
+      <!-- Payment history mini -->
+      <div id="salary-modal-history-wrap" style="margin-bottom:20px">
+        <div
+          style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">
+          <i class="fas fa-history" style="margin-right:6px"></i>To'lovlar Tarixi
+        </div>
+        <div id="salary-modal-history" style="max-height:160px;overflow-y:auto"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('salaryPayModal')">Bekor</button>
+        <button class="btn btn-success" onclick="SalaryModule.markPaid()" id="salary-pay-btn">
+          <i class="fas fa-check"></i> To'langan deb belgilash
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Employee Salary Modal -->
+  <div class="modal-overlay" id="salaryAddModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header">
+        <h3 id="salaryAddModalTitle"><i class="fas fa-user-plus" style="color:var(--primary);margin-right:8px"></i>Yangi
+          Xodim</h3>
+        <button class="modal-close" onclick="closeModal('salaryAddModal')">✕</button>
+      </div>
+      <div class="form-row">
+        <div class="form-col">
+          <label>Xodim Ismi *</label>
+          <input class="form-control" id="sal-emp-name" placeholder="F.I.Sh...">
+        </div>
+        <div class="form-col">
+          <label>Rol</label>
+          <select class="form-control" id="sal-emp-role">
+            <option value="cashier">Kassa Xodimi</option>
+            <option value="manager">Menejer</option>
+            <option value="admin">Administrator</option>
+            <option value="storekeeper">Omborchi</option>
+            <option value="security">Xavfsizlik</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-col">
+          <label>Oylik Maosh (so'm) *</label>
+          <input type="number" class="form-control" id="sal-amount" placeholder="3000000">
+        </div>
+        <div class="form-col">
+          <label>To'lov kuni (har oyning)</label>
+          <input type="number" class="form-control" id="sal-pay-day" min="1" max="28" placeholder="1" value="1">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-col">
+          <label>Birinchi to'lov sanasi *</label>
+          <input type="date" class="form-control" id="sal-first-date">
+        </div>
+        <div class="form-col">
+          <label>Bank / To'lov usuli</label>
+          <select class="form-control" id="sal-pay-method">
+            <option value="cash">Naqd</option>
+            <option value="card">Plastik karta</option>
+            <option value="click">Click</option>
+            <option value="transfer">Bank o'tkazma</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-col" style="margin-bottom:16px">
+        <label>Karta raqami / Hisob</label>
+        <input class="form-control" id="sal-card" placeholder="8600 0000 0000 0000">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('salaryAddModal')">Bekor</button>
+        <button class="btn btn-primary" onclick="SalaryModule.saveEmployee()">
+          <i class="fas fa-save"></i> Saqlash
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== EXISTING MODALS ===== -->
+  <div class="modal-overlay" id="productModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="productModalTitle">Yangi Mahsulot</h3>
+        <button class="modal-close" onclick="closeModal('productModal')">✕</button>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Mahsulot Nomi *</label><input class="form-control" id="p-name"
+            placeholder="Nomi..."></div>
+        <div class="form-col"><label>Kategoriya *</label>
+          <select class="form-control" id="p-cat">
+            <option>Muzlatgichlar</option>
+            <option>Kir Yuvish Mashinalari</option>
+            <option>Konditsionerlar</option>
+            <option>Televizorlar</option>
+            <option>Changyutgichlar</option>
+            <option>Pechlar</option>
+            <option>Mikrotolqinli Pechlar</option>
+            <option>Aksessuarlar</option>
+            <option>Boshqa</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Narxi (so'm) *</label><input class="form-control" id="p-price" type="number"
+            placeholder="0"></div>
+        <div class="form-col"><label>Qoldiq (dona) *</label><input class="form-control" id="p-stock" type="number"
+            placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Barkod</label><input class="form-control" id="p-barcode"
+            placeholder="1234567890..."></div>
+        <div class="form-col">
+          <label>Rasm URL</label>
+          <div class="image-url-group">
+            <input class="form-control" id="p-img" placeholder="https://...">
+            <button class="btn btn-outline" type="button" id="postimageUploadBtn"
+              onclick="document.getElementById('p-img-file').click()">
+              <i class="fas fa-upload"></i>
+            </button>
+            <input type="file" id="p-img-file" accept="image/*" onchange="uploadProductImageToPostimage(this)">
+          </div>
+        </div>
+      </div>
+      <div class="form-col" style="margin-bottom:16px">
+        <label>Tavsif</label>
+        <textarea class="form-control" id="p-desc" placeholder="Mahsulot haqida..."></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('productModal')">Bekor</button>
+        <button class="btn btn-primary" onclick="saveProduct()"><i class="fas fa-save"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="customerModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Yangi Mijoz</h3>
+        <button class="modal-close" onclick="closeModal('customerModal')">✕</button>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Ism Familiya *</label><input class="form-control" id="c-name" placeholder="F.I.Sh">
+        </div>
+        <div class="form-col"><label>Telefon *</label><input class="form-control" id="c-phone" placeholder="+998...">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Email</label><input class="form-control" id="c-email" placeholder="email@...">
+        </div>
+        <div class="form-col"><label>Tug'ilgan Sana</label><input class="form-control" id="c-bdate" type="date"></div>
+      </div>
+      <div class="form-col" style="margin-bottom:16px"><label>Manzil</label><input class="form-control" id="c-addr"
+          placeholder="Manzil..."></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('customerModal')">Bekor</button>
+        <button class="btn btn-primary" onclick="saveCustomer()"><i class="fas fa-save"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="checkoutModal">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h3>To'lov</h3>
+        <button class="modal-close" onclick="closeModal('checkoutModal')">✕</button>
+      </div>
+      <div id="receiptContent"></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn btn-outline" style="flex:1" onclick="printReceipt()"><i class="fas fa-print"></i> Chek Chop
+          (F8)</button>
+        <button class="btn btn-primary" style="flex:1" onclick="closeModal('checkoutModal');newSale()"><i
+            class="fas fa-plus"></i> Yangi Savdo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="helpModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header">
+        <h3>⌨️ Tezkor Tugmalar (Hotkeys)</h3>
+        <button class="modal-close" onclick="closeModal('helpModal')">✕</button>
+      </div>
+      <div style="display:grid;gap:12px">
+        <div style="display:flex;justify-content:space-between;padding:12px;background:var(--bg);border-radius:10px">
+          <span>Yordam</span><kbd
+            style="background:var(--primary);color:white;padding:4px 10px;border-radius:6px;font-weight:700">F1</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:12px;background:var(--bg);border-radius:10px">
+          <span>Checkout</span><kbd
+            style="background:var(--primary);color:white;padding:4px 10px;border-radius:6px;font-weight:700">F2</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:12px;background:var(--bg);border-radius:10px">
+          <span>POS sahifasi</span><kbd
+            style="background:var(--primary);color:white;padding:4px 10px;border-radius:6px;font-weight:700">F3</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:12px;background:var(--bg);border-radius:10px">
+          <span>Chek chop etish</span><kbd
+            style="background:var(--primary);color:white;padding:4px 10px;border-radius:6px;font-weight:700">F8</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:12px;background:var(--bg);border-radius:10px">
+          <span>Qidirish</span><kbd
+            style="background:var(--primary);color:white;padding:4px 10px;border-radius:6px;font-weight:700">Ctrl+F</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:12px;background:var(--bg);border-radius:10px">
+          <span>Modallarni yopish</span><kbd
+            style="background:var(--danger);color:white;padding:4px 10px;border-radius:6px;font-weight:700">Esc</kbd>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notifications container -->
+  <div id="notifContainer"></div>
+  <!-- Mobile menu toggle -->
+  <button class="menu-toggle" onclick="toggleSidebar()" title="Menyu">
+    <i class="fas fa-bars"></i>
+  </button>
+  <script src="scripts.js"></script>
+</body>
+
+</html>
