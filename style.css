@@ -4224,15 +4224,15 @@ canvas {
     margin-bottom: 40px;
 }
 .trust-card {
-    background: rgba(24, 28, 38, 0.4);
+    background: var(--surface);
     border: 1px solid var(--border);
-    backdrop-filter: blur(8px);
     border-radius: var(--radius-md);
     padding: 20px;
     display: flex;
     align-items: center;
     gap: 16px;
     transition: all 0.3s;
+    color: var(--text);
 }
 .trust-card:hover {
     transform: translateY(-4px);
@@ -4264,10 +4264,11 @@ canvas {
 /* FAQ Accordion */
 .faq-section {
     margin-top: 50px;
-    background: rgba(24, 28, 38, 0.3);
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 30px;
+    color: var(--text);
 }
 .faq-section h3 {
     font-size: 20px;
@@ -4330,11 +4331,12 @@ canvas {
     gap: 20px;
 }
 .testimonial-card {
-    background: rgba(24, 28, 38, 0.4);
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 24px;
     position: relative;
+    color: var(--text);
 }
 .testimonial-stars {
     color: #F59E0B;
@@ -4366,7 +4368,7 @@ canvas {
 }
 .testimonial-user span {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--text-secondary);
 }
 @media (max-width: 1024px) {
     .trust-grid { grid-template-columns: repeat(2, 1fr); }
