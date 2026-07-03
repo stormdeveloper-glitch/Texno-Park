@@ -1,8 +1,11 @@
 import os
 import sqlite3
 import json
+import uuid
+import boto3
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
 
 load_dotenv()
 
@@ -167,6 +170,61 @@ def sync_data():
         return jsonify({'status': 'success', 'message': 'Ma\'lumotlar muvaffaqiyatli saqlandi'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# S3 configurations for Railway Bucket
+S3_ENDPOINT = os.getenv('S3_ENDPOINT')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
+S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'collected-drawer')
+S3_PUBLIC_URL = os.getenv('S3_PUBLIC_URL')
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'Fayl topilmadi'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'Fayl nomi bo\'sh'}), 400
+        
+    filename = secure_filename(file.filename)
+    ext = os.path.splitext(filename)[1]
+    unique_filename = f"{uuid.uuid4().hex}{ext}"
+    
+    if S3_ENDPOINT and S3_ACCESS_KEY and S3_SECRET_KEY:
+        try:
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=S3_ENDPOINT,
+                aws_access_key_id=S3_ACCESS_KEY,
+                aws_secret_access_key=S3_SECRET_KEY
+            )
+            s3_client.upload_fileobj(
+                file,
+                S3_BUCKET_NAME,
+                unique_filename,
+                ExtraArgs={'ACL': 'public-read', 'ContentType': file.content_type}
+            )
+            if S3_PUBLIC_URL:
+                public_url = f"{S3_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+            else:
+                public_url = f"{S3_ENDPOINT.rstrip('/')}/{S3_BUCKET_NAME}/{unique_filename}"
+            return jsonify({'status': 'success', 'url': public_url})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': f"S3 ga yuklab bo'lmadi: {str(e)}"}), 500
+    else:
+        # Local fallback
+        try:
+            uploads_dir = os.path.join(app.root_path, 'uploads')
+            os.makedirs(uploads_dir, exist_ok=True)
+            file_path = os.path.join(uploads_dir, unique_filename)
+            file.save(file_path)
+            return jsonify({'status': 'success', 'url': f"/uploads/{unique_filename}"})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': f"Lokal xotiraga yuklab bo'lmadi: {str(e)}"}), 500
+
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    return send_from_directory('uploads', filename)
 
 if __name__ == '__main__':
     print(f"Server {PORT}-portda ishlamoqda. Baza turi: {db_manager.db_type}")

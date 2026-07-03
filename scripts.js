@@ -163,32 +163,25 @@ async function uploadProductImageToPostimage(input) {
 
     try {
         const form = new FormData();
-        form.append('numfiles', '1');
-        form.append('upload_session', String(Date.now()) + Math.random().toString().slice(1));
-        form.append('file', file, file.name);
+        form.append('file', file);
 
-        const res = await fetch('https://postimages.org/json', {
+        const res = await fetch('/api/upload', {
             method: 'POST',
-            headers: {
-                Accept: 'application/json',
-                'Cache-Control': 'no-cache',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
             body: form,
         });
         const data = await res.json().catch(() => null);
-        if (!res.ok || data?.error) throw new Error(data?.error || 'Postimage javob bermadi');
+        if (!res.ok || data?.status === 'error') throw new Error(data?.message || 'Yuklashda xatolik yuz berdi');
 
-        const imageUrl = getPostimageUrl(data);
+        const imageUrl = data?.url;
         if (!imageUrl) throw new Error('Rasm URL qaytmadi');
 
         document.getElementById('p-img').value = imageUrl;
         playSuccess();
-        showNotif('success', 'Yuklandi!', 'Rasm Postimages ga yuklandi');
+        showNotif('success', 'Yuklandi!', 'Rasm muvaffaqiyatli yuklandi');
     } catch (e) {
-        console.error('Postimage upload failed:', e);
+        console.error('Upload failed:', e);
         playError();
-        showNotif('error', 'Yuklanmadi!', e?.message || 'Rasmni Postimages ga yuklab bo\'lmadi');
+        showNotif('error', 'Yuklanmadi!', e?.message || 'Rasmni yuklab bo\'lmadi');
     } finally {
         if (btn) {
             btn.disabled = false;
