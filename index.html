@@ -10,7 +10,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=1.0.5">
+  <link rel="stylesheet" href="style.css?v=1.0.6">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
@@ -76,13 +76,8 @@
           <hr style="flex:1;border:none;border-top:1px solid var(--border);opacity:0.3">
         </div>
 
-        <!-- Official Google Sign-In tag (for production domains) -->
-        <div id="g_id_onload" data-client_id="1096739982463-m5g1dfbndbpeor5b42d5g8c5q393p9u7.apps.googleusercontent.com"
-          data-context="signin" data-ux_mode="popup" data-callback="handleCredentialResponse" data-auto_prompt="false">
-        </div>
-        <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline"
-          data-text="signin_with" data-size="large" data-logo_alignment="left" data-width="320">
-        </div>
+        <!-- Official Google Sign-In container (rendered programmatically) -->
+        <div id="googleBtnContainer" style="width: 320px; min-height: 40px; display: flex; justify-content: center; align-items: center;"></div>
 
       </div>
     </div>
@@ -446,10 +441,11 @@
                 <span>Online market</span>
               </div>
             </div>
-            <div class="market-search">
+            <div class="market-search" style="position:relative">
               <i class="fas fa-search"></i>
               <input type="text" id="marketSearch" placeholder="Mahsulot va turkumlarni qidirish..."
-                oninput="syncShopSearch(this.value)">
+                oninput="syncShopSearch(this.value)" autocomplete="off">
+              <div id="searchSuggestions" class="search-suggestions-dropdown" style="display:none"></div>
             </div>
             <button type="button" class="market-cart-btn"
               onclick="document.querySelector('.shop-cart')?.scrollIntoView({behavior:'smooth'})">
@@ -520,9 +516,19 @@
                 <h2>Katalog</h2>
                 <p>Kategoriya tanlang yoki qidiruvdan foydalaning.</p>
               </div>
-              <div class="shop-search">
-                <i class="fas fa-search"></i>
-                <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="renderShop()">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <div class="shop-search">
+                  <i class="fas fa-search"></i>
+                  <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="renderShop()">
+                </div>
+                <div class="shop-sort">
+                  <select id="shopSortSelect" onchange="renderShop()" class="form-control" style="padding:0 12px;height:42px;border-radius:var(--radius-sm);font-weight:600;min-width:160px;cursor:pointer">
+                    <option value="default">Ommaboplik</option>
+                    <option value="price-asc">Narx: Arzonroq</option>
+                    <option value="price-desc">Narx: Qimmatroq</option>
+                    <option value="name-asc">Nomi: A-Z</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div class="product-grid" id="shopProductGrid"></div>

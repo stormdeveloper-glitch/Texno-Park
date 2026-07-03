@@ -315,9 +315,95 @@ function saveToStorage() {
         localStorage.setItem('tp_customers', JSON.stringify(customers));
         localStorage.setItem('tp_sales', JSON.stringify(salesHistory));
         localStorage.setItem('tp_logs', JSON.stringify(logs));
+        syncWithBackend(); // Sync with SQLite Database
     } catch (e) {
         console.error('localStorage xatosi:', e);
         alert("Diqqat: Brauzer xotirasi to'ldi! Iltimos, Sozlamalar bo'limidan ma'lumotlarni eksport qilib zaxiralang yoki keraksiz ma'lumotlarni tozalang. Aks holda ma'lumotlaringiz saqlanmasligi mumkin.");
+    }
+}
+
+// Sync with backend API
+async function syncWithBackend() {
+    try {
+        await fetch('/api/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                products: products,
+                customers: customers,
+                sales: salesHistory,
+                logs: logs,
+                settings: systemSettings
+            })
+        });
+    } catch (e) {
+        console.warn('Backend sync failed (offline or no backend):', e);
+    }
+}
+
+async function loadFromBackend() {
+    try {
+        // Fetch config from .env via Python API
+        try {
+            const configResponse = await fetch('/api/config');
+            const config = await configResponse.json();
+            if (config) {
+                // Initialize Google Sign-in dynamically
+                if (config.googleClientId && window.google) {
+                    window.google.accounts.id.initialize({
+                        client_id: config.googleClientId,
+                        callback: handleCredentialResponse,
+                        context: 'signin',
+                        ux_mode: 'popup',
+                        auto_prompt: false
+                    });
+                    const btnContainer = document.getElementById("googleBtnContainer");
+                    if (btnContainer) {
+                        window.google.accounts.id.renderButton(
+                            btnContainer,
+                            { type: "standard", shape: "rectangular", theme: "outline", text: "signin_with", size: "large", logo_alignment: "left", width: 320 }
+                        );
+                    }
+                }
+                
+                // Set Click API details from env if present
+                if (config.clickMerchantId) systemSettings.clickMerchantId = config.clickMerchantId;
+                if (config.clickServiceId) systemSettings.clickServiceId = config.clickServiceId;
+                if (config.clickMerchantUserId) systemSettings.clickMerchantUserId = config.clickMerchantUserId;
+                if (config.clickPhone) systemSettings.clickPhone = config.clickPhone;
+            }
+        } catch (err) {
+            console.warn('Failed to load credentials from env config API:', err);
+        }
+
+        const response = await fetch('/api/data');
+        const data = await response.json();
+        if (data && Object.keys(data).length > 0) {
+            if (data.products) products = data.products.map(normalizeProduct);
+            if (data.customers) customers = data.customers.map(normalizeCustomer);
+            if (data.sales) salesHistory = data.sales;
+            if (data.logs) logs = data.logs;
+            if (data.settings) systemSettings = { ...systemSettings, ...data.settings };
+            
+            // Save to local storage as fallback cache
+            localStorage.setItem('tp_products', JSON.stringify(products));
+            localStorage.setItem('tp_customers', JSON.stringify(customers));
+            localStorage.setItem('tp_sales', JSON.stringify(salesHistory));
+            localStorage.setItem('tp_logs', JSON.stringify(logs));
+            
+            // Re-render shop and UI components
+            renderShop();
+            if (typeof renderProductsTable === 'function') renderProductsTable();
+            if (typeof renderCustomersTable === 'function') renderCustomersTable();
+            if (typeof renderSalesHistory === 'function') renderSalesHistory();
+            
+            console.log('Loaded data from backend successfully');
+        } else {
+            console.log('Backend database is empty. Seeding defaults...');
+            await syncWithBackend();
+        }
+    } catch (e) {
+        console.warn('Failed to load from backend. Using local storage:', e);
     }
 }
 
@@ -984,7 +1070,96 @@ function syncShopSearch(value) {
     const input = document.getElementById('shopSearch');
     if (input) input.value = value;
     renderShop();
+    renderSearchSuggestions(value);
 }
+
+function renderSearchSuggestions(value) {
+    const suggestionsDiv = document.getElementById('searchSuggestions');
+    if (!suggestionsDiv) return;
+    
+    const val = cleanText(value).trim().toLowerCase();
+    if (!val) {
+        suggestionsDiv.style.display = 'none';
+        suggestionsDiv.innerHTML = '';
+        return;
+    }
+    
+    const matched = products.filter(p =>
+        p.stock > 0 &&
+        (p.name.toLowerCase().includes(val) || p.cat.toLowerCase().includes(val) || (p.barcode || '').includes(val))
+    ).slice(0, 5);
+    
+    if (matched.length === 0) {
+        suggestionsDiv.innerHTML = '<div style="padding:15px;text-align:center;color:var(--text-secondary)">Hech narsa topilmadi</div>';
+        suggestionsDiv.style.display = 'block';
+        return;
+    }
+    
+    const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
+    
+    suggestionsDiv.innerHTML = matched.map(p => {
+        const imgSrc = productImageSrc(p.img);
+        const imgHTML = imgSrc 
+            ? `<img src="${escapeHTML(imgSrc)}" class="suggestion-img" onerror="this.style.display='none';this.parentNode.querySelector('.suggestion-placeholder').style.display='flex'">` 
+            : '';
+        const placeholderHTML = `<div class="suggestion-img suggestion-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'}">${icons[p.cat] || '📦'}</div>`;
+        
+        return `
+            <div class="suggestion-item" onclick="selectSuggestion(${p.id})">
+                <div class="suggestion-left">
+                    <div style="position:relative;width:40px;height:40px;flex-shrink:0">
+                        ${imgHTML}
+                        ${placeholderHTML}
+                    </div>
+                    <div class="suggestion-info">
+                        <span class="suggestion-name">${escapeHTML(p.name)}</span>
+                        <span class="suggestion-cat">${escapeHTML(p.cat)}</span>
+                    </div>
+                </div>
+                <div class="suggestion-right">
+                    <span class="suggestion-price">${fmt(p.price)} so'm</span>
+                    <button class="suggestion-add-btn" onclick="event.stopPropagation(); addToShopCart(${p.id})">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    suggestionsDiv.style.display = 'block';
+}
+
+function selectSuggestion(id) {
+    const p = products.find(x => x.id === id);
+    if (p) {
+        const marketSearch = document.getElementById('marketSearch');
+        if (marketSearch) marketSearch.value = p.name;
+        const shopSearch = document.getElementById('shopSearch');
+        if (shopSearch) shopSearch.value = p.name;
+        renderShop();
+    }
+    hideSearchSuggestions();
+}
+
+function hideSearchSuggestions() {
+    const suggestionsDiv = document.getElementById('searchSuggestions');
+    if (suggestionsDiv) {
+        suggestionsDiv.style.display = 'none';
+    }
+}
+
+// Close search suggestions on click outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.market-search')) {
+        hideSearchSuggestions();
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        hideSearchSuggestions();
+    }
+});
 
 function renderShop() {
     const grid = document.getElementById('shopProductGrid');
@@ -1020,6 +1195,16 @@ function renderShop() {
         (!shopCat || p.cat === shopCat) &&
         (!shopFilter || p.name.toLowerCase().includes(shopFilter) || (p.barcode || '').includes(shopFilter))
     );
+
+    // Apply sorting selection
+    const sortVal = document.getElementById('shopSortSelect')?.value || 'default';
+    if (sortVal === 'price-asc') {
+        list.sort((a, b) => a.price - b.price);
+    } else if (sortVal === 'price-desc') {
+        list.sort((a, b) => b.price - a.price);
+    } else if (sortVal === 'name-asc') {
+        list.sort((a, b) => a.name.localeCompare(b.name));
+    }
 
     grid.innerHTML = list.map(p => {
         const imgSrc = productImageSrc(p.img);
@@ -2961,13 +3146,15 @@ function startSlideShow() {
     }, 5000); // Change slide every 5 seconds
 }
 
-// Start slideshow on load
+// Start slideshow and load data on load
 document.addEventListener('DOMContentLoaded', () => {
     startSlideShow();
+    loadFromBackend();
 });
 // Fallback if DOMContentLoaded already fired
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
     startSlideShow();
+    loadFromBackend();
 }
 
 function toggleFaq(el) {
