@@ -240,10 +240,10 @@ const USERS = [
     { id: 2, login: 'cashier', passHash: 'MTIzNDU2', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
     { id: 3, login: 'manager', passHash: 'MTIzNDU2', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
     { id: 7, login: 'customer', passHash: 'MTIzNDU2', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
-    { id: 4, login: 'admin@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 5, login: 'cashier@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 6, login: 'manager@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 8, login: 'customer@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 4, login: 'admin@Texnopark.uz', passHash: 'MTIzNDU2', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 5, login: 'cashier@Texnopark.uz', passHash: 'MTIzNDU2', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 6, login: 'manager@Texnopark.uz', passHash: 'MTIzNDU2', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 8, login: 'customer@Texnopark.uz', passHash: 'MTIzNDU2', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
 ];
 const ROLES = { admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
 
@@ -288,11 +288,11 @@ logs = Array.isArray(logs) ? logs : [];
 // SMS TEMPLATES (COMPLETED)
 // ============================================================
 const smsTemplates = [
-    { title: 'Chegirma haqida', text: 'Hurmatli {ism}! Tehno Parkda 20% chegirma kampaniyasi boshlandi. Muzlatgich, TV va konditsionerlarda katta chegirmalar. Tez keling!' },
-    { title: 'Chek tasdiqlash', text: 'Hurmatli {ism}! Siz {summa} so\'mlik xarid qildingiz. Chek raqamingiz: {chek}. Xarid uchun rahmat! Tehno Park.' },
+    { title: 'Chegirma haqida', text: 'Hurmatli {ism}! Texno Parkda 20% chegirma kampaniyasi boshlandi. Muzlatgich, TV va konditsionerlarda katta chegirmalar. Tez keling!' },
+    { title: 'Chek tasdiqlash', text: 'Hurmatli {ism}! Siz {summa} so\'mlik xarid qildingiz. Chek raqamingiz: {chek}. Xarid uchun rahmat! Texno Park.' },
     { title: 'Tug\'ilgan kun', text: 'Hurmatli {ism}! Tug\'ilgan kuningiz bilan qutlaymiz! 🎉 Sovg\'a sifatida keyingi xaridingizda 10% chegirma beramiz.' },
-    { title: 'Yangi mahsulot', text: 'Hurmatli {ism}! Tehno Parkda yangi {mahsulot} keldi. Narxi: {narx} so\'m. Soni cheklangan, bugun keling!' },
-    { title: 'Qarz eslatma', text: 'Hurmatli {ism}! Qoldiq to\'lovingiz {summa} so\'m. Iltimos, {sana} gacha to\'lashingizni so\'raymiz. Tehno Park.' },
+    { title: 'Yangi mahsulot', text: 'Hurmatli {ism}! Texno Parkda yangi {mahsulot} keldi. Narxi: {narx} so\'m. Soni cheklangan, bugun keling!' },
+    { title: 'Qarz eslatma', text: 'Hurmatli {ism}! Qoldiq to\'lovingiz {summa} so\'m. Iltimos, {sana} gacha to\'lashingizni so\'raymiz. Texno Park.' },
     { title: 'Kafolat eslatma', text: 'Hurmatli {ism}! Sizning {mahsulot} qurilmangizning kafolati {sana} da tugaydi. Kafolatni uzaytirish uchun murojaat qiling.' },
 ];
 
@@ -358,7 +358,7 @@ async function loadFromBackend() {
                         );
                     }
                 }
-                
+
                 // Set Click API details from env if present
                 if (config.clickMerchantId) systemSettings.clickMerchantId = config.clickMerchantId;
                 if (config.clickServiceId) systemSettings.clickServiceId = config.clickServiceId;
@@ -377,19 +377,19 @@ async function loadFromBackend() {
             if (data.sales) salesHistory = data.sales;
             if (data.logs) logs = data.logs;
             if (data.settings) systemSettings = { ...systemSettings, ...data.settings };
-            
+
             // Save to local storage as fallback cache
             localStorage.setItem('tp_products', JSON.stringify(products));
             localStorage.setItem('tp_customers', JSON.stringify(customers));
             localStorage.setItem('tp_sales', JSON.stringify(salesHistory));
             localStorage.setItem('tp_logs', JSON.stringify(logs));
-            
+
             // Re-render shop and UI components
             renderShop();
             if (typeof renderProductsTable === 'function') renderProductsTable();
             if (typeof renderCustomersTable === 'function') renderCustomersTable();
             if (typeof renderSalesHistory === 'function') renderSalesHistory();
-            
+
             console.log('Loaded data from backend successfully');
         } else {
             console.log('Backend database is empty. Seeding defaults...');
@@ -1069,34 +1069,34 @@ function syncShopSearch(value) {
 function renderSearchSuggestions(value) {
     const suggestionsDiv = document.getElementById('searchSuggestions');
     if (!suggestionsDiv) return;
-    
+
     const val = cleanText(value).trim().toLowerCase();
     if (!val) {
         suggestionsDiv.style.display = 'none';
         suggestionsDiv.innerHTML = '';
         return;
     }
-    
+
     const matched = products.filter(p =>
         p.stock > 0 &&
         (p.name.toLowerCase().includes(val) || p.cat.toLowerCase().includes(val) || (p.barcode || '').includes(val))
     ).slice(0, 5);
-    
+
     if (matched.length === 0) {
         suggestionsDiv.innerHTML = '<div style="padding:15px;text-align:center;color:var(--text-secondary)">Hech narsa topilmadi</div>';
         suggestionsDiv.style.display = 'block';
         return;
     }
-    
+
     const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
-    
+
     suggestionsDiv.innerHTML = matched.map(p => {
         const imgSrc = productImageSrc(p.img);
-        const imgHTML = imgSrc 
-            ? `<img src="${escapeHTML(imgSrc)}" class="suggestion-img" onerror="this.style.display='none';this.parentNode.querySelector('.suggestion-placeholder').style.display='flex'">` 
+        const imgHTML = imgSrc
+            ? `<img src="${escapeHTML(imgSrc)}" class="suggestion-img" onerror="this.style.display='none';this.parentNode.querySelector('.suggestion-placeholder').style.display='flex'">`
             : '';
         const placeholderHTML = `<div class="suggestion-img suggestion-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'}">${icons[p.cat] || '📦'}</div>`;
-        
+
         return `
             <div class="suggestion-item" onclick="selectSuggestion(${p.id})">
                 <div class="suggestion-left">
@@ -1118,7 +1118,7 @@ function renderSearchSuggestions(value) {
             </div>
         `;
     }).join('');
-    
+
     suggestionsDiv.style.display = 'block';
 }
 
@@ -1161,7 +1161,7 @@ function renderShop() {
 
     shopFilter = cleanText(document.getElementById('shopSearch')?.value || shopFilter, 80).toLowerCase();
     const cats = ['Barchasi', ...new Set(products.map(p => p.cat))];
-    
+
     const catIcons = {
         'Barchasi': 'fa-th-large',
         'Muzlatgichlar': 'fa-snowflake',
@@ -1206,8 +1206,8 @@ function renderShop() {
       <span class="product-card-badge" style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:var(--primary);z-index:2;border:1px solid rgba(255,255,255,0.05)">${escapeHTML(p.cat)}</span>
       <div style="width:100%;height:160px;overflow:hidden;position:relative;border-radius:8px">
         ${imgSrc
-                  ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">`
-                  : ''}
+                ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">`
+                : ''}
         <div class="product-card-img-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'};width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
           ${icons[p.cat] || '📦'}
         </div>
@@ -1265,21 +1265,50 @@ function clearShopCart() {
     showNotif('info', 'Savat tozalandi', 'Barcha mahsulotlar olib tashlandi');
 }
 
+function showCartView() {
+    const catalog = document.getElementById('shopCatalogView');
+    const cart = document.getElementById('shopCartView');
+    if (catalog) catalog.style.display = 'none';
+    if (cart) {
+        cart.style.display = 'block';
+        updateShopCart();
+    }
+}
+
+function showCatalogView() {
+    const catalog = document.getElementById('shopCatalogView');
+    const cart = document.getElementById('shopCartView');
+    if (catalog) catalog.style.display = 'block';
+    if (cart) cart.style.display = 'none';
+}
+
+function removeItemFromShopCart(id) {
+    shopCart = shopCart.filter(x => x.id !== id);
+    updateShopCart();
+    saveToStorage();
+}
+
 function updateShopCart() {
-    const box = document.getElementById('shopCartItems');
+    const box = document.getElementById('uzumCartItems');
     if (!box) return;
     const count = shopCart.reduce((s, x) => s + x.qty, 0);
     const total = shopCart.reduce((s, x) => s + x.price * x.qty, 0);
-    const countEl = document.getElementById('shopCartCount');
-    const totalEl = document.getElementById('shopCartTotal');
-    if (countEl) countEl.textContent = count + ' ta mahsulot';
-    if (totalEl) totalEl.textContent = fmt(total) + ' so\'m';
+
+    const countText = document.getElementById('uzumCartCountText');
+    const summaryCount = document.getElementById('uzumSummaryCount');
+    const summarySubtotal = document.getElementById('uzumSummarySubtotal');
+    const summaryTotal = document.getElementById('uzumSummaryTotal');
+
+    if (countText) countText.textContent = count + ' ta mahsulot';
+    if (summaryCount) summaryCount.textContent = count;
+    if (summarySubtotal) summarySubtotal.textContent = fmt(total) + ' so\'m';
+    if (summaryTotal) summaryTotal.textContent = fmt(total) + ' so\'m';
 
     // Free delivery progress updates
     const targetVal = 15000000;
-    const progressFill = document.getElementById('deliveryProgressFill');
-    const progressVal = document.getElementById('deliveryProgressValue');
-    const progressText = document.getElementById('deliveryProgressText');
+    const progressFill = document.getElementById('uzumDeliveryProgressFill');
+    const progressVal = document.getElementById('uzumDeliveryProgressValue');
+    const progressText = document.getElementById('uzumDeliveryProgressText');
     if (progressFill && progressVal && progressText) {
         const pct = Math.min(100, Math.round((total / targetVal) * 100));
         progressFill.style.width = pct + '%';
@@ -1292,36 +1321,125 @@ function updateShopCart() {
     }
 
     if (!shopCart.length) {
-        box.innerHTML = '<div class="cart-empty"><i class="fas fa-shopping-basket"></i><p>Savat bo\'sh</p></div>';
+        box.innerHTML = '<div class="cart-empty" style="text-align:center;padding:60px 20px;color:var(--text-secondary)"><i class="fas fa-shopping-basket" style="font-size:48px;margin-bottom:14px;opacity:0.3;color:var(--text-secondary)"></i><p style="font-size:16px;font-weight:700">Savatingiz hozircha bo\'sh</p><p style="font-size:13px;margin-top:6px;opacity:0.7">Katalog sahifasidan mahsulotlar qo\'shing</p></div>';
+        const recGrid = document.getElementById('uzumRecommendationsGrid');
+        if (recGrid) renderUzumRecommendations();
         return;
     }
 
-    const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Aksessuarlar': '🔌' };
+    const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
     box.innerHTML = shopCart.map(item => {
+        const p = products.find(x => x.id === item.id) || item;
+        const originalPrice = Math.round(item.price * 1.25);
         const imgSrc = productImageSrc(item.img);
+
+        const imgHTML = imgSrc
+            ? `<img src="${escapeHTML(imgSrc)}" class="uzum-item-img" onerror="this.style.display='none';this.parentNode.querySelector('.uzum-placeholder').style.display='flex'" alt="">`
+            : '';
+        const placeholderHTML = `<div class="uzum-item-img uzum-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'}; align-items:center; justify-content:center; font-size:30px; background:var(--border)">${icons[item.cat] || '📦'}</div>`;
+
         return `
-    <div class="cart-item">
-      ${imgSrc ? `<img class="cart-item-img" src="${escapeHTML(imgSrc)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">` : ''}
-      <div class="cart-item-img" style="display:${imgSrc ? 'none' : 'flex'};align-items:center;justify-content:center;font-size:22px;background:var(--border)">${icons[item.cat] || '📦'}</div>
-      <div class="cart-item-info">
-        <div class="cart-item-name">${escapeHTML(item.name)}</div>
-        <div class="cart-item-price">${fmt(item.price)} so'm/dona</div>
-      </div>
-      <div class="cart-qty">
-        <button class="qty-btn" onclick="changeShopQty(${item.id},-1)">−</button>
-        <span class="qty-num">${item.qty}</span>
-        <button class="qty-btn" onclick="changeShopQty(${item.id},1)">+</button>
-      </div>
-    </div>`;
+            <div class="uzum-cart-item">
+                <div class="uzum-item-left">
+                    <div style="position:relative; width:76px; height:76px; flex-shrink:0;">
+                        ${imgHTML}
+                        ${placeholderHTML}
+                    </div>
+                    <div class="uzum-item-info">
+                        <span class="uzum-item-name">${escapeHTML(item.name)}</span>
+                        <span class="uzum-item-cat">${escapeHTML(item.cat)}</span>
+                    </div>
+                </div>
+                
+                <div class="uzum-item-right">
+                    <div class="uzum-item-qty">
+                        <button class="qty-btn" onclick="changeShopQty(${item.id}, -1)">-</button>
+                        <span class="qty-num">${item.qty}</span>
+                        <button class="qty-btn" onclick="changeShopQty(${item.id}, 1)">+</button>
+                    </div>
+                    <div class="uzum-item-price-block">
+                        <div class="uzum-item-price">${fmt(item.price * item.qty)} so'm</div>
+                        <div class="uzum-item-old-price">${fmt(originalPrice * item.qty)} so'm</div>
+                    </div>
+                    <button class="uzum-item-del-btn" onclick="removeItemFromShopCart(${item.id})">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    renderUzumRecommendations();
+}
+
+function renderUzumRecommendations() {
+    const grid = document.getElementById('uzumRecommendationsGrid');
+    if (!grid) return;
+
+    const cartItemIds = new Set(shopCart.map(item => item.id));
+    let list = [];
+
+    if (shopCart.length > 0) {
+        const cartCats = new Set(shopCart.map(item => item.cat));
+        list = products.filter(p => !cartItemIds.has(p.id) && p.stock > 0 && cartCats.has(p.cat));
+    }
+
+    if (list.length < 4) {
+        const extra = products.filter(p => !cartItemIds.has(p.id) && p.stock > 0 && !list.some(x => x.id === p.id));
+        list = [...list, ...extra];
+    }
+
+    list = list.slice(0, 4);
+    const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
+
+    if (list.length === 0) {
+        grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-secondary)">Tavsiyalar mavjud emas</p>';
+        return;
+    }
+
+    grid.innerHTML = list.map(p => {
+        const imgSrc = productImageSrc(p.img);
+        return `
+            <div class="product-card shop-product-card" onclick="addToShopCart(${p.id}); showNotif('success', 'Savatga qo\\'shildi', '${escapeHTML(p.name)}')">
+                <span class="product-card-badge" style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:var(--primary);z-index:2;border:1px solid rgba(255,255,255,0.05)">${escapeHTML(p.cat)}</span>
+                <div style="width:100%;height:160px;overflow:hidden;position:relative;border-radius:8px">
+                    ${imgSrc
+                ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">`
+                : ''}
+                    <div class="product-card-img-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'};width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
+                        ${icons[p.cat] || '📦'}
+                    </div>
+                </div>
+                <div class="product-card-body" style="padding:14px;position:relative">
+                    <div class="product-card-name" style="font-weight:700;font-size:15px;margin-bottom:6px;min-height:36px">${escapeHTML(p.name)}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+                        <div>
+                            <div class="product-card-price" style="font-weight:800;color:var(--text);font-size:16px">${fmt(p.price)} so'm</div>
+                            <div class="product-card-stock" style="font-size:12px;color:var(--text-secondary)">Qoldiq: <strong style="color:var(--success)">${p.stock} ta</strong></div>
+                        </div>
+                        <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id}); showNotif('success', 'Savatga qo\\'shildi', '${escapeHTML(p.name)}')" style="background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+            </div>
+        `;
     }).join('');
 }
 
-function checkoutShopOrder() {
+function checkoutUzumOrder() {
     if (!shopCart.length) { playError(); showNotif('error', 'Savat bo\'sh!', 'Mahsulot tanlang'); return; }
+
+    const phoneInput = document.getElementById('uzumCartPhone');
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    if (!phone) {
+        playError();
+        showNotif('error', 'Xato!', 'Iltimos, telefon raqamingizni kiriting');
+        if (phoneInput) phoneInput.focus();
+        return;
+    }
 
     const subtotal = shopCart.reduce((s, x) => s + x.price * x.qty, 0);
     const payLabels = { click: 'Click', card: 'Karta', cash: 'Naqd' };
-    const selectedPay = document.getElementById('shopPayType')?.value || 'click';
+    const selectedPay = document.getElementById('uzumPayType')?.value || 'click';
     const saleId = salesHistory.length + 1;
     const isClick = (selectedPay === 'click');
     const sale = {
@@ -1335,7 +1453,7 @@ function checkoutShopOrder() {
         time: new Date().toLocaleTimeString('uz-UZ'),
         date: new Date().toLocaleDateString('uz-UZ'),
         cashier: 'Online do\'kon',
-        customer: currentUser?.role === 'customer' ? currentUser.name : 'Online xaridor',
+        customer: (currentUser?.role === 'customer' ? currentUser.name : 'Online xaridor') + ` (${phone})`,
         customerId: null,
         status: isClick ? 'pending' : 'paid'
     };
@@ -1351,9 +1469,16 @@ function checkoutShopOrder() {
     saveToStorage();
     addLog('Online buyurtma', `#${saleId} — ${fmt(subtotal)} so'm (${sale.pay})`);
     shopCart = [];
+
+    // Clear phone input
+    if (phoneInput) phoneInput.value = '';
+
+    showCatalogView();
     renderShop();
     renderProducts();
-    renderProductGrid();
+    if (typeof renderProductsTable === 'function') renderProductsTable();
+    if (typeof renderSalesHistory === 'function') renderSalesHistory();
+
     renderReceipt(sale);
     openModal('checkoutModal');
     playCheckout();
@@ -1374,8 +1499,8 @@ function renderProductGrid() {
         return `
     <div class="product-card" onclick="addToCart(${p.id})">
       ${imgSrc
-            ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">`
-            : ''}
+                ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">`
+                : ''}
       <div class="product-card-img-placeholder" style="${imgSrc ? 'display:none' : ''}">
         ${icons[p.cat] || '📦'}
       </div>
@@ -1476,8 +1601,8 @@ function updateCart() {
         return `
     <div class="cart-item">
       ${imgSrc
-            ? `<img class="cart-item-img" src="${escapeHTML(imgSrc)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`
-            : ''}
+                ? `<img class="cart-item-img" src="${escapeHTML(imgSrc)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`
+                : ''}
       <div class="cart-item-img" style="display:${imgSrc ? 'none' : 'flex'};align-items:center;justify-content:center;font-size:22px;background:var(--border)">${icons[item.cat] || '📦'}</div>
       <div class="cart-item-info">
         <div class="cart-item-name">${escapeHTML(item.name)}</div>
@@ -1615,7 +1740,7 @@ function renderReceipt(sale) {
     const items = sale.items.map(i =>
         `<div class="r-row"><span>${escapeHTML(i.name)} x${i.qty}</span><span>${fmt(i.price * i.qty)}</span></div>`
     ).join('');
-    
+
     const isPending = (sale.status === 'pending');
     const statusHeader = isPending ? `
     <div class="payment-success" style="background:rgba(245,158,11,0.1);border-color:rgba(245,158,11,0.2)">
@@ -1634,8 +1759,8 @@ function renderReceipt(sale) {
     const html = `
     ${statusHeader}
     <div class="receipt" id="receiptForPrint">
-      <h2>TEHNO PARK</h2>
-      <div class="r-center">Chilonzor 12, Toshkent<br>+998 90 123 45 67<br>www.tehnopark.uz</div>
+      <h2>Texno PARK</h2>
+      <div class="r-center">Chilonzor 12, Toshkent<br>+998 90 123 45 67<br>www.Texnopark.uz</div>
       <hr>
       <div class="r-row"><span>Chek #:</span><span>${String(sale.id).padStart(5, '0')}</span></div>
       <div class="r-row"><span>Sana:</span><span>${sale.date}</span></div>
@@ -1724,8 +1849,8 @@ function renderProducts() {
         return `<tr>
     <td>
       ${imgSrc
-            ? `<img src="${escapeHTML(imgSrc)}" style="width:46px;height:36px;border-radius:8px;object-fit:cover;background:var(--border)" onerror="this.style.display='none'">`
-            : `<div style="width:46px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px">${icons[p.cat] || '📦'}</div>`}
+                ? `<img src="${escapeHTML(imgSrc)}" style="width:46px;height:36px;border-radius:8px;object-fit:cover;background:var(--border)" onerror="this.style.display='none'">`
+                : `<div style="width:46px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px">${icons[p.cat] || '📦'}</div>`}
     </td>
     <td><strong>${escapeHTML(p.name)}</strong><br><small style="color:var(--muted)">${escapeHTML(p.desc || '')}</small></td>
     <td><span class="badge badge-blue">${escapeHTML(p.cat)}</span></td>
@@ -2035,10 +2160,10 @@ function loadSettings() {
     if (saved) {
         systemSettings = safeJsonParse(saved, systemSettings);
     }
-    
+
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
     const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = Boolean(val); };
-    
+
     setVal('clickMerchantId', systemSettings.clickMerchantId || '');
     setVal('clickServiceId', systemSettings.clickServiceId || '');
     setVal('clickMerchantUserId', systemSettings.clickMerchantUserId || '');
@@ -2051,10 +2176,10 @@ function loadSettings() {
 
 function saveSettings() {
     if (!requireRole('admin')) return;
-    
+
     const getVal = (id) => document.getElementById(id)?.value || '';
     const getChecked = (id) => document.getElementById(id)?.checked ?? false;
-    
+
     systemSettings.clickMerchantId = cleanText(getVal('clickMerchantId'), 40);
     systemSettings.clickServiceId = cleanText(getVal('clickServiceId'), 40);
     systemSettings.clickMerchantUserId = cleanText(getVal('clickMerchantUserId'), 40);
@@ -2063,9 +2188,9 @@ function saveSettings() {
     systemSettings.barcodeTimeout = parseInt(getVal('barcodeTimeout')) || 50;
     systemSettings.soundEnabled = getChecked('soundEnabled');
     systemSettings.autoPrint = getChecked('autoPrint');
-    
+
     localStorage.setItem('tp_settings', JSON.stringify(systemSettings));
-    
+
     addLog('Sozlama', 'Tizim sozlamalari saqlandi');
     playSuccess();
     showNotif('success', 'Saqlandi!', 'Sozlamalar muvaffaqiyatli saqlandi');
@@ -2083,11 +2208,11 @@ function checkClickCallback() {
     const clickTransId = params.get('click_trans_id');
     const merchantTransId = params.get('merchant_trans_id');
     const amount = params.get('amount');
-    
+
     if (clickTransId && merchantTransId && amount) {
         const orderId = parseInt(merchantTransId);
         const paidAmount = parseFloat(amount);
-        
+
         // Find the sale in history
         const sale = salesHistory.find(s => s.id === orderId);
         if (sale) {
@@ -2096,22 +2221,22 @@ function checkClickCallback() {
                 if (sale.status === 'pending') {
                     // Update status
                     sale.status = 'paid';
-                    
+
                     // Deduct stock for all items
                     sale.items.forEach(ci => {
                         const p = products.find(x => x.id === ci.id);
                         if (p) p.stock = Math.max(0, p.stock - ci.qty);
                     });
-                    
+
                     saveToStorage();
                     addLog('To\'lov', `Click orqali to'lov qabul qilindi: Order #${orderId} — ${fmt(paidAmount)} so'm`);
                     playSuccess();
                     showNotif('success', 'To\'lov tasdiqlandi!', `Click to'lovi muvaffaqiyatli qabul qilindi (Order #${orderId})`);
-                    
+
                     // Clean URL query parameters so refresh doesn't replay the verification
                     const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
                     window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
-                    
+
                     // Render receipt and show modal
                     renderReceipt(sale);
                     openModal('checkoutModal');
@@ -2143,7 +2268,7 @@ function exportData() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `TehnoPark_Backup_${new Date().toLocaleDateString('uz-UZ').replace(/\//g, '-')}.json`;
+    a.download = `TexnoPark_Backup_${new Date().toLocaleDateString('uz-UZ').replace(/\//g, '-')}.json`;
     a.click();
     URL.revokeObjectURL(url);
     showNotif('success', 'Eksport!', 'Ma\'lumotlar muvaffaqiyatli yuklandi');
@@ -2264,16 +2389,16 @@ document.addEventListener('keydown', e => {
     // F1 — Help
     if (e.key === 'F1') { e.preventDefault(); openModal('helpModal'); }
     // F2 — Checkout (from POS)
-    if (e.key === 'F2') { 
-        e.preventDefault(); 
+    if (e.key === 'F2') {
+        e.preventDefault();
         const pagePos = document.getElementById('page-pos');
-        if (pagePos && pagePos.classList.contains('active')) checkout(); 
+        if (pagePos && pagePos.classList.contains('active')) checkout();
     }
     // F3 — Go to POS
-    if (e.key === 'F3') { 
-        e.preventDefault(); 
+    if (e.key === 'F3') {
+        e.preventDefault();
         const pagePos = document.getElementById('page-pos');
-        if (pagePos) goTo('page-pos', document.getElementById('navPos')); 
+        if (pagePos) goTo('page-pos', document.getElementById('navPos'));
     }
     // F8 — Print receipt
     if (e.key === 'F8') { e.preventDefault(); printReceipt(); }
@@ -2283,7 +2408,7 @@ document.addEventListener('keydown', e => {
         if (openModals.length > 0) { openModals.forEach(m => m.classList.remove('open')); }
         else if (!inInput) {
             const pagePos = document.getElementById('page-pos');
-            if (pagePos && pagePos.classList.contains('active')) clearCart(); 
+            if (pagePos && pagePos.classList.contains('active')) clearCart();
         }
     }
     // Ctrl+F — Focus global search
@@ -2899,7 +3024,7 @@ const SalaryModule = (() => {
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `TehnoPark_Maosh_${new Date().toLocaleDateString('uz-UZ').replace(/\//g, '-')}.csv`;
+        a.download = `TexnoPark_Maosh_${new Date().toLocaleDateString('uz-UZ').replace(/\//g, '-')}.csv`;
         a.click();
         URL.revokeObjectURL(a.href);
         showNotif('success', 'Eksport!', 'CSV fayl yuklandi');
@@ -2936,7 +3061,7 @@ function renderCategoriesPage() {
     if (!tbody) return;
     const list = Object.keys(counts).map((cat, i) => `
         <tr>
-            <td>${i+1}</td>
+            <td>${i + 1}</td>
             <td><strong>${escapeHTML(cat)}</strong></td>
             <td>${counts[cat]} ta mahsulot</td>
             <td>
@@ -2950,19 +3075,19 @@ function renderCategoriesPage() {
 function renderWarehousePage() {
     const lowStock = products.filter(p => p.stock < 5);
     const totalValue = products.reduce((acc, p) => acc + (p.price * p.stock), 0);
-    
+
     const valEl = document.getElementById('warehouseTotalValue');
     if (valEl) valEl.textContent = fmt(totalValue) + ' so\'m';
-    
+
     const lowEl = document.getElementById('warehouseLowStockCount');
     if (lowEl) lowEl.textContent = lowStock.length + ' ta';
-    
+
     const tbody = document.getElementById('warehouseTableBody');
     if (!tbody) return;
-    
+
     tbody.innerHTML = products.map((p, i) => `
         <tr>
-            <td>${i+1}</td>
+            <td>${i + 1}</td>
             <td><strong>${escapeHTML(p.name)}</strong></td>
             <td><span class="badge">${escapeHTML(p.cat)}</span></td>
             <td style="font-weight:700;color:${p.stock < 5 ? 'var(--danger)' : 'var(--success)'}">${p.stock} ta</td>
@@ -2983,7 +3108,7 @@ function renderDiscountsPage() {
     if (!tbody) return;
     tbody.innerHTML = discountCampaigns.map((d, i) => `
         <tr>
-            <td>${i+1}</td>
+            <td>${i + 1}</td>
             <td><strong>${escapeHTML(d.name)}</strong></td>
             <td><code style="padding:4px 8px;background:var(--bg);border-radius:6px;font-weight:700;color:var(--primary)">${escapeHTML(d.code)}</code></td>
             <td style="font-weight:700;color:var(--accent)">${d.pct}%</td>
@@ -3024,7 +3149,7 @@ function handleCredentialResponse(response) {
 function decodeJwtResponse(token) {
     var base64Url = token.split('.')[1];
     var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+    var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
         return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
     return JSON.parse(jsonPayload);
@@ -3085,7 +3210,7 @@ function openProfileModal() {
     const name = currentUser.name;
     const role = currentUser.role;
     const login = currentUser.login;
-    
+
     const av = document.getElementById('profileModalAvatar');
     if (av) {
         if (currentUser.picture) {
@@ -3095,19 +3220,19 @@ function openProfileModal() {
             av.style.background = `linear-gradient(135deg,${currentUser.color || '#2563EB'},#10B981)`;
         }
     }
-    
+
     const nameEl = document.getElementById('profileModalName');
     if (nameEl) nameEl.textContent = name;
-    
+
     const roleEl = document.getElementById('profileModalRole');
     if (roleEl) roleEl.textContent = ROLES[role] || 'Xaridor';
-    
+
     const loginEl = document.getElementById('profileModalLogin');
     if (loginEl) loginEl.textContent = login;
-    
+
     const roleLabelEl = document.getElementById('profileModalRoleLabel');
     if (roleLabelEl) roleLabelEl.textContent = ROLE_LABELS[role] || 'Xaridor';
-    
+
     openModal('profileModal');
 }
 
@@ -3123,7 +3248,7 @@ function setSlide(index) {
     if (wrapper) {
         wrapper.style.transform = `translateX(-${index * 33.333}%)`;
     }
-    
+
     // Update dots
     const dots = document.querySelectorAll('.slider-dot');
     dots.forEach((dot, i) => {
@@ -3153,7 +3278,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 function toggleFaq(el) {
     const item = el.parentElement;
     const answer = item.querySelector('.faq-answer');
-    
+
     // Close other FAQ items
     document.querySelectorAll('.faq-item').forEach(i => {
         if (i !== item) {
