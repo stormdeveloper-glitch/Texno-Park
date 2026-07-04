@@ -13,11 +13,18 @@ app = Flask(__name__, static_folder='.')
 
 PORT = int(os.getenv('PORT', 5000))
 
+from urllib.parse import urlparse
+
 class DBManager:
     def __init__(self):
+        # Check PostgreSQL URL or fallback to MySQL URL automatically
         self.db_url = os.getenv('DATABASE_URL', '')
+        if not self.db_url.startswith(('postgresql://', 'postgres://')):
+            mysql_url = os.getenv('MYSQL_URL', '')
+            if mysql_url:
+                self.db_url = mysql_url
+                
         self.db_type = 'sqlite'
-        
         if self.db_url.startswith(('postgresql://', 'postgres://')):
             self.db_type = 'postgres'
         elif self.db_url.startswith('mysql://'):
@@ -26,37 +33,25 @@ class DBManager:
     def get_connection(self):
         if self.db_type == 'postgres':
             import pg8000
-            # Safely parse postgresql://username:password@host:port/database
-            url = self.db_url.replace('postgresql://', 'postgres://')
-            url = url[11:] # remove postgres://
-            auth, rest = url.split('@')
-            user, password = auth.split(':')
-            host_port, db = rest.split('/')
-            if ':' in host_port:
-                host, port = host_port.split(':')
-                port = int(port)
-            else:
-                host = host_port
-                port = 5432
-            if '?' in db:
-                db = db.split('?')[0]
-            return pg8000.connect(user=user, password=password, host=host, port=port, database=db)
+            parsed = urlparse(self.db_url)
+            return pg8000.connect(
+                user=parsed.username,
+                password=parsed.password,
+                host=parsed.hostname,
+                port=parsed.port or 5432,
+                database=parsed.path.lstrip('/')
+            )
             
         elif self.db_type == 'mysql':
             import pymysql
-            url = self.db_url[8:] # remove mysql://
-            auth, rest = url.split('@')
-            user, password = auth.split(':')
-            host_port, db = rest.split('/')
-            if ':' in host_port:
-                host, port = host_port.split(':')
-                port = int(port)
-            else:
-                host = host_port
-                port = 3306
-            if '?' in db:
-                db = db.split('?')[0]
-            return pymysql.connect(host=host, user=user, password=password, database=db, port=port)
+            parsed = urlparse(self.db_url)
+            return pymysql.connect(
+                host=parsed.hostname,
+                user=parsed.username,
+                password=parsed.password,
+                database=parsed.path.lstrip('/'),
+                port=parsed.port or 3306
+            )
             
         else:
             db_path = os.getenv('DB_PATH')
