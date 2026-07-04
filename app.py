@@ -62,9 +62,14 @@ class DBManager:
             db_path = os.getenv('DB_PATH')
             if not db_path:
                 for vpath in ["/data", "/data/app", "/dara/app"]:
-                    # Check if volume directory exists
                     try:
                         if os.path.exists(vpath) or os.path.isdir(vpath):
+                            # Test if directory is writeable
+                            test_file = os.path.join(vpath, ".write_test")
+                            with open(test_file, 'w') as f:
+                                f.write('test')
+                            os.remove(test_file)
+                            
                             db_path = os.path.join(vpath, "database.db")
                             break
                     except:
@@ -72,10 +77,18 @@ class DBManager:
                 if not db_path:
                     db_path = os.path.join('Data', 'database.db')
             
-            db_dir = os.path.dirname(db_path)
-            if db_dir:
-                os.makedirs(db_dir, exist_ok=True)
-            return sqlite3.connect(db_path)
+            try:
+                db_dir = os.path.dirname(db_path)
+                if db_dir:
+                    os.makedirs(db_dir, exist_ok=True)
+                return sqlite3.connect(db_path)
+            except Exception as e:
+                print(f"Failed to connect to SQLite at {db_path}: {str(e)}. Falling back to local project database.")
+                fallback_path = os.path.join('Data', 'database.db')
+                fallback_dir = os.path.dirname(fallback_path)
+                if fallback_dir:
+                    os.makedirs(fallback_dir, exist_ok=True)
+                return sqlite3.connect(fallback_path)
 
     def init_db(self):
         conn = self.get_connection()
@@ -341,6 +354,11 @@ def get_uploads_dir():
             if os.path.exists(vpath) or os.path.isdir(vpath):
                 p = os.path.join(vpath, "uploads")
                 os.makedirs(p, exist_ok=True)
+                # Test write permission
+                test_file = os.path.join(p, ".write_test")
+                with open(test_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_file)
                 return p
         except:
             pass
