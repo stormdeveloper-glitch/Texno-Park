@@ -61,7 +61,7 @@ class DBManager:
         else:
             db_path = os.getenv('DB_PATH')
             if not db_path:
-                for vpath in ["/data", "/data/app", "/dara/app"]:
+                for vpath in ["/app/data", "/data", "/data/app", "/dara/app"]:
                     try:
                         if os.path.exists(vpath) or os.path.isdir(vpath):
                             # Test if directory is writeable
@@ -349,7 +349,7 @@ S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'collected-drawer')
 S3_PUBLIC_URL = os.getenv('S3_PUBLIC_URL')
 
 def get_uploads_dir():
-    for vpath in ["/data", "/data/app", "/dara/app"]:
+    for vpath in ["/app/data", "/data", "/data/app", "/dara/app"]:
         try:
             if os.path.exists(vpath) or os.path.isdir(vpath):
                 p = os.path.join(vpath, "uploads")
