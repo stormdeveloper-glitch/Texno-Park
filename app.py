@@ -171,6 +171,151 @@ def sync_data():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# Click Webhook Endpoint
+@app.route('/api/payment/click', methods=['POST'])
+def click_webhook():
+    click_trans_id = request.form.get('click_trans_id')
+    service_id = request.form.get('service_id')
+    click_paydoc_id = request.form.get('click_paydoc_id')
+    merchant_trans_id = request.form.get('merchant_trans_id')
+    amount = request.form.get('amount')
+    action = request.form.get('action')
+    error = request.form.get('error')
+    error_note = request.form.get('error_note')
+    sign_time = request.form.get('sign_time')
+    sign_string = request.form.get('sign_string')
+    merchant_prepare_id = request.form.get('merchant_prepare_id')
+
+    click_secret_key = os.getenv('CLICK_SECRET_KEY', '')
+    if not click_secret_key:
+        return jsonify({
+            'error': -1,
+            'error_note': 'Secret key is not set on the merchant server'
+        })
+
+    try:
+        action_int = int(action)
+    except:
+        action_int = -1
+
+    # MD5 Signature Verification
+    if action_int == 0:
+        raw_sign = f"{click_trans_id}{service_id}{click_secret_key}{merchant_trans_id}{amount}{action}{sign_time}"
+    elif action_int == 1:
+        raw_sign = f"{click_trans_id}{service_id}{click_secret_key}{merchant_trans_id}{merchant_prepare_id}{amount}{action}{sign_time}"
+    else:
+        return jsonify({
+            'error': -3,
+            'error_note': 'Action is invalid'
+        })
+
+    my_sign = hashlib.md5(raw_sign.encode('utf-8')).hexdigest()
+    if my_sign != sign_string:
+        return jsonify({
+            'error': -1,
+            'error_note': 'Sign string mismatch'
+        })
+
+    try:
+        req_amount = float(amount)
+    except:
+        req_amount = 0.0
+
+    try:
+        store_data = db_manager.get_all()
+    except Exception as e:
+        return jsonify({
+            'error': -7,
+            'error_note': f'Database connection error: {str(e)}'
+        })
+
+    sales = store_data.get('sales', [])
+    products = store_data.get('products', [])
+
+    # Find matching order
+    target_sale = None
+    for sale in sales:
+        if str(sale.get('id')) == str(merchant_trans_id):
+            target_sale = sale
+            break
+
+    if not target_sale:
+        return jsonify({
+            'error': -5,
+            'error_note': 'Order does not exist'
+        })
+
+    # Validate amount
+    if abs(float(target_sale.get('total', 0.0)) - req_amount) > 0.01:
+        return jsonify({
+            'error': -2,
+            'error_note': f"Incorrect amount. Expected {target_sale.get('total')}, got {req_amount}"
+        })
+
+    if action_int == 0:
+        if target_sale.get('status') == 'paid':
+            return jsonify({
+                'error': -4,
+                'error_note': 'Order already paid'
+            })
+            
+        return jsonify({
+            'click_trans_id': int(click_trans_id),
+            'merchant_trans_id': merchant_trans_id,
+            'merchant_prepare_id': int(click_trans_id),
+            'error': 0,
+            'error_note': 'Success'
+        })
+
+    elif action_int == 1:
+        if target_sale.get('status') == 'paid':
+            return jsonify({
+                'click_trans_id': int(click_trans_id),
+                'merchant_trans_id': merchant_trans_id,
+                'merchant_confirm_id': int(click_trans_id),
+                'error': 0,
+                'error_note': 'Success (Already confirmed)'
+            })
+
+        # Confirm and set status to Paid
+        target_sale['status'] = 'paid'
+        target_sale['click_trans_id'] = click_trans_id
+        
+        # Deduct stock
+        for item in target_sale.get('items', []):
+            p = next((x for x in products if x.get('id') == item.get('id')), None)
+            if p:
+                p['stock'] = max(0, int(p.get('stock', 0)) - int(item.get('qty', 0)))
+
+        # Update log
+        logs = store_data.get('logs', [])
+        amt_str = f"{int(req_amount):,}".replace(",", " ")
+        logs.append({
+            'type': 'Online buyurtma (Click Webhook)',
+            'desc': f"#{merchant_trans_id} buyurtmasi Click webhook orqali muvaffaqiyatli to'landi ({amt_str} so'm)",
+            'time': sign_time or ''
+        })
+
+        try:
+            db_manager.save_keys({
+                'sales': sales,
+                'products': products,
+                'logs': logs
+            })
+        except Exception as e:
+            return jsonify({
+                'error': -7,
+                'error_note': f'Failed to save order state: {str(e)}'
+            })
+
+        return jsonify({
+            'click_trans_id': int(click_trans_id),
+            'merchant_trans_id': merchant_trans_id,
+            'merchant_confirm_id': int(click_trans_id),
+            'error': 0,
+            'error_note': 'Success'
+        })
+
 # S3 configurations for Railway Bucket
 S3_ENDPOINT = os.getenv('S3_ENDPOINT')
 S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
