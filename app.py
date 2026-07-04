@@ -337,10 +337,10 @@ def click_webhook():
         })
 
 # S3 configurations for Railway Bucket
-S3_ENDPOINT = os.getenv('S3_ENDPOINT')
-S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
-S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
-S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'collected-drawer')
+S3_ENDPOINT = os.getenv('S3_ENDPOINT') or os.getenv('ENDPOINT')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY') or os.getenv('ACCESS_KEY_ID')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY') or os.getenv('SECRET_ACCESS_KEY')
+S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME') or os.getenv('BUCKET') or 'collected-drawer'
 S3_PUBLIC_URL = os.getenv('S3_PUBLIC_URL')
 
 def get_uploads_dir():
