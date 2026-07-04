@@ -515,28 +515,31 @@ function renderEmployeeDropdown() {
     const dp = document.getElementById('topbarEmployeeDropdown');
     if (!dp) return;
     
-    // Generate dropdown items from USERS (filtering cashiers, managers, admins)
-    const list = USERS.filter(u => ['admin', 'cashier', 'manager'].includes(u.role));
+    const isLoggedIn = currentUser && currentUser.role !== 'customer';
     
-    let html = list.map(u => {
-        const isCurrent = currentUser && currentUser.id === u.id;
-        const initial = u.name ? u.name[0] : 'U';
-        return `
-            <div class="employee-dropdown-item" onclick="switchEmployeeLogin(${u.id})">
-                <div class="employee-dropdown-item-avatar" style="background:linear-gradient(135deg, ${u.color || '#ff6b35'}, #10B981)">${initial}</div>
-                <div style="flex:1; display:flex; flex-direction:column;">
-                    <span style="font-weight:700; ${isCurrent ? 'color:var(--primary)' : ''}">${escapeHTML(u.name)}</span>
-                    <span style="font-size:11px; color:var(--text-secondary)">${ROLES[u.role]} ${isCurrent ? ' (Faol)' : ''}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
+    let html = `
+        <div class="employee-dropdown-item" onclick="showEmployeeProfile()">
+            <i class="fas fa-user-circle" style="width:16px; margin-right:8px;"></i>
+            <span>Profil</span>
+        </div>
+        <div class="employee-dropdown-item" onclick="goTo('page-settings', document.getElementById('nav-settings')); document.getElementById('topbarEmployeeDropdown').style.display='none';">
+            <i class="fas fa-cog" style="width:16px; margin-right:8px;"></i>
+            <span>Sozlamalar</span>
+        </div>
+        <div class="employee-dropdown-item" onclick="openEmployeeLogin(); document.getElementById('topbarEmployeeDropdown').style.display='none';">
+            <i class="fas fa-sign-in-alt" style="width:16px; margin-right:8px;"></i>
+            <span>Kirish</span>
+        </div>
+        <div class="employee-dropdown-item" onclick="triggerEmployeeRegistration()">
+            <i class="fas fa-user-plus" style="width:16px; margin-right:8px;"></i>
+            <span>Ro'yxatdan o'tish</span>
+        </div>
+    `;
     
-    // Add logout option if logged in
-    if (currentUser && currentUser.role !== 'customer') {
+    if (isLoggedIn) {
         html += `
-            <div class="employee-dropdown-item logout" onclick="logoutEmployee()">
-                <i class="fas fa-sign-out-alt" style="font-size:14px; margin-right: 8px;"></i>
+            <div class="employee-dropdown-item logout" onclick="doLogout(); document.getElementById('topbarEmployeeDropdown').style.display='none';">
+                <i class="fas fa-sign-out-alt" style="width:16px; margin-right:8px;"></i>
                 <span>Tizimdan chiqish</span>
             </div>
         `;
@@ -545,71 +548,26 @@ function renderEmployeeDropdown() {
     dp.innerHTML = html;
 }
 
-function switchEmployeeLogin(userId) {
-    const user = USERS.find(u => u.id === userId);
-    if (!user) return;
-    
-    // Prompt for password
-    const password = prompt(`${user.name} parolini kiriting:`);
-    if (password === null) return; // Cancelled
-    
-    if (btoa(password) !== user.passHash) {
+function triggerEmployeeRegistration() {
+    document.getElementById('topbarEmployeeDropdown').style.display = 'none';
+    if (!currentUser || !['admin', 'manager'].includes(currentUser.role)) {
         playError();
-        showNotif('error', 'Xato!', 'Kiritilgan parol noto\'g\'ri');
+        showNotif('error', 'Ruxsat yo\'q!', 'Faqat Admin yoki Menejer xodimlarni ro\'yxatdan o\'tkazishi mumkin');
         return;
     }
-    
-    // Successful login
-    currentUser = user;
-    
-    // Close dropdown
-    const dp = document.getElementById('topbarEmployeeDropdown');
-    if (dp) dp.style.display = 'none';
-    
-    // Update interface
-    const topName = document.getElementById('topbarEmployeeName');
-    if (topName) topName.textContent = user.name;
-    
-    document.getElementById('sideUser').textContent = user.name;
-    document.getElementById('sideRole').textContent = ROLES[user.role];
-    const av = document.getElementById('sideAvatar');
-    if (av) {
-        av.textContent = user.name[0];
-        av.style.background = `linear-gradient(135deg,${user.color},#10B981)`;
+    goTo('page-employees', document.getElementById('nav-employees'));
+    if (typeof openEmployeeModal === 'function') {
+        openEmployeeModal();
     }
-    
-    // Transition views
-    const loginPage = document.getElementById('loginPage');
-    const app = document.getElementById('app');
-    if (loginPage) {
-        loginPage.classList.remove('active');
-        loginPage.style.display = 'none';
-    }
-    if (app) {
-        app.style.display = 'block';
-        app.classList.toggle('market-mode', user.role === 'customer');
-    }
-    
-    // Navigate to dashboard
-    goTo('page-dashboard', document.getElementById('nav-dashboard') || document.querySelector('.nav-item'));
-    playSuccess();
-    showNotif('success', 'Xush kelibsiz!', `${user.name} tizimga kirdi`);
 }
 
-function logoutEmployee() {
-    // Switch back to customer or open login screen
-    currentUser = USERS.find(u => u.role === 'customer') || USERS[3];
-    
-    const topName = document.getElementById('topbarEmployeeName');
-    if (topName) topName.textContent = 'Xodim';
-    
-    // Close dropdown
-    const dp = document.getElementById('topbarEmployeeDropdown');
-    if (dp) dp.style.display = 'none';
-    
-    // Show login page
-    openEmployeeLogin();
-    showNotif('info', 'Tizimdan chiqildi', 'Xodim seansi yakunlandi');
+function showEmployeeProfile() {
+    document.getElementById('topbarEmployeeDropdown').style.display = 'none';
+    if (!currentUser || currentUser.role === 'customer') {
+        showNotif('info', 'Profil ma\'lumoti', 'Foydalanuvchi: Online Xaridor (Mehmon seansi)');
+        return;
+    }
+    alert(`Foydalanuvchi Profili:\n\nIsm: ${currentUser.name}\nLogin: ${currentUser.login}\nLavozim: ${ROLES[currentUser.role] || currentUser.role}`);
 }
 
 function openEmployeeLogin() {
@@ -655,6 +613,9 @@ function doLogin() {
     av.textContent = user.name[0];
     av.style.background = `linear-gradient(135deg,${user.color},#10B981)`;
 
+    const topName = document.getElementById('topbarEmployeeName');
+    if (topName) topName.textContent = user.name;
+
     addLog('Kirish', `${user.name} tizimga kirdi`);
     initApp();
     playSuccess();
@@ -666,6 +627,9 @@ function doLogout() {
     if (user && !confirm('Tizimdan chiqmoqchimisiz?')) return;
     if (user) addLog('Chiqish', `${user.name} tizimdan chiqdi`);
     currentUser = null; cart = []; shopCart = [];
+
+    const topName = document.getElementById('topbarEmployeeName');
+    if (topName) topName.textContent = 'Xodim';
 
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
