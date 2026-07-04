@@ -342,6 +342,7 @@ async function loadFromBackend() {
             const config = await configResponse.json();
             if (config) {
                 // Initialize Google Sign-in dynamically
+                const btnContainer = document.getElementById("googleBtnContainer");
                 if (config.googleClientId && window.google) {
                     window.google.accounts.id.initialize({
                         client_id: config.googleClientId,
@@ -350,12 +351,21 @@ async function loadFromBackend() {
                         ux_mode: 'popup',
                         auto_prompt: false
                     });
-                    const btnContainer = document.getElementById("googleBtnContainer");
                     if (btnContainer) {
+                        btnContainer.innerHTML = '';
                         window.google.accounts.id.renderButton(
                             btnContainer,
-                            { type: "standard", shape: "rectangular", theme: "outline", text: "signin_with", size: "large", logo_alignment: "left", width: 320 }
+                            { type: "standard", shape: "pill", theme: "outline", text: "signin_with", size: "large", width: 320 }
                         );
+                    }
+                } else {
+                    if (btnContainer) {
+                        btnContainer.innerHTML = `
+                            <button type="button" class="google-custom-btn" onclick="simulateGoogleSignIn()">
+                                <i class="fab fa-google google-icon"></i>
+                                <span>Google orqali kirish</span>
+                            </button>
+                        `;
                     }
                 }
 
@@ -3385,5 +3395,45 @@ function toggleFaq(el) {
     } else if (answer) {
         answer.style.maxHeight = null;
     }
+}
+
+function simulateGoogleSignIn() {
+    showNotif('info', 'Google Login', 'Google orqali tizimga kirish simulyatsiya qilinmoqda...');
+    setTimeout(() => {
+        const googleUser = {
+            id: 9,
+            login: 'google-user',
+            name: 'Google Foydalanuvchi',
+            role: 'customer',
+            color: '#4285F4'
+        };
+        currentUser = googleUser;
+        
+        const topName = document.getElementById('topbarEmployeeName');
+        if (topName) topName.textContent = googleUser.name;
+        
+        document.getElementById('sideUser').textContent = googleUser.name;
+        document.getElementById('sideRole').textContent = ROLES[googleUser.role];
+        const av = document.getElementById('sideAvatar');
+        if (av) {
+            av.textContent = googleUser.name[0];
+            av.style.background = `linear-gradient(135deg,${googleUser.color},#10B981)`;
+        }
+        
+        const loginPage = document.getElementById('loginPage');
+        const app = document.getElementById('app');
+        if (loginPage) {
+            loginPage.classList.remove('active');
+            loginPage.style.display = 'none';
+        }
+        if (app) {
+            app.style.display = 'block';
+            app.classList.add('market-mode');
+        }
+        
+        initApp();
+        playSuccess();
+        showNotif('success', 'Muvaffaqiyatli!', 'Google orqali tizimga kirildi');
+    }, 800);
 }
 

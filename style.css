@@ -5596,3 +5596,35 @@ canvas {
     color: #fff;
     flex-shrink: 0;
 }
+
+/* Google Custom Button Styling */
+.google-custom-btn {
+    width: 100%;
+    max-width: 320px;
+    height: 44px;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text) !important;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: var(--shadow-sm);
+}
+
+.google-custom-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary) !important;
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.15);
+    background: var(--bg-hover) !important;
+}
+
+.google-custom-btn .google-icon {
+    font-size: 18px;
+    color: var(--primary);
+}
