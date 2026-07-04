@@ -4,12 +4,14 @@ import json
 import uuid
 import boto3
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 
 load_dotenv()
 
 app = Flask(__name__, static_folder='.')
+CORS(app)
 
 PORT = int(os.getenv('PORT', 5000))
 
