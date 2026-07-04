@@ -59,7 +59,19 @@ class DBManager:
             return pymysql.connect(host=host, user=user, password=password, database=db, port=port)
             
         else:
-            db_path = os.getenv('DB_PATH', os.path.join('Data', 'database.db'))
+            db_path = os.getenv('DB_PATH')
+            if not db_path:
+                for vpath in ["/data/app", "/dara/app", "/data"]:
+                    # Check if volume directory exists
+                    try:
+                        if os.path.exists(vpath) or os.path.isdir(vpath):
+                            db_path = os.path.join(vpath, "database.db")
+                            break
+                    except:
+                        pass
+                if not db_path:
+                    db_path = os.path.join('Data', 'database.db')
+            
             db_dir = os.path.dirname(db_path)
             if db_dir:
                 os.makedirs(db_dir, exist_ok=True)
@@ -323,6 +335,19 @@ S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'collected-drawer')
 S3_PUBLIC_URL = os.getenv('S3_PUBLIC_URL')
 
+def get_uploads_dir():
+    for vpath in ["/data/app", "/dara/app", "/data"]:
+        try:
+            if os.path.exists(vpath) or os.path.isdir(vpath):
+                p = os.path.join(vpath, "uploads")
+                os.makedirs(p, exist_ok=True)
+                return p
+        except:
+            pass
+    p = os.path.join(app.root_path, 'uploads')
+    os.makedirs(p, exist_ok=True)
+    return p
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -357,10 +382,9 @@ def upload_file():
         except Exception as e:
             return jsonify({'status': 'error', 'message': f"S3 ga yuklab bo'lmadi: {str(e)}"}), 500
     else:
-        # Local fallback
+        # Local fallback using Railway Volume if available
         try:
-            uploads_dir = os.path.join(app.root_path, 'uploads')
-            os.makedirs(uploads_dir, exist_ok=True)
+            uploads_dir = get_uploads_dir()
             file_path = os.path.join(uploads_dir, unique_filename)
             file.save(file_path)
             return jsonify({'status': 'success', 'url': f"/uploads/{unique_filename}"})
@@ -369,7 +393,7 @@ def upload_file():
 
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
-    return send_from_directory('uploads', filename)
+    return send_from_directory(get_uploads_dir(), filename)
 
 if __name__ == '__main__':
     print(f"Server {PORT}-portda ishlamoqda. Baza turi: {db_manager.db_type}")
