@@ -421,6 +421,18 @@ def click_webhook():
             'error_note': 'Success'
         })
 
+@app.route('/api/payment/status/<int:sale_id>', methods=['GET'])
+def get_payment_status(sale_id):
+    try:
+        store_data = db_manager.get_all()
+        sales = store_data.get('sales', [])
+        for s in sales:
+            if s.get('id') == sale_id:
+                return jsonify({'status': s.get('status', 'pending')})
+    except Exception as e:
+        print(f"Error checking payment status: {e}")
+    return jsonify({'status': 'not_found'})
+
 # S3 configurations for Railway Bucket
 S3_ENDPOINT = os.getenv('S3_ENDPOINT') or os.getenv('ENDPOINT')
 S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY') or os.getenv('ACCESS_KEY_ID')

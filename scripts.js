@@ -10,6 +10,7 @@ let payType = 'cash';
 let editingProductId = null;
 let salesChart = null, payChart = null, monthChart = null, incomeChart = null;
 let lastCheckoutSale = null;
+let clickPollingInterval = null;
 let systemSettings = {
     clickMerchantId: '',
     clickServiceId: '',
@@ -1582,6 +1583,11 @@ function checkoutUzumOrder() {
 
     renderReceipt(sale);
     openModal('checkoutModal');
+    if (isClick) {
+        const clickUrl = getClickUrl(sale.total, sale.id);
+        openClickPopup(clickUrl);
+        startClickPaymentPolling(sale.id);
+    }
     playCheckout();
     showNotif('success', 'Buyurtma qabul qilindi!', `${fmt(subtotal)} so'm — ${sale.pay}`);
 }
@@ -1830,11 +1836,16 @@ function checkout() {
     playCheckout();
     renderReceipt(sale);
     openModal('checkoutModal');
+    if (isClick) {
+        const clickUrl = getClickUrl(sale.total, sale.id);
+        openClickPopup(clickUrl);
+        startClickPaymentPolling(sale.id);
+    }
     clearCart();
     loadDashboard();
     renderProductGrid();
-    if (document.getElementById('autoPrint')?.checked) setTimeout(printReceipt, 500);
-    showNotif('success', '✅ To\'lov amalga oshirildi!', `${fmt(total)} so'm — ${payLabels[payType]}`);
+    if (document.getElementById('autoPrint')?.checked && !isClick) setTimeout(printReceipt, 500);
+    showNotif('success', '✅ Buyurtma yaratildi!', `${fmt(total)} so'm — ${payLabels[payType]}`);
 }
 
 function renderReceipt(sale) {
@@ -1859,7 +1870,7 @@ function renderReceipt(sale) {
 
     const html = `
     ${statusHeader}
-    <div class="receipt" id="receiptForPrint">
+    <div class="receipt" id="receiptForPrint" ${isPending ? 'style="display:none;"' : ''}>
       <h2>Texno PARK</h2>
       <div class="r-center">Chilonzor 12, Toshkent<br>+998 90 123 45 67<br>www.Texnopark.uz</div>
       <hr>
@@ -1884,34 +1895,92 @@ function renderReceipt(sale) {
     if (sale.pay === 'Click') {
         const clickUrl = getClickUrl(sale.total, sale.id);
         const ussdCode = `*880*1*${systemSettings.clickServiceId || '33303'}*${sale.total}#`;
-        clickBox = `
-        <div class="click-payment-box" style="margin-top:20px;padding:16px;border-radius:12px;background:rgba(0,162,235,0.06);border:1px solid rgba(0,162,235,0.2);text-align:center;font-family:'Inter',sans-serif">
-          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px">
-            <span style="font-size:20px">📱</span>
-            <strong style="color:#00a2eb;font-size:16px;letter-spacing:0.5px">CLICK TO'LOVI</strong>
-          </div>
-          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">To'lovni amalga oshirish uchun pastdagi tugmani bosing yoki QR kodni skanerlang:</p>
-          
-          <div style="background:white;padding:8px;display:inline-block;border-radius:10px;margin-bottom:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1)">
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(clickUrl)}" alt="Click QR Code" style="display:block;width:150px;height:150px">
-          </div>
-          
-          <div style="margin-bottom:14px">
-            <a href="${clickUrl}" target="_blank" class="btn" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#00a2eb;color:white;border:none;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;box-shadow:0 4px 10px rgba(0,162,235,0.2);transition:all 0.2s">
-              <i class="fas fa-external-link-alt"></i> Click orqali to'lash
-            </a>
-          </div>
-          
-          <div style="font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);padding-top:10px">
-            <div>Click Lite (USSD) orqali:</div>
-            <code style="display:inline-block;margin-top:4px;padding:4px 8px;background:var(--bg);border-radius:6px;font-weight:700;color:var(--primary);font-size:12px">${ussdCode}</code>
-          </div>
-        </div>`;
+        if (isPending) {
+            clickBox = `
+            <div class="click-payment-box" style="margin-top:20px;padding:24px;border-radius:16px;background:rgba(0,162,235,0.06);border:1px solid rgba(0,162,235,0.2);text-align:center;font-family:'Inter',sans-serif">
+              <div class="click-spinner" style="width:40px;height:40px;border:4px solid rgba(0,162,235,0.1);border-top-color:#00a2eb;border-radius:50%;animation:click-spin 1s linear infinite;margin:0 auto 16px;"></div>
+              <style>
+                @keyframes click-spin { to { transform: rotate(360deg); } }
+              </style>
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px">
+                <strong style="color:#00a2eb;font-size:16px;letter-spacing:0.5px">CLICK TO'LOVI KUTILMOQDA</strong>
+              </div>
+              <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Iltimos, ochilgan oynada to'lovni tasdiqlang yoki quyidagi QR kodni skanerlang. To'lov amalga oshirilgach, chek avtomatik ravishda tayyor bo'ladi.</p>
+              
+              <div style="background:white;padding:8px;display:inline-block;border-radius:10px;margin-bottom:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1)">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(clickUrl)}" alt="Click QR Code" style="display:block;width:150px;height:150px">
+              </div>
+              
+              <div style="margin-bottom:16px">
+                <a href="javascript:void(0)" onclick="openClickPopup('${clickUrl}')" class="btn" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#00a2eb;color:white;border:none;padding:12px 24px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;box-shadow:0 4px 10px rgba(0,162,235,0.2);transition:all 0.2s">
+                  <i class="fas fa-external-link-alt"></i> Oynani qayta ochish
+                </a>
+              </div>
+              
+              <div style="font-size:11px;color:var(--text-muted);border-top:1px dashed var(--border);padding-top:12px">
+                <div>Click Lite (USSD) orqali:</div>
+                <code style="display:inline-block;margin-top:4px;padding:4px 8px;background:var(--bg);border-radius:6px;font-weight:700;color:var(--primary);font-size:12px">${ussdCode}</code>
+              </div>
+            </div>`;
+        } else {
+            clickBox = `
+            <div class="click-payment-box" style="margin-top:20px;padding:16px;border-radius:12px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);text-align:center;">
+              <div style="color:#10B981;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px">
+                <i class="fas fa-check-circle"></i> Click To'lovi Muvaffaqiyatli Yakunlandi
+              </div>
+            </div>`;
+        }
     }
 
     document.getElementById('receiptContent').innerHTML = html + clickBox;
     // Also put in printArea
     document.getElementById('printArea').innerHTML = `<div class="receipt">${document.getElementById('receiptForPrint')?.innerHTML || ''}</div>`;
+}
+
+function openClickPopup(url) {
+    const width = 520;
+    const height = 650;
+    const left = (window.screen.width / 2) - (width / 2);
+    const top = (window.screen.height / 2) - (height / 2);
+    window.open(url, 'ClickPaymentPopup', `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,location=no`);
+}
+
+function startClickPaymentPolling(saleId) {
+    if (clickPollingInterval) clearInterval(clickPollingInterval);
+    
+    clickPollingInterval = setInterval(async () => {
+        try {
+            const res = await fetch(`/api/payment/status/${saleId}`);
+            const data = await res.json();
+            
+            if (data.status === 'paid') {
+                clearInterval(clickPollingInterval);
+                clickPollingInterval = null;
+                
+                const sale = salesHistory.find(s => s.id === saleId);
+                if (sale) {
+                    sale.status = 'paid';
+                    sale.items.forEach(ci => {
+                        const p = products.find(x => x.id === ci.id);
+                        if (p) p.stock = Math.max(0, p.stock - ci.qty);
+                    });
+                    
+                    saveToStorage();
+                    playSuccess();
+                    showNotif('success', 'To\'lov tasdiqlandi!', `Click to'lovi muvaffaqiyatli qabul qilindi (Buyurtma #${saleId})`);
+                    
+                    renderReceipt(sale);
+                    renderProducts();
+                    renderProductGrid();
+                    renderShop();
+                    if (typeof renderSalesHistory === 'function') renderSalesHistory();
+                    if (typeof renderProductsTable === 'function') renderProductsTable();
+                }
+            }
+        } catch (e) {
+            console.warn("Error polling payment status:", e);
+        }
+    }, 3000);
 }
 
 function printReceipt() {
@@ -2422,7 +2491,13 @@ function importData(input) {
 // MODAL
 // ============================================================
 function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    if (id === 'checkoutModal' && clickPollingInterval) {
+        clearInterval(clickPollingInterval);
+        clickPollingInterval = null;
+    }
+}
 document.addEventListener('click', e => {
     if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
 });
