@@ -485,6 +485,133 @@ function selectUser(role) {
     loginPass.focus();
 }
 
+function toggleEmployeeDropdown(e) {
+    if (e) e.stopPropagation();
+    const dp = document.getElementById('topbarEmployeeDropdown');
+    if (!dp) return;
+    const isShowing = dp.style.display === 'block';
+    
+    // Close other dropdowns first
+    document.querySelectorAll('.employee-dropdown-menu').forEach(d => d.style.display = 'none');
+    
+    if (!isShowing) {
+        dp.style.display = 'block';
+        renderEmployeeDropdown();
+    } else {
+        dp.style.display = 'none';
+    }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    const container = document.querySelector('.employee-dropdown-container');
+    if (container && !container.contains(e.target)) {
+        const dp = document.getElementById('topbarEmployeeDropdown');
+        if (dp) dp.style.display = 'none';
+    }
+});
+
+function renderEmployeeDropdown() {
+    const dp = document.getElementById('topbarEmployeeDropdown');
+    if (!dp) return;
+    
+    // Generate dropdown items from USERS (filtering cashiers, managers, admins)
+    const list = USERS.filter(u => ['admin', 'cashier', 'manager'].includes(u.role));
+    
+    let html = list.map(u => {
+        const isCurrent = currentUser && currentUser.id === u.id;
+        const initial = u.name ? u.name[0] : 'U';
+        return `
+            <div class="employee-dropdown-item" onclick="switchEmployeeLogin(${u.id})">
+                <div class="employee-dropdown-item-avatar" style="background:linear-gradient(135deg, ${u.color || '#ff6b35'}, #10B981)">${initial}</div>
+                <div style="flex:1; display:flex; flex-direction:column;">
+                    <span style="font-weight:700; ${isCurrent ? 'color:var(--primary)' : ''}">${escapeHTML(u.name)}</span>
+                    <span style="font-size:11px; color:var(--text-secondary)">${ROLES[u.role]} ${isCurrent ? ' (Faol)' : ''}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Add logout option if logged in
+    if (currentUser && currentUser.role !== 'customer') {
+        html += `
+            <div class="employee-dropdown-item logout" onclick="logoutEmployee()">
+                <i class="fas fa-sign-out-alt" style="font-size:14px; margin-right: 8px;"></i>
+                <span>Tizimdan chiqish</span>
+            </div>
+        `;
+    }
+    
+    dp.innerHTML = html;
+}
+
+function switchEmployeeLogin(userId) {
+    const user = USERS.find(u => u.id === userId);
+    if (!user) return;
+    
+    // Prompt for password
+    const password = prompt(`${user.name} parolini kiriting:`);
+    if (password === null) return; // Cancelled
+    
+    if (btoa(password) !== user.passHash) {
+        playError();
+        showNotif('error', 'Xato!', 'Kiritilgan parol noto\'g\'ri');
+        return;
+    }
+    
+    // Successful login
+    currentUser = user;
+    
+    // Close dropdown
+    const dp = document.getElementById('topbarEmployeeDropdown');
+    if (dp) dp.style.display = 'none';
+    
+    // Update interface
+    const topName = document.getElementById('topbarEmployeeName');
+    if (topName) topName.textContent = user.name;
+    
+    document.getElementById('sideUser').textContent = user.name;
+    document.getElementById('sideRole').textContent = ROLES[user.role];
+    const av = document.getElementById('sideAvatar');
+    if (av) {
+        av.textContent = user.name[0];
+        av.style.background = `linear-gradient(135deg,${user.color},#10B981)`;
+    }
+    
+    // Transition views
+    const loginPage = document.getElementById('loginPage');
+    const app = document.getElementById('app');
+    if (loginPage) {
+        loginPage.classList.remove('active');
+        loginPage.style.display = 'none';
+    }
+    if (app) {
+        app.style.display = 'block';
+        app.classList.toggle('market-mode', user.role === 'customer');
+    }
+    
+    // Navigate to dashboard
+    goTo('page-dashboard', document.getElementById('nav-dashboard') || document.querySelector('.nav-item'));
+    playSuccess();
+    showNotif('success', 'Xush kelibsiz!', `${user.name} tizimga kirdi`);
+}
+
+function logoutEmployee() {
+    // Switch back to customer or open login screen
+    currentUser = USERS.find(u => u.role === 'customer') || USERS[3];
+    
+    const topName = document.getElementById('topbarEmployeeName');
+    if (topName) topName.textContent = 'Xodim';
+    
+    // Close dropdown
+    const dp = document.getElementById('topbarEmployeeDropdown');
+    if (dp) dp.style.display = 'none';
+    
+    // Show login page
+    openEmployeeLogin();
+    showNotif('info', 'Tizimdan chiqildi', 'Xodim seansi yakunlandi');
+}
+
 function openEmployeeLogin() {
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');

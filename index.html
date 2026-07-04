@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="uz" data-theme="dark">
 
 <head>
@@ -203,9 +203,14 @@
         <button type="button" onclick="toggleTheme()" class="icon-btn btn-icon" title="Tema o'zgartirish">
           <i class="fas fa-moon" id="themeIcon"></i>
         </button>
-        <button type="button" onclick="openEmployeeLogin()" class="btn btn-outline btn-sm employee-login-btn">
-          <i class="fas fa-user-tie"></i> Xodim
-        </button>
+        <div class="employee-dropdown-container" style="position:relative; display:inline-block">
+          <button type="button" onclick="toggleEmployeeDropdown(event)" class="btn btn-outline btn-sm employee-login-btn" id="topbarEmployeeBtn">
+            <i class="fas fa-user-tie"></i> <span id="topbarEmployeeName">Xodim</span> <i class="fas fa-chevron-down" style="margin-left:6px;font-size:10px;opacity:0.7"></i>
+          </button>
+          <div class="employee-dropdown-menu" id="topbarEmployeeDropdown" style="display:none; position:absolute; right:0; top:100%; margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-md); z-index:1000; min-width:220px; padding:6px 0">
+             <!-- Dynamically populated employees go here -->
+          </div>
+        </div>
         <div class="topbar-clock" id="clock">00:00:00</div>
       </div>
     </div>

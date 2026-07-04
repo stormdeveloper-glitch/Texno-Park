@@ -5544,3 +5544,55 @@ canvas {
         justify-content: space-between;
     }
 }
+
+/* Topbar Employee Dropdown Styles */
+.employee-dropdown-menu {
+    transition: all 0.2s ease;
+    transform-origin: top right;
+}
+
+.employee-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    color: var(--text) !important;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s ease;
+    border-radius: 4px;
+    margin: 2px 8px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.employee-dropdown-item:hover {
+    background: var(--bg-hover) !important;
+    color: var(--primary-light) !important;
+}
+
+.employee-dropdown-item.logout {
+    border-top: 1px solid var(--border);
+    margin-top: 6px;
+    padding-top: 12px;
+    color: var(--danger) !important;
+}
+
+.employee-dropdown-item.logout:hover {
+    background: var(--danger-bg) !important;
+    color: var(--danger-light) !important;
+}
+
+.employee-dropdown-item-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+    flex-shrink: 0;
+}
