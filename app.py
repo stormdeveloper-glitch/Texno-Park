@@ -14,6 +14,76 @@ app = Flask(__name__, static_folder='.')
 PORT = int(os.getenv('PORT', 5000))
 
 from urllib.parse import urlparse
+import queue
+import threading
+
+class PG8000ConnectionPool:
+    def __init__(self, db_url, minconn=2, maxconn=10):
+        self.db_url = db_url
+        self.minconn = minconn
+        self.maxconn = maxconn
+        self.pool = queue.Queue(maxsize=maxconn)
+        self.lock = threading.Lock()
+        self.created = 0
+        
+        # Pre-populate pool with min connections
+        for _ in range(minconn):
+            try:
+                self._create_and_put()
+            except Exception as e:
+                print(f"Failed to pre-populate DB pool: {e}")
+            
+    def _create_and_put(self):
+        import pg8000
+        parsed = urlparse(self.db_url)
+        conn = pg8000.connect(
+            user=parsed.username,
+            password=parsed.password,
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            database=parsed.path.lstrip('/')
+        )
+        self.pool.put(conn)
+        self.created += 1
+        
+    def getconn(self):
+        with self.lock:
+            # If pool is empty and we can create more connections, create one
+            if self.pool.empty() and self.created < self.maxconn:
+                try:
+                    self._create_and_put()
+                except Exception as e:
+                    print(f"Failed to create pooled connection: {e}")
+                    
+        try:
+            return self.pool.get(timeout=5.0)
+        except queue.Empty:
+            raise Exception("Database connection pool exhausted. Try again later.")
+            
+    def putconn(self, conn):
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            self.pool.put(conn)
+        except Exception:
+            try:
+                conn.close()
+            except:
+                pass
+            with self.lock:
+                self.created -= 1
+
+class PooledConnectionWrapper:
+    def __init__(self, conn, pool):
+        self._conn = conn
+        self._pool = pool
+        
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+        
+    def close(self):
+        self._pool.putconn(self._conn)
 
 class DBManager:
     def __init__(self):
@@ -30,8 +100,23 @@ class DBManager:
         elif self.db_url.startswith('mysql://'):
             self.db_type = 'mysql'
             
+        self._pg_pool = None
+        if self.db_type == 'postgres':
+            try:
+                self._pg_pool = PG8000ConnectionPool(self.db_url, minconn=2, maxconn=10)
+                print("PostgreSQL connection pool initialized successfully.")
+            except Exception as e:
+                print(f"Failed to initialize PostgreSQL pool: {e}")
+            
     def get_connection(self):
         if self.db_type == 'postgres':
+            if self._pg_pool:
+                try:
+                    raw_conn = self._pg_pool.getconn()
+                    return PooledConnectionWrapper(raw_conn, self._pg_pool)
+                except Exception as pool_err:
+                    print(f"Pool exhausted/failed, fallback to direct conn: {pool_err}")
+            
             import pg8000
             parsed = urlparse(self.db_url)
             return pg8000.connect(
