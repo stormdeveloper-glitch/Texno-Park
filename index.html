@@ -193,6 +193,9 @@
         <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="globalSearch(this.value)" id="globalSearchInput">
       </div>
       <div class="topbar-actions">
+        <div class="icon-btn" onclick="openReportModal()" title="Shikoyat va takliflar" style="color:var(--warning)">
+          <i class="fas fa-triangle-exclamation"></i>
+        </div>
         <div class="icon-btn" onclick="toggleNotif()" title="Bildirishnomalar">
           <i class="fas fa-bell"></i>
           <span class="notif-dot"></span>
@@ -253,7 +256,7 @@
             <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
               <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i class="fas fa-users"></i>
               </div>
-              <div class="stat-num">124</div>
+              <div class="stat-num" id="d-customers">124</div>
               <div class="stat-label">Jami Mijozlar</div>
               <div class="stat-change up"><i class="fas fa-arrow-up"></i> +5 yangi bu oy</div>
             </div>
@@ -274,7 +277,7 @@
             <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
               <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i
                   class="fas fa-users-cog"></i></div>
-              <div class="stat-num">3</div>
+              <div class="stat-num" id="d-employees">3</div>
               <div class="stat-label">Faol Xodimlar</div>
               <div class="stat-change up"><i class="fas fa-arrow-up"></i> 100% ishda</div>
             </div>
@@ -458,48 +461,46 @@
               <i class="fas fa-shopping-cart"></i>
               <span>Savat</span>
             </button>
+            <button type="button" class="market-cart-btn" style="background:transparent;border:1px solid var(--border);color:var(--text)" onclick="openReportModal()">
+              <i class="fas fa-comment-alt"></i>
+              <span>Murojaat</span>
+            </button>
           </div>
 
           <!-- CATALOG VIEW -->
           <div id="shopCatalogView">
             <!-- INTERACTIVE SLIDER BANNER -->
-            <div class="slider-container">
+            <div class="slider-container" style="position:relative; width:100%; height:340px; border-radius:var(--radius-lg); overflow:hidden; margin-bottom:30px; box-shadow:var(--shadow-lg);">
               <div class="slide-wrapper" id="slideWrapper">
                 <!-- Slide 1 -->
-                <div class="slide-item">
+                <div class="slide-item" style="background: linear-gradient(90deg, rgba(15,23,42,0.95) 30%, rgba(15,23,42,0.4) 100%), url('https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;">
                   <div class="slide-info">
-                    <span class="market-chip"
-                      style="background:var(--primary-subtle);color:var(--primary);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700">Yozgi
-                      Chegirmalar</span>
-                    <h2 style="margin-top:10px">Smart Televizorlar uchun 20% Chegirma!</h2>
-                    <p>Promo-kod: <strong style="color:var(--primary)">SUMMER20</strong>. Yangi avlod televizorlarini
-                      maxsus bahoda xarid qiling.</p>
+                    <span class="market-chip" style="background:var(--primary-subtle);color:var(--primary);padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Yozgi Chegirmalar</span>
+                    <h2 style="margin-top:14px; font-size:32px; font-weight:800; line-height:1.2; color:#fff">Smart Televizorlar uchun<br><span style="color:var(--primary)">20% gacha Chegirma!</span></h2>
+                    <p style="margin-top:10px; font-size:14px; color:rgba(255,255,255,0.7); max-width:400px">Promo-kod: <strong style="color:var(--primary);background:rgba(249,115,22,0.15);padding:2px 6px;border-radius:4px">SUMMER20</strong>. Yangi avlod 4K Smart TV modellarini maxsus bahoda xarid qiling.</p>
+                    <a href="#shopProductGrid" class="btn btn-primary btn-sm" style="margin-top:16px; padding:10px 20px; font-weight:700; border-radius:var(--radius-sm); text-decoration:none; display:inline-flex; align-items:center; gap:8px"><span>Hozir xarid qilish</span> <i class="fas fa-shopping-bag"></i></a>
                   </div>
-                  <div class="slide-art"><i class="fas fa-tv"></i></div>
+                  <div class="slide-art" style="margin-right:40px"><i class="fas fa-tv" style="color:var(--primary);font-size:100px;filter:drop-shadow(0 0 20px rgba(249,115,22,0.6))"></i></div>
                 </div>
                 <!-- Slide 2 -->
-                <div class="slide-item">
+                <div class="slide-item" style="background: linear-gradient(90deg, rgba(15,23,42,0.95) 30%, rgba(15,23,42,0.4) 100%), url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;">
                   <div class="slide-info">
-                    <span class="market-chip"
-                      style="background:rgba(34,197,94,0.1);color:var(--success);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700">Bepul
-                      Yetkazish</span>
-                    <h2 style="margin-top:10px">15,000,000 so'mdan ko'p xaridga bepul yetkazish!</h2>
-                    <p>Savatni to'ldiring va O'zbekiston bo'ylab mutlaqo bepul yetkazib berish xizmatidan foydalaning.
-                    </p>
+                    <span class="market-chip" style="background:rgba(34,197,94,0.15);color:var(--success);padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Tezkor Xizmat</span>
+                    <h2 style="margin-top:14px; font-size:32px; font-weight:800; line-height:1.2; color:#fff">15,000,000 so'mdan ko'p<br><span style="color:var(--success)">Xaridga Bepul Yetkazish!</span></h2>
+                    <p style="margin-top:10px; font-size:14px; color:rgba(255,255,255,0.7); max-width:400px">Savatni to'ldiring va O'zbekiston bo'ylab mutlaqo bepul va xavfsiz yetkazib berish xizmatidan foydalaning.</p>
+                    <a href="#shopProductGrid" class="btn btn-success btn-sm" style="margin-top:16px; padding:10px 20px; font-weight:700; border-radius:var(--radius-sm); text-decoration:none; display:inline-flex; align-items:center; gap:8px; color:white; background:var(--success)"><span>Katalogga o'tish</span> <i class="fas fa-arrow-right"></i></a>
                   </div>
-                  <div class="slide-art"><i class="fas fa-shipping-fast"></i></div>
+                  <div class="slide-art" style="margin-right:40px"><i class="fas fa-shipping-fast" style="color:var(--success);font-size:100px;filter:drop-shadow(0 0 20px rgba(34,197,94,0.6))"></i></div>
                 </div>
                 <!-- Slide 3 -->
-                <div class="slide-item">
+                <div class="slide-item" style="background: linear-gradient(90deg, rgba(15,23,42,0.95) 30%, rgba(15,23,42,0.4) 100%), url('https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;">
                   <div class="slide-info">
-                    <span class="market-chip"
-                      style="background:rgba(59,130,246,0.1);color:var(--info);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700">Kafolatlangan
-                      Sifat</span>
-                    <h2 style="margin-top:10px">Barcha texnikalarga 1 yillik rasmiy kafolat!</h2>
-                    <p>Biz faqat sertifikatlangan, original mahsulotlar va kafolatlangan servis xizmatini taklif etamiz.
-                    </p>
+                    <span class="market-chip" style="background:rgba(59,130,246,0.15);color:var(--info);padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Kafolat va Ishonch</span>
+                    <h2 style="margin-top:14px; font-size:32px; font-weight:800; line-height:1.2; color:#fff">Barcha Texnikalarga<br><span style="color:var(--info)">1 Yillik Rasmiy Kafolat!</span></h2>
+                    <p style="margin-top:10px; font-size:14px; color:rgba(255,255,255,0.7); max-width:400px">Biz faqat sertifikatlangan, original mahsulotlar va ishonchli rasmiy servis xizmatlarini taklif etamiz.</p>
+                    <a href="#shopProductGrid" class="btn btn-info btn-sm" style="margin-top:16px; padding:10px 20px; font-weight:700; border-radius:var(--radius-sm); text-decoration:none; display:inline-flex; align-items:center; gap:8px; color:white; background:var(--info)"><span>Batafsil ma'lumot</span> <i class="fas fa-shield-alt"></i></a>
                   </div>
-                  <div class="slide-art"><i class="fas fa-shield-halved"></i></div>
+                  <div class="slide-art" style="margin-right:40px"><i class="fas fa-shield-halved" style="color:var(--info);font-size:100px;filter:drop-shadow(0 0 20px rgba(59,130,246,0.6))"></i></div>
                 </div>
               </div>
               <div class="slider-dots">
@@ -1661,11 +1662,11 @@
           <label>Rasm URL</label>
           <div class="image-url-group">
             <input class="form-control" id="p-img" placeholder="https://...">
-            <button class="btn btn-outline" type="button" id="postimageUploadBtn"
+            <button class="btn btn-outline" type="button" id="bucketUploadBtn"
               onclick="document.getElementById('p-img-file').click()">
               <i class="fas fa-upload"></i>
             </button>
-            <input type="file" id="p-img-file" accept="image/*" onchange="uploadProductImageToPostimage(this)">
+            <input type="file" id="p-img-file" accept="image/*" onchange="uploadProductImageToBucket(this)">
           </div>
         </div>
       </div>
@@ -1775,6 +1776,37 @@
           <div style="margin-bottom:8px"><strong>Login/Email:</strong> <span id="profileModalLogin"></span></div>
           <div><strong>Tizim roli:</strong> <span id="profileModalRoleLabel"></span></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== REPORT MODAL ===== -->
+  <div class="modal-overlay" id="reportModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header">
+        <h3><i class="fas fa-paper-plane" style="color:var(--primary)"></i> Shikoyat va taklif yuborish</h3>
+        <button class="modal-close" onclick="closeModal('reportModal')">✕</button>
+      </div>
+      <div class="modal-body" style="padding:16px 20px">
+        <form id="reportForm" onsubmit="submitReport(event)">
+          <div class="form-group" style="margin-bottom:16px">
+            <label style="font-weight:600;margin-bottom:6px;display:block">Turi</label>
+            <select class="form-control" id="reportType" style="width:100%;height:40px;border-radius:var(--radius-sm)">
+              <option value="complaint">😠 Shikoyat</option>
+              <option value="bug">🐛 Xatolik (Bug)</option>
+              <option value="suggestion">💡 Taklif</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label style="font-weight:600;margin-bottom:6px;display:block">Tavsif</label>
+            <textarea class="form-control" id="reportMessage" rows="5" placeholder="Batafsil yozib qoldiring..." required style="width:100%;border-radius:var(--radius-sm);padding:10px"></textarea>
+          </div>
+          <div class="form-group" style="margin-bottom:20px">
+            <label style="font-weight:600;margin-bottom:6px;display:block">Aloqa ma'lumotlari (Ism/Telefon)</label>
+            <input type="text" class="form-control" id="reportContact" placeholder="Ismingiz yoki telefon raqamingiz" style="width:100%;height:40px;border-radius:var(--radius-sm)">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;height:44px;font-weight:700"><i class="fas fa-paper-plane"></i> Yuborish</button>
+        </form>
       </div>
     </div>
   </div>

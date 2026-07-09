@@ -138,7 +138,7 @@ function productImageSrc(value) {
     return isDisplayableImageUrl(url) ? url : '';
 }
 
-async function uploadProductImageToPostimage(input) {
+async function uploadProductImageToBucket(input) {
     if (!requireRole('admin')) return;
     const file = input?.files?.[0];
     if (!file) return;
@@ -155,7 +155,7 @@ async function uploadProductImageToPostimage(input) {
         return;
     }
 
-    const btn = document.getElementById('postimageUploadBtn');
+    const btn = document.getElementById('bucketUploadBtn');
     const previousHtml = btn?.innerHTML;
     if (btn) {
         btn.disabled = true;
@@ -914,6 +914,19 @@ function loadAdminDashboard() {
     const dProducts = document.getElementById('d-products');
     if (dProducts) dProducts.textContent = products.length;
 
+    const dCustomers = document.getElementById('d-customers');
+    if (dCustomers) dCustomers.textContent = customers.length;
+
+    const dProfit = document.getElementById('d-profit');
+    if (dProfit) {
+        const totalRevenue = salesHistory.reduce((a, b) => a + b.total, 0);
+        const totalProfit = Math.round(totalRevenue * 0.20); // 20% profit margin
+        dProfit.textContent = fmt(totalProfit) + ' so\'m';
+    }
+
+    const dEmployees = document.getElementById('d-employees');
+    if (dEmployees) dEmployees.textContent = employees.length;
+
     const tbody = document.getElementById('recentSales');
     if (tbody) {
         const recent = [...salesHistory].reverse().slice(0, 8);
@@ -928,13 +941,43 @@ function loadAdminDashboard() {
 
     const topP = document.getElementById('topProducts');
     if (topP) {
-        const topProds = [{ name: 'Samsung Muzlatgich', sales: 23, pct: 90 }, { name: 'LG Kir Mashinasi', sales: 18, pct: 70 }, { name: 'Artel Konditsioner', sales: 15, pct: 60 }, { name: 'Samsung TV', sales: 8, pct: 32 }, { name: 'Dyson Changyutgich', sales: 6, pct: 24 }];
+        const productSales = {};
+        salesHistory.forEach(s => {
+            if (s.items) {
+                s.items.forEach(item => {
+                    productSales[item.name] = (productSales[item.name] || 0) + item.qty;
+                });
+            }
+        });
+        
+        let topProds = Object.entries(productSales)
+            .map(([name, qty]) => ({ name, sales: qty }))
+            .sort((a, b) => b.sales - a.sales)
+            .slice(0, 5);
+
+        // Fallback if no sales history
+        if (topProds.length === 0) {
+            topProds = [
+                { name: 'Samsung No Frost 350L', sales: 23 },
+                { name: 'LG Twin Wash 7kg', sales: 18 },
+                { name: 'Artel 12000 BTU', sales: 15 },
+                { name: 'Samsung 55" QLED', sales: 8 },
+                { name: 'Dyson V12 Slim', sales: 6 }
+            ];
+        }
+        
+        const maxSales = Math.max(...topProds.map(p => p.sales)) || 1;
+        topProds = topProds.map(p => ({
+            ...p,
+            pct: Math.round((p.sales / maxSales) * 100)
+        }));
+
         topP.innerHTML = topProds.map(p => `<div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
         <span style="font-weight:600">${p.name}</span>
-        <span style="color:var(--primary)">${p.sales} ta</span>
+        <span style="color:var(--primary);font-weight:700">${p.sales} ta</span>
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${p.pct}%;background:linear-gradient(90deg,var(--primary),var(--warning))"></div></div>
+      <div class="progress-bar" style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div class="progress-fill" style="height:100%;width:${p.pct}%;background:linear-gradient(90deg,var(--primary),var(--warning))"></div></div>
     </div>`).join('');
     }
     setTimeout(() => { initSalesChart(); initPayChart(); }, 100);
@@ -974,15 +1017,22 @@ function loadManagerDashboard() {
 // CHARTS
 // ============================================================
 function initSalesChart() {
-    const ctx = document.getElementById('salesChart'); if (!ctx) return;
+    const canvas = document.getElementById('salesChart'); if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     if (salesChart) salesChart.destroy();
-    salesChart = new Chart(ctx, {
+    
+    // Create gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, 'rgba(255,107,53,0.35)');
+    gradient.addColorStop(1, 'rgba(255,107,53,0.01)');
+
+    salesChart = new Chart(canvas, {
         type: 'line',
         data: {
             labels: ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sh', 'Ya'],
             datasets: [{
                 label: 'Savdo (mln so\'m)', data: [8.2, 12.5, 9.8, 15.3, 11.2, 18.4, 14.5],
-                borderColor: '#ff6b35', backgroundColor: 'rgba(255,107,53,.1)', fill: true, tension: .4,
+                borderColor: '#ff6b35', backgroundColor: gradient, fill: true, tension: .4,
                 pointBackgroundColor: '#ff6b35', pointRadius: 5, pointHoverRadius: 8
             }]
         },
@@ -1302,26 +1352,59 @@ function renderShop() {
     }
 
     grid.innerHTML = list.map(p => {
-        const imgSrc = productImageSrc(p.img);
+        const catImages = {
+            'Muzlatgichlar': 'https://images.unsplash.com/photo-1571175432247-fe3702b899f1?auto=format&fit=crop&w=400&q=80',
+            'Kir Yuvish Mashinalari': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=400&q=80',
+            'Konditsionerlar': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=400&q=80',
+            'Televizorlar': 'https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=400&q=80',
+            'Changyutgichlar': 'https://images.unsplash.com/photo-1558317374-067fb5f30001?auto=format&fit=crop&w=400&q=80',
+            'Pechlar': 'https://images.unsplash.com/photo-1578643463396-0997cb5328c1?auto=format&fit=crop&w=400&q=80',
+            'Mikrotolqinli Pechlar': 'https://images.unsplash.com/photo-1574269909862-7e1d70bb8078?auto=format&fit=crop&w=400&q=80',
+            'Aksessuarlar': 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=400&q=80'
+        };
+        const rawImgSrc = productImageSrc(p.img);
+        const imgSrc = rawImgSrc || catImages[p.cat] || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=400&q=80';
+        
+        // Mock rating details
+        const rating = (4.4 + ((p.id * 3) % 7) * 0.1).toFixed(1);
+        const reviewCount = (p.id * 7 + 12);
+        
+        // Mock installment
+        const monthlyInst = Math.round(p.price / 12);
+        
         return `
-    <div class="product-card shop-product-card" onclick="addToShopCart(${p.id})">
-      <span class="product-card-badge" style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:var(--primary);z-index:2;border:1px solid rgba(255,255,255,0.05)">${escapeHTML(p.cat)}</span>
-      <div style="width:100%;height:160px;overflow:hidden;position:relative;border-radius:8px">
-        ${imgSrc
-                ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">`
-                : ''}
-        <div class="product-card-img-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'};width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
-          ${icons[p.cat] || '📦'}
+    <div class="product-card shop-product-card" onclick="addToShopCart(${p.id})" style="position:relative; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor:pointer; display:flex; flex-direction:column; justify-content:space-between; height:100%">
+      <div>
+        <span class="product-card-badge" style="position:absolute;top:10px;left:10px;background:rgba(15,23,42,0.75);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:var(--primary);z-index:2;border:1px solid rgba(255,255,255,0.05)">${escapeHTML(p.cat)}</span>
+        <div style="width:100%;height:180px;overflow:hidden;position:relative;background:#1e293b">
+          <img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'" style="width:100%;height:100%;object-fit:cover;transition:transform 0.5s ease">
+          <div class="product-card-img-placeholder" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
+            ${icons[p.cat] || '📦'}
+          </div>
+        </div>
+        <div class="product-card-body" style="padding:14px 14px 0 14px;position:relative">
+          <!-- Rating -->
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:12px;color:#fbbf24">
+            <i class="fas fa-star"></i>
+            <span style="font-weight:700;color:var(--text)">${rating}</span>
+            <span style="color:var(--text-secondary)">(${reviewCount} sharh)</span>
+          </div>
+          <div class="product-card-name" style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:6px;min-height:36px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHTML(p.name)}</div>
+          
+          <!-- Installment Tag -->
+          <div style="display:inline-block;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.15);color:var(--primary);font-size:11px;font-weight:700;padding:3px 6px;border-radius:4px;margin-bottom:8px">
+            ${fmt(monthlyInst)} so'm/oyiga
+          </div>
         </div>
       </div>
-      <div class="product-card-body" style="padding:14px;position:relative">
-        <div class="product-card-name" style="font-weight:700;font-size:15px;margin-bottom:6px;min-height:36px">${escapeHTML(p.name)}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+      
+      <div style="padding:0 14px 14px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px">
           <div>
-            <div class="product-card-price" style="font-weight:800;color:var(--text);font-size:16px">${fmt(p.price)} so'm</div>
-            <div class="product-card-stock" style="font-size:12px;color:var(--text-secondary)">Qoldiq: <strong style="color:var(--success)">${p.stock} ta</strong></div>
+            <div class="product-card-price" style="font-weight:800;color:var(--text);font-size:16px;line-height:1">${fmt(p.price)} so'm</div>
+            <div class="product-card-stock" style="font-size:11px;color:var(--text-secondary);margin-top:4px">Qoldiq: <strong style="color:var(--success)">${p.stock} ta</strong></div>
           </div>
-          <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id})" style="background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s"><i class="fas fa-plus"></i></button>
+          <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id})" style="background:var(--primary);color:white;width:34px;height:34px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 10px rgba(249,115,22,0.3)"><i class="fas fa-cart-plus"></i></button>
         </div>
       </div>
     </div>`;
@@ -3510,5 +3593,88 @@ function simulateGoogleSignIn() {
         playSuccess();
         showNotif('success', 'Muvaffaqiyatli!', 'Google orqali tizimga kirildi');
     }, 800);
+}
+
+// ============================================================
+// COMPLAINTS & SUGGESTIONS (REPORT SYSTEM)
+// ============================================================
+function openReportModal() {
+    const reportForm = document.getElementById('reportForm');
+    if (reportForm) reportForm.reset();
+    
+    // Auto-fill contact info if user is logged in
+    const contactInput = document.getElementById('reportContact');
+    if (contactInput && currentUser) {
+        contactInput.value = `${currentUser.name} (${currentUser.role})`;
+    }
+    
+    openModal('reportModal');
+}
+
+async function submitReport(event) {
+    if (event) event.preventDefault();
+    
+    const type = document.getElementById('reportType')?.value || 'complaint';
+    const message = document.getElementById('reportMessage')?.value || '';
+    const contact = document.getElementById('reportContact')?.value || '';
+    
+    if (!message.trim()) {
+        playError();
+        showNotif('error', 'Xato!', 'Iltimos, xabarni kiriting');
+        return;
+    }
+    
+    const newReport = {
+        type,
+        message,
+        contact,
+        date: new Date().toLocaleDateString('uz-UZ'),
+        time: new Date().toLocaleTimeString('uz-UZ'),
+        user: currentUser ? currentUser.name || currentUser.login : 'Mehmon'
+    };
+
+    try {
+        const response = await fetch('/api/reports', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(newReport)
+        });
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.message || 'Murojaatni yuborib bo\'lmadi');
+        }
+
+        // Also save to local storage as cache
+        const reports = safeJsonParse(localStorage.getItem('tp_reports') || '[]', []);
+        newReport.id = reports.length + 1;
+        reports.push(newReport);
+        localStorage.setItem('tp_reports', JSON.stringify(reports));
+        
+        // Add to system log
+        const typeLabels = { complaint: 'Shikoyat', bug: 'Xatolik', suggestion: 'Taklif' };
+        addLog('Murojaat qabul qilindi', `${typeLabels[type]} — ${message.substring(0, 30)}...`);
+        
+        closeModal('reportModal');
+        playSuccess();
+        showNotif('success', 'Yuborildi!', 'Murojaatingiz muvaffaqiyatli yuborildi. Rahmat!');
+    } catch (e) {
+        console.error('Failed to submit report to database:', e);
+        // Fallback to local storage if offline
+        const reports = safeJsonParse(localStorage.getItem('tp_reports') || '[]', []);
+        newReport.id = reports.length + 1;
+        reports.push(newReport);
+        localStorage.setItem('tp_reports', JSON.stringify(reports));
+        
+        // Add to system log
+        const typeLabels = { complaint: 'Shikoyat', bug: 'Xatolik', suggestion: 'Taklif' };
+        addLog('Murojaat saqlandi (offline)', `${typeLabels[type]} — ${message.substring(0, 30)}...`);
+
+        closeModal('reportModal');
+        playSuccess(); // still show success because we cached it locally
+        showNotif('warning', 'Oflayn saqlandi!', 'Murojaat lokal keshda saqlandi (tarmoq xatosi).');
+    }
 }
 

@@ -13,6 +13,45 @@ load_dotenv()
 app = Flask(__name__, static_folder='.')
 CORS(app)
 
+import time
+import threading
+
+# Thread-safe in-memory rate limiting dictionary for basic DDoS/brute-force protection
+IP_REQUESTS = {}
+IP_REQUESTS_LOCK = threading.Lock()
+
+# Rate limit configuration: max requests per minute per IP on API endpoints
+RATE_LIMIT_MAX = 100     # max 100 requests
+RATE_LIMIT_WINDOW = 60   # per 60 seconds
+
+@app.before_request
+def rate_limit_middleware():
+    path = request.path
+    # Rate limit only /api endpoints to prevent blocking static files
+    if not path.startswith('/api'):
+        return
+        
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if ',' in ip:
+        ip = ip.split(',')[0].strip()
+        
+    now = time.time()
+    
+    with IP_REQUESTS_LOCK:
+        if ip not in IP_REQUESTS:
+            IP_REQUESTS[ip] = []
+            
+        # Keep only timestamps within the current window
+        IP_REQUESTS[ip] = [t for t in IP_REQUESTS[ip] if now - t < RATE_LIMIT_WINDOW]
+        
+        if len(IP_REQUESTS[ip]) >= RATE_LIMIT_MAX:
+            return jsonify({
+                'status': 'error',
+                'message': 'DDoS/Suhbat himoyasi: Juda ko\'p so\'rovlar kiritildi. Birozdan so\'ng qayta urining.'
+            }), 429
+            
+        IP_REQUESTS[ip].append(now)
+
 PORT = int(os.getenv('PORT', 5000))
 
 from urllib.parse import urlparse
@@ -182,11 +221,33 @@ class DBManager:
                     value TEXT
                 )
             ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS support_reports (
+                    id SERIAL PRIMARY KEY,
+                    type VARCHAR(50),
+                    message TEXT,
+                    contact VARCHAR(255),
+                    date VARCHAR(50),
+                    time VARCHAR(50),
+                    username VARCHAR(100)
+                )
+            ''')
         elif self.db_type == 'mysql':
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS store_data (
                     `key` VARCHAR(255) PRIMARY KEY,
                     `value` LONGTEXT
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS support_reports (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    type VARCHAR(50),
+                    message TEXT,
+                    contact VARCHAR(255),
+                    date VARCHAR(50),
+                    time VARCHAR(50),
+                    username VARCHAR(100)
                 )
             ''')
         else:
@@ -196,6 +257,38 @@ class DBManager:
                     value TEXT
                 )
             ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS support_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT,
+                    message TEXT,
+                    contact TEXT,
+                    date TEXT,
+                    time TEXT,
+                    username TEXT
+                )
+            ''')
+        conn.commit()
+        conn.close()
+
+    def save_report(self, type_, message, contact, date, time, username):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        if self.db_type == 'postgres':
+            cursor.execute('''
+                INSERT INTO support_reports (type, message, contact, date, time, username)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (type_, message, contact, date, time, username))
+        elif self.db_type == 'mysql':
+            cursor.execute('''
+                INSERT INTO support_reports (type, message, contact, date, time, username)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (type_, message, contact, date, time, username))
+        else:
+            cursor.execute('''
+                INSERT INTO support_reports (type, message, contact, date, time, username)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (type_, message, contact, date, time, username))
         conn.commit()
         conn.close()
 
@@ -275,6 +368,25 @@ def sync_data():
     try:
         db_manager.save_keys(req_data)
         return jsonify({'status': 'success', 'message': 'Ma\'lumotlar muvaffaqiyatli saqlandi'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/reports', methods=['POST'])
+def save_feedback_report():
+    data = request.json
+    if not data or not data.get('message'):
+        return jsonify({'status': 'error', 'message': 'Xabar kiritilmadi'}), 400
+        
+    try:
+        db_manager.save_report(
+            data.get('type', 'complaint'),
+            data.get('message'),
+            data.get('contact', ''),
+            data.get('date', ''),
+            data.get('time', ''),
+            data.get('user', 'Mehmon')
+        )
+        return jsonify({'status': 'success', 'message': 'Murojaat muvaffaqiyatli yozildi'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
