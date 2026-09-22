@@ -1,0 +1,93 @@
+﻿
+> style.css:951:.pos-layout {
+  style.css:952:    display: flex;
+  style.css:953:    gap: 18px;
+  style.css:954:    align-items: flex-start;
+  style.css:955:}
+  style.css:956:
+  style.css:957:.pos-left {
+  style.css:958:    flex: 1 1 65%;
+  style.css:959:}
+  style.css:960:
+  style.css:961:.pos-right {
+  style.css:962:    flex: 0 0 320px;
+  style.css:963:}
+  style.css:964:
+  style.css:965:.product-grid {
+> style.css:1359:.pos-layout {
+  style.css:1360:    display: grid;
+  style.css:1361:    grid-template-columns: 1fr 390px;
+  style.css:1362:    gap: 0;
+  style.css:1363:    height: calc(100vh - 72px);
+  style.css:1364:    margin: -32px;
+  style.css:1365:}
+  style.css:1366:
+  style.css:1367:.pos-left {
+  style.css:1368:    padding: 28px;
+  style.css:1369:    overflow-y: auto;
+  style.css:1370:    border-right: 1px solid var(--border);
+  style.css:1371:}
+  style.css:1372:
+  style.css:1373:.pos-right {
+> style.css:1554:.pos-layout {
+  style.css:1555:    display: grid;
+  style.css:1556:    grid-template-columns: 1fr 390px;
+  style.css:1557:    gap: 0;
+  style.css:1558:    height: calc(100vh - 72px);
+  style.css:1559:    margin: -32px;
+  style.css:1560:}
+  style.css:1561:
+  style.css:1562:.pos-left {
+  style.css:1563:    padding: 28px;
+  style.css:1564:    overflow-y: auto;
+  style.css:1565:    border-right: 1px solid var(--border);
+  style.css:1566:}
+  style.css:1567:
+  style.css:1568:.pos-right {
+> style.css:3198:    .pos-layout {
+  style.css:3199:        grid-template-columns: 1fr 340px;
+  style.css:3200:    }
+  style.css:3201:}
+  style.css:3202:
+  style.css:3203:@media(max-width:900px) {
+  style.css:3204:    :root {
+  style.css:3205:        --sidebar-w: 70px;
+  style.css:3206:    }
+  style.css:3207:
+  style.css:3208:    .sidebar-logo span,
+  style.css:3209:    .sidebar-logo small,
+  style.css:3210:    .nav-item span,
+  style.css:3211:    .nav-section-label,
+  style.css:3212:    .nav-badge,
+> style.css:3238:    .pos-layout {
+  style.css:3239:        grid-template-columns: 1fr;
+  style.css:3240:    }
+  style.css:3241:
+  style.css:3242:    .pos-right {
+  style.css:3243:        height: auto;
+  style.css:3244:    }
+  style.css:3245:
+  style.css:3246:    .grid-2,
+  style.css:3247:    .grid-3 {
+  style.css:3248:        grid-template-columns: 1fr;
+  style.css:3249:    }
+  style.css:3250:
+  style.css:3251:    .page {
+  style.css:3252:        padding: 24px;
+> style.css:3305:    .pos-layout {
+  style.css:3306:        height: auto;
+  style.css:3307:        margin: 0;
+  style.css:3308:        margin-top: 0;
+  style.css:3309:        gap: 12px;
+  style.css:3310:    }
+  style.css:3311:
+  style.css:3312:    .page {
+  style.css:3313:        padding: 12px;
+  style.css:3314:    }
+  style.css:3315:
+  style.css:3316:    .topbar {
+  style.css:3317:        left: 0;
+  style.css:3318:        padding: 0 10px;
+  style.css:3319:        gap: 8px;
+
+

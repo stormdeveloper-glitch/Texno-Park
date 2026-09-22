@@ -1,0 +1,44 @@
+# ============================================================
+# TEXNO PARK POS — git hisobga olinmaydigan fayllar
+# ============================================================
+
+# Maxfiy sozlamalar va kalitlar (API_AUTH_SECRET, Turnstile, to'lov kalitlari)
+.env
+.env.local
+.env.*.local
+
+# Ma'lumotlar bazasi va zaxira nusxalari
+*.db
+*.sqlite3
+*.sqlite
+Data/
+App_Data/
+backup_*.json
+data_backup*.json
+
+# Yuklangan fayllar (rasmlar bazada saqlanadi, lekin S3/lokal nusxalar ham)
+uploads/
+Uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Node (agar ishlatilsa)
+node_modules/
+
+# Muhit va muharrir fayllari
+.freebuff/
+.freebuff/project-id
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.log

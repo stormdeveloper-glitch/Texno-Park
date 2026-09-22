@@ -1,0 +1,6 @@
+flask
+python-dotenv
+pg8000
+pymysql
+boto3
+flask-cors
