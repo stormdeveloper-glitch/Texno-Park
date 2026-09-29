@@ -284,7 +284,7 @@ def sync_turnstile_domain(force=False):
         print(f'[CLOUDFLARE] Turnstile: {SITE_DOMAIN} allaqachon ruxsat etilgan domenlar ichida')
         return CF_DOMAIN_SYNC
 
-    body = {'name': result.get('name') or 'Texno Park POS',
+    body = {'name': result.get('name') or 'Texno Park N1 POS',
             'mode': result.get('mode') or 'managed',
             'domains': merged}
     updated, error = cloudflare_api('PUT', path, body)
@@ -326,8 +326,10 @@ def add_security_headers(response):
     response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     response.headers.setdefault('X-XSS-Protection', '1; mode=block')
+    # Geolokatsiya FAQAT o'z saytimizga ruxsat etiladi (filiallarga eng yaqin
+    # manzilni hisoblash uchun). Kamerа/mikrofon butunlay o'chirilgan.
     response.headers.setdefault('Permissions-Policy',
-                                'geolocation=(), microphone=(), camera=(), payment=(self)')
+                                'geolocation=(self), microphone=(), camera=(), payment=(self)')
     if FORCE_HTTPS:
         response.headers.setdefault('Strict-Transport-Security',
                                     'max-age=31536000; includeSubDomains')
@@ -390,7 +392,7 @@ def enforce_site_domain():
 
 PORT = int(os.getenv('PORT', 5000))
 
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 import queue
 import threading
 
@@ -1312,6 +1314,9 @@ SYNC_ALLOWED_KEYS = {
     'products': 4000, 'customers': 20000, 'sales': 50000, 'logs': 500,
     'contracts': 20000, 'discounts': 500, 'smsHistory': 500,
     'salaryRecords': 5000, 'salaryHistory': 20000, 'securityLog': 1000,
+    'branches': 500, 'employees': 2000,
+    # Kirim / chiqim / harajat yozuvlari (filial bo'yicha moliyaviy nazorat)
+    'cashFlow': 20000, 'expenses': 20000,
 }
 IMAGE_DATA_LIMIT = 900 * 1024          # bitta rasm (base64) uchun chegara
 MAX_IMAGE_ITEMS = 400                  # bazada saqlanadigan rasm soni
@@ -1640,6 +1645,160 @@ def get_catalog():
     except Exception as e:
         print(f'[ERROR] /api/catalog: {e}')
         return json_error('Katalogni olishda xatolik', 500)
+
+
+# ============================================================
+# FILIALLAR (branches)
+# Filial ma'lumotlari bazada 'branches' kaliti ostida saqlanadi.
+# ============================================================
+BRANCHES_KEY = 'branches'
+
+# Ommaviy filial maydonlari (mijoz ko'radi — PII yo'q)
+BRANCH_PUBLIC_FIELDS = ('id', 'name', 'code', 'city', 'address', 'phone', 'hours',
+                        'lat', 'lng', 'markerIcon', 'markerColor', 'status', 'isMain')
+
+
+def _safe_color(value, fallback='#ff6b35'):
+    """Faqat hex rang qabul qilinadi (CSS/JS injection oldini oladi)."""
+    raw = re.sub(r'[^#0-9A-Fa-f]', '', str(value or ''))
+    if len(raw) == 7 and raw.startswith('#'):
+        return raw.lower()
+    if len(raw) == 6:
+        return '#' + raw.lower()
+    return fallback
+
+
+def public_branches():
+    """Filiallarni brauzerga xavfsiz ko'rinishda qaytaradi.
+
+    MUHIM: koordinata (lat/lng) MAJBURIY EMAS. Ilgari koordinatasi yo'q
+    filiallar ro'yxatdan tushib qolardi — natijada admin panelda qo'lda
+    qo'shilgan filial (lat/lng kiritilmagan) saqlanmayotgandek ko'rinardi.
+    Endi filial har doim qaytariladi, koordinata bo'lmasa `None` bo'ladi.
+    """
+    try:
+        data = db_manager.get_all() or {}
+    except Exception:
+        data = {}
+    result = []
+    seen_ids = set()
+    for item in (data.get(BRANCHES_KEY) or []):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get('name') or '').strip()[:120]
+        bid = str(item.get('id') or '').strip()[:40]
+        if not name and not bid:
+            continue
+        if bid and bid in seen_ids:
+            continue
+        if bid:
+            seen_ids.add(bid)
+
+        lat = lng = None
+        try:
+            lat_val = float(item.get('lat'))
+            lng_val = float(item.get('lng'))
+            if -90 <= lat_val <= 90 and -180 <= lng_val <= 180:
+                lat, lng = round(lat_val, 6), round(lng_val, 6)
+            else:
+                lat = lng = None
+        except (TypeError, ValueError):
+            lat = lng = None
+
+        result.append({
+            'id': bid or f'br-{len(result) + 1}',
+            'name': name,
+            'code': str(item.get('code') or '').strip()[:20],
+            'city': str(item.get('city') or '').strip()[:80],
+            'address': str(item.get('address') or '').strip()[:200],
+            'phone': str(item.get('phone') or '').strip()[:40],
+            'hours': str(item.get('hours') or '').strip()[:80],
+            'lat': lat,
+            'lng': lng,
+            'markerIcon': str(item.get('markerIcon') or '🏬')[:8],
+            'markerColor': _safe_color(item.get('markerColor')),
+            'status': 'inactive' if str(item.get('status')) == 'inactive' else 'active',
+            'isMain': bool(item.get('isMain')),
+        })
+    result.sort(key=lambda b: (not b['isMain'], b['name']))
+    return result
+
+
+@app.route('/api/branches', methods=['GET'])
+def get_branches():
+    """Filiallar ro'yxati (ochiq — mijoz filiallar bilan tanishadi)."""
+    try:
+        return jsonify({'status': 'success', 'branches': public_branches()})
+    except Exception as e:
+        print(f'[ERROR] /api/branches: {e}')
+        return json_error('Filiallarni olishda xatolik', 500)
+
+
+def _num_or_zero(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@app.route('/api/branches/summary', methods=['GET'])
+@require_staff()
+def branches_summary():
+    """Har bir filial bo'yicha real KPI.
+
+    Ko'rsatkichlar: mahsulot soni, zaxira qiymati, savdo (tushum) hamda
+    kirim / chiqim / harajat yozuvlari va sof natija. Admin shu jadval
+    orqali BARCHA filiallarni bir vaqtda kuzatadi.
+    """
+    data = db_manager.get_all() or {}
+    products = [p for p in (data.get('products') or []) if isinstance(p, dict)]
+    sales = [s for s in (data.get('sales') or []) if isinstance(s, dict)]
+    flow = [c for c in (data.get('cashFlow') or []) if isinstance(c, dict)]
+    legacy_expenses = [c for c in (data.get('expenses') or []) if isinstance(c, dict)]
+    branches = public_branches()
+    out = []
+    totals = {'revenue': 0.0, 'income': 0.0, 'expense': 0.0, 'harajat': 0.0, 'profit': 0.0}
+    for branch in branches:
+        bid = branch['id']
+        b_products = [p for p in products if str(p.get('branchId') or '') == bid]
+        b_sales = [s for s in sales if str(s.get('branchId') or '') == bid]
+        paid = [s for s in b_sales if str(s.get('status')) == 'paid']
+        b_flow = [c for c in flow + legacy_expenses if str(c.get('branchId') or '') == bid]
+        revenue = sum(_num_or_zero(s.get('total')) for s in paid)
+        income = sum(_num_or_zero(c.get('amount')) for c in b_flow
+                     if str(c.get('type')) in ('kirim', 'income'))
+        expense = sum(_num_or_zero(c.get('amount')) for c in b_flow
+                      if str(c.get('type')) in ('chiqim', 'expense'))
+        harajat = sum(_num_or_zero(c.get('amount')) for c in b_flow
+                      if str(c.get('type')) == 'harajat')
+        profit = revenue + income - expense - harajat
+        item = {
+            'branchId': bid,
+            'name': branch['name'],
+            'products': len(b_products),
+            'stock': sum(int(_num_or_zero(p.get('stock'))) for p in b_products),
+            'stockValue': sum(int(_num_or_zero(p.get('stock'))) * _num_or_zero(p.get('price'))
+                              for p in b_products),
+            'salesCount': len(paid),
+            'revenue': revenue,
+            'income': income,
+            'expense': expense,
+            'harajat': harajat,
+            'profit': profit,
+        }
+        out.append(item)
+        for key in totals:
+            totals[key] += item[key]
+    unassigned = [p for p in products if not str(p.get('branchId') or '')]
+    unassigned_flow = [c for c in flow + legacy_expenses
+                       if not str(c.get('branchId') or '')]
+    return jsonify({'status': 'success', 'branches': out,
+                    'totals': totals,
+                    'unassignedProducts': len(unassigned),
+                    'unassignedCashFlow': len(unassigned_flow),
+                    'totalProducts': len(products),
+                    'totalBranches': len(branches),
+                    'serverTime': datetime.now().strftime('%d.%m.%Y %H:%M:%S')})
 
 
 @app.route('/api/data', methods=['GET'])
@@ -2456,12 +2615,189 @@ def security_status():
     })
 
 
-# S3 configurations for Railway Bucket
-S3_ENDPOINT = os.getenv('S3_ENDPOINT') or os.getenv('ENDPOINT')
-S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY') or os.getenv('ACCESS_KEY_ID')
-S3_SECRET_KEY = os.getenv('S3_SECRET_KEY') or os.getenv('SECRET_ACCESS_KEY')
-S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME') or os.getenv('BUCKET') or 'collected-drawer'
-S3_PUBLIC_URL = os.getenv('S3_PUBLIC_URL')
+# ============================================================
+# S3 / OBYEKT SAQLASH — Railway Bucket (Tigris), AWS S3, MinIO
+# ============================================================
+# Railway Bucket boshqa S3 provayderlaridan farq qiladi, shu sababli
+# quyidagi tuzatishlar kiritilgan (aks holda yuklash ishlamaydi):
+#   1) ACL (public-read) QO'LLAB-QUVVATLANMAYDI — ACL yuborilsa Railway
+#      "NotImplemented" xatosini qaytaradi va rasm yuklanmaydi. Standart
+#      holatda ACL yuborilmaydi (AWS S3 uchun S3_USE_ACL=true qilinadi).
+#   2) region_name MAJBURIY — Railway/Tigris uchun "auto" ishlatiladi.
+#   3) Endpoint protokolsiz berilishi mumkin ("t3.storageapi.dev") —
+#      avtomatik https:// qo'shiladi.
+#   4) S3_PUBLIC_URL berilmasa havola endpoint+bucket dan quriladi.
+S3_ENDPOINT = (os.getenv('S3_ENDPOINT') or os.getenv('ENDPOINT') or '').strip()
+S3_ACCESS_KEY = (os.getenv('S3_ACCESS_KEY') or os.getenv('ACCESS_KEY_ID') or '').strip()
+S3_SECRET_KEY = (os.getenv('S3_SECRET_KEY') or os.getenv('SECRET_ACCESS_KEY') or '').strip()
+S3_BUCKET_NAME = (os.getenv('S3_BUCKET_NAME') or os.getenv('BUCKET') or '').strip()
+S3_PUBLIC_URL = (os.getenv('S3_PUBLIC_URL') or '').strip().rstrip('/')
+S3_REGION = (os.getenv('S3_REGION') or os.getenv('AWS_REGION') or 'auto').strip()
+S3_USE_ACL = (os.getenv('S3_USE_ACL', 'false') or '').strip().lower() == 'true'
+
+
+def _normalize_s3_endpoint(url):
+    """Endpoint manzilini to'g'rilaydi: protokol qo'shadi, oxiridagi '/' ni oladi.
+
+    Railway bucket endpointni protokolsiz ham beradi (masalan
+    "t3.storageapi.dev") — bunday holatda boto3 "Invalid endpoint" xatosini
+    bermasligi uchun https:// avtomatik qo'shiladi.
+    """
+    raw = str(url or '').strip().rstrip('/')
+    if not raw:
+        return ''
+    if not raw.lower().startswith(('http://', 'https://')):
+        raw = 'https://' + raw
+    return raw
+
+
+S3_ENDPOINT = _normalize_s3_endpoint(S3_ENDPOINT)
+
+
+def s3_configured():
+    """S3 (Railway Bucket) to'liq sozlanganligini bildiradi."""
+    return bool(S3_ENDPOINT and S3_ACCESS_KEY and S3_SECRET_KEY and S3_BUCKET_NAME)
+
+
+def s3_client():
+    """boto3 S3 klienti (Railway/Tigris uchun mos sozlamalar bilan)."""
+    if not _HAS_BOTO3:
+        raise RuntimeError("boto3 moduli o'rnatilmagan — requirements.txt ni o'rnating")
+    from botocore.config import Config as BotoConfig
+    return boto3.client(
+        's3',
+        endpoint_url=S3_ENDPOINT,
+        aws_access_key_id=S3_ACCESS_KEY,
+        aws_secret_access_key=S3_SECRET_KEY,
+        region_name=S3_REGION or 'auto',
+        config=BotoConfig(
+            signature_version='s3v4',
+            s3={'addressing_style': 'path'},
+            retries={'max_attempts': 3, 'mode': 'standard'},
+            connect_timeout=10,
+            read_timeout=30,
+        ),
+    )
+
+
+def s3_public_url(key):
+    """Yuklangan fayl uchun ochiq havola."""
+    if S3_PUBLIC_URL:
+        return f'{S3_PUBLIC_URL}/{key}'
+    return f'{S3_ENDPOINT}/{S3_BUCKET_NAME}/{key}'
+
+
+def s3_upload(file_obj, key, content_type='application/octet-stream'):
+    """Faylni bucketga yuklaydi va ochiq havolani qaytaradi.
+
+    Railway Bucket (Tigris) ACL'ni qo'llab-quvvatlamaydi, shuning uchun
+    avval ACL'siz yuklanadi. `S3_USE_ACL=true` bo'lsa (AWS S3, MinIO kabi
+    provayderlar uchun) ACL yuboriladi; ACL rad etilsa — avtomatik ACL'siz
+    qayta uriniladi, ya'ni fayl baribir yuklanadi.
+    """
+    client = s3_client()
+    extra = {
+        'ContentType': content_type,
+        'CacheControl': 'public, max-age=31536000',
+        'ContentDisposition': 'inline',
+    }
+
+    def _put(with_acl):
+        try:
+            file_obj.seek(0)
+        except Exception:
+            pass
+        args = dict(extra)
+        if with_acl:
+            args['ACL'] = 'public-read'
+        client.upload_fileobj(file_obj, S3_BUCKET_NAME, key, ExtraArgs=args)
+
+    if S3_USE_ACL:
+        try:
+            _put(True)
+        except Exception as acl_error:
+            print(f"[STORAGE] ACL bilan yuklab bo'lmadi, ACL'siz urinamiz: {acl_error}")
+            _put(False)
+    else:
+        try:
+            _put(False)
+        except Exception as first_error:
+            # Ba'zi S3 provayderlari ochiq o'qish uchun ACL talab qiladi
+            text = str(first_error)
+            if 'ACL' in text or 'AccessDenied' in text:
+                _put(True)
+            else:
+                raise
+    return s3_public_url(key)
+def s3_check():
+    """Bucket bilan aloqani tekshiradi (diagnostika uchun).
+
+    Nima tekshiriladi: bucket mavjudmi (head_bucket), test fayl yuklanadimi
+    va ochiq havola ishlaydimi. Railway'da bucket uchun "Public access"
+    yoqilmagan bo'lsa rasm yuklanadi, lekin brauzerda ko'rinmaydi — shu
+    holat shu yerda aniqlanadi.
+    """
+    if not s3_configured():
+        return {'ok': False, 'configured': False,
+                'message': "S3 sozlanmagan: S3_ENDPOINT, S3_ACCESS_KEY, "
+                           "S3_SECRET_KEY, S3_BUCKET_NAME (.env) to'ldirilsin"}
+    if not _HAS_BOTO3:
+        return {'ok': False, 'configured': True,
+                'message': "boto3 moduli o'rnatilmagan (requirements.txt)"}
+    result = {'ok': False, 'configured': True, 'bucket': S3_BUCKET_NAME,
+              'endpoint': S3_ENDPOINT, 'region': S3_REGION,
+              'aclEnabled': S3_USE_ACL, 'publicUrl': S3_PUBLIC_URL}
+    try:
+        client = s3_client()
+        client.head_bucket(Bucket=S3_BUCKET_NAME)
+        result['bucketReachable'] = True
+    except Exception as e:
+        result['bucketReachable'] = False
+        result['message'] = f"Bucketga ulanib bo'lmadi: {e}"
+        return result
+
+    test_key = f"healthcheck/{uuid.uuid4().hex}.txt"
+    try:
+        import io
+        payload = io.BytesIO(b'texno-park-storage-healthcheck')
+        client.upload_fileobj(payload, S3_BUCKET_NAME, test_key,
+                              ExtraArgs={'ContentType': 'text/plain'})
+        result['uploaded'] = True
+    except Exception as e:
+        result['uploaded'] = False
+        result['message'] = f"Test faylni yuklab bo'lmadi: {e}"
+        return result
+
+    url = s3_public_url(test_key)
+    result['testUrl'] = url
+    try:
+        req = urllib.request.Request(url, method='GET')
+        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
+            result['publicRead'] = resp.status == 200
+    except Exception as e:
+        result['publicRead'] = False
+        result['message'] = (f"Fayl yuklandi, lekin ochiq havola ishlamadi ({e}). "
+                             "Railway'da bucket uchun 'Public access' yoqilishi kerak")
+    finally:
+        try:
+            client.delete_object(Bucket=S3_BUCKET_NAME, Key=test_key)
+        except Exception:
+            pass
+
+    if result.get('publicRead'):
+        result['ok'] = True
+        result['message'] = "Bucket ishlaydi — rasm yuklash va ochiq havola tayyor"
+    return result
+
+
+@app.route('/api/storage/check', methods=['GET', 'POST'])
+@require_staff('admin')
+def storage_check():
+    """Admin uchun: Railway bucket (S3) aloqasini tekshirish."""
+    return jsonify({'status': 'success', 'storage': s3_check()})
+
+
+
 
 def get_uploads_dir():
     for vpath in ["/app/data", "/data", "/data/app", "/dara/app"]:
@@ -2540,39 +2876,46 @@ def upload_file():
     if not ext:
         ext = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
                'image/webp': '.webp', 'image/bmp': '.bmp', 'image/avif': '.avif'}.get(detected_mime, '.bin')
-    unique_filename = f"{uuid.uuid4().hex}{ext}"
+    # Papka (ixtiyoriy): bucket ichida tartibli saqlash — mahsulot rasmi,
+    # logotip va filial belgisi alohida papkada turadi.
+    folder = re.sub(r'[^a-z0-9_-]', '', (request.form.get('folder') or '').strip().lower())[:24]
+    if folder not in ('products', 'logo', 'branches', 'contracts', 'receipts'):
+        folder = 'products'
+    unique_filename = f"{folder}/{uuid.uuid4().hex}{ext}"
 
-    if S3_ENDPOINT and S3_ACCESS_KEY and S3_SECRET_KEY:
+    if s3_configured():
         if not _HAS_BOTO3:
             return jsonify({'status': 'error',
                             'message': "S3 sozlangan, lekin boto3 modulini o'rnatmadingiz"}), 500
         try:
-            s3_client = boto3.client(
-                's3',
-                endpoint_url=S3_ENDPOINT,
-                aws_access_key_id=S3_ACCESS_KEY,
-                aws_secret_access_key=S3_SECRET_KEY
-            )
-            s3_client.upload_fileobj(
-                file,
-                S3_BUCKET_NAME,
-                unique_filename,
-                ExtraArgs={'ACL': 'public-read', 'ContentType': detected_mime}
-            )
-            if S3_PUBLIC_URL:
-                public_url = f"{S3_PUBLIC_URL.rstrip('/')}/{unique_filename}"
-            else:
-                public_url = f"{S3_ENDPOINT.rstrip('/')}/{S3_BUCKET_NAME}/{unique_filename}"
-            return jsonify({'status': 'success', 'url': public_url})
+            # Railway Bucket: ACL'siz yuklanadi (ACL qo'llab-quvvatlanmaydi)
+            public_url = s3_upload(file.stream or file, unique_filename, detected_mime)
+            return jsonify({'status': 'success', 'url': public_url,
+                            'key': unique_filename, 'storage': 's3'})
         except Exception as e:
-            return jsonify({'status': 'error', 'message': f"S3 ga yuklab bo'lmadi: {str(e)}"}), 500
+            traceback.print_exc()
+            detail = str(e)
+            print(f"[STORAGE] S3 yuklash xatosi: {detail}")
+            message = f"Bucket'ga yuklab bo'lmadi: {detail}"
+            if 'NotImplemented' in detail or 'ACL' in detail:
+                message = ("Bucket ACL (public-read) ni qo'llab-quvvatlamaydi. "
+                           "S3_USE_ACL=false qilib qayta urinib ko'ring.")
+            elif 'NoSuchBucket' in detail:
+                message = f"Bucket topilmadi: {S3_BUCKET_NAME} (S3_BUCKET_NAME ni tekshiring)"
+            elif 'InvalidAccessKeyId' in detail or 'SignatureDoesNotMatch' in detail:
+                message = ("S3 kalitlari xato (S3_ACCESS_KEY / S3_SECRET_KEY). "
+                           "Railway bucket kalitlarini qayta tekshiring.")
+            return jsonify({'status': 'error', 'message': message}), 502
     else:
-        # Local fallback using Railway Volume if available
+        # Lokal zaxira yo'l (Railway Volume yoki loyiha papkasi)
         try:
             uploads_dir = get_uploads_dir()
             file_path = os.path.join(uploads_dir, unique_filename)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            file.stream.seek(0)
             file.save(file_path)
-            return jsonify({'status': 'success', 'url': f"/uploads/{unique_filename}"})
+            return jsonify({'status': 'success', 'url': f"/uploads/{unique_filename}",
+                            'key': unique_filename, 'storage': 'local'})
         except Exception as e:
             return jsonify({'status': 'error', 'message': f"Lokal xotiraga yuklab bo'lmadi: {str(e)}"}), 500
 

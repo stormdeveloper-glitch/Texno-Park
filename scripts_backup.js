@@ -599,7 +599,7 @@ function goTo(pageId, el) {
     // 5) sarlavha (title/subtitle) yangilash - key sifatida pageId dan qismini olamiz
     const key = pageId.replace(/^page-/, '');
     const titles = {
-        home: ['Bosh Sahifa', 'Texno Park — Mahsulotlar dunyosi'],
+        home: ['Bosh Sahifa', 'Texno Park N1 — Mahsulotlar dunyosi'],
         account: ['Mening Akkauntim', 'Profil, buyurtmalar va bonuslar'],
         orders: ['Buyurtmalar', 'Online buyurtmalarni boshqarish'],
         dashboard: ['Dashboard', 'Xush kelibsiz, bugun ham yaxshi kun!'],
@@ -1137,8 +1137,8 @@ function renderProductGrid() {
         return `
     <div class="product-card" onclick="addToCart(${p.id})">
       ${imgSrc
-            ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">`
-            : ''}
+                ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">`
+                : ''}
       <div class="product-card-img-placeholder" style="${imgSrc ? 'display:none' : ''}">
         ${icons[p.cat] || '📦'}
       </div>
@@ -1239,8 +1239,8 @@ function updateCart() {
         return `
     <div class="cart-item">
       ${imgSrc
-            ? `<img class="cart-item-img" src="${escapeHTML(imgSrc)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`
-            : ''}
+                ? `<img class="cart-item-img" src="${escapeHTML(imgSrc)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`
+                : ''}
       <div class="cart-item-img" style="display:${imgSrc ? 'none' : 'flex'};align-items:center;justify-content:center;font-size:22px;background:var(--border)">${icons[item.cat] || '📦'}</div>
       <div class="cart-item-info">
         <div class="cart-item-name">${escapeHTML(item.name)}</div>
@@ -1442,8 +1442,8 @@ function renderProducts() {
         return `<tr>
     <td>
       ${imgSrc
-            ? `<img src="${escapeHTML(imgSrc)}" style="width:46px;height:36px;border-radius:8px;object-fit:cover;background:var(--border)" onerror="this.style.display='none'">`
-            : `<div style="width:46px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px">${icons[p.cat] || '📦'}</div>`}
+                ? `<img src="${escapeHTML(imgSrc)}" style="width:46px;height:36px;border-radius:8px;object-fit:cover;background:var(--border)" onerror="this.style.display='none'">`
+                : `<div style="width:46px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px">${icons[p.cat] || '📦'}</div>`}
     </td>
     <td><strong>${escapeHTML(p.name)}</strong><br><small style="color:var(--muted)">${escapeHTML(p.desc || '')}</small></td>
     <td><span class="badge badge-blue">${escapeHTML(p.cat)}</span></td>
@@ -2542,7 +2542,7 @@ goTo('page-shop', document.getElementById('nav-shop'));
 let onlineOrders = JSON.parse(localStorage.getItem('tp_online_orders') || '[]');
 
 function saveOrders() {
-    try { localStorage.setItem('tp_online_orders', JSON.stringify(onlineOrders)); } catch(e) {}
+    try { localStorage.setItem('tp_online_orders', JSON.stringify(onlineOrders)); } catch (e) { }
 }
 
 const ORDER_STATUS = {
@@ -2639,7 +2639,7 @@ function renderOrders() {
         const d = new Date(o.date);
         return `<tr>
             <td>#${i + 1}</td>
-            <td style="font-size:12px">${d.toLocaleDateString('uz-UZ')}<br><span style="color:var(--muted)">${d.toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</span></td>
+            <td style="font-size:12px">${d.toLocaleDateString('uz-UZ')}<br><span style="color:var(--muted)">${d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</span></td>
             <td><strong>${escapeHTML(o.customer)}</strong></td>
             <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${escapeHTML(itemsStr)}</td>
             <td><strong>${fmt(o.total)} so\u02bcm</strong></td>
@@ -2878,7 +2878,7 @@ let editingCategoryId = null;
 let categorySearch = '';
 
 function saveCategories() {
-    try { localStorage.setItem('tp_categories', JSON.stringify(categories)); } catch(e) {}
+    try { localStorage.setItem('tp_categories', JSON.stringify(categories)); } catch (e) { }
 }
 
 function renderCategories() {
@@ -3036,7 +3036,7 @@ function renderWarehouse() {
         else { statusBadge = 'Mavjud'; statusCls = 'badge-green'; }
         const value = p.price * p.stock;
         return `<tr>
-            <td><div class="product-thumb">${imgSrc ? \`<img src="\${imgSrc}" alt="" onerror="this.style.display='none'">\` : '<i class="fas fa-box" style="color:var(--muted)"></i>'}</div></td>
+            <td><div class="product-thumb">${imgSrc ?\`<img src="\${imgSrc}" alt="" onerror="this.style.display='none'">\` : '<i class="fas fa-box" style="color:var(--muted)"></i>'}</div></td>
             <td><strong>${escapeHTML(p.name)}</strong></td>
             <td><span class="badge badge-blue">${escapeHTML(p.cat)}</span></td>
             <td>${fmt(p.price)} so'm</td>
@@ -3057,7 +3057,7 @@ function exportWarehouseCSV() {
     const csv = rows.map(r => r.join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `ombor_${new Date().toISOString().slice(0,10)}.csv`;
+    const a = document.createElement('a'); a.href = url; a.download = `ombor_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
     showNotif('success', 'Export!', 'Ombor ma\'lumotlari CSV formatda yuklandi');
 }
@@ -3073,7 +3073,7 @@ let discounts = JSON.parse(localStorage.getItem('tp_discounts') || 'null') || [
 let editingDiscountId = null;
 
 function saveDiscountsData() {
-    try { localStorage.setItem('tp_discounts', JSON.stringify(discounts)); } catch(e) {}
+    try { localStorage.setItem('tp_discounts', JSON.stringify(discounts)); } catch (e) { }
 }
 
 function renderDiscounts() {
@@ -3110,10 +3110,12 @@ function renderDiscounts() {
         const usedStr = d.maxUse ? `${d.used || 0} / ${d.maxUse}` : `${d.used || 0}`;
         let statusBadge, statusCls;
         if (d.status === 'active') { statusBadge = 'Faol'; statusCls = 'badge-green'; }
-        else if (d.status === 'expired') { statusBadge = 'Muddati o\\'tgan'; statusCls = 'badge-red'; }
-        else { statusBadge = 'O\\'chirilgan'; statusCls = 'badge-yellow'; }
+        else if (d.status === 'expired') {
+            statusBadge = 'Muddati o\\'tgan'; statusCls = 'badge - red'; }
+        else {
+                statusBadge = 'O\\'chirilgan'; statusCls = 'badge - yellow'; }
 
-        return `<tr>
+                return `<tr>
             <td><strong>${escapeHTML(d.name)}</strong></td>
             <td><code style="background:var(--bg);padding:4px 8px;border-radius:6px;font-weight:700;color:var(--primary)">${escapeHTML(d.code)}</code></td>
             <td>${d.type === 'percent' ? 'Foiz' : 'Summa'}</td>
@@ -3127,7 +3129,7 @@ function renderDiscounts() {
                 <button class="btn btn-outline btn-sm" onclick="deleteDiscount(${d.id})" style="margin-left:4px"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`;
-    }).join('');
+            }).join('');
 }
 
 function openDiscountModal() {
@@ -3195,18 +3197,18 @@ function toggleDiscount(id) {
     d.status = d.status === 'disabled' ? 'active' : 'disabled';
     saveDiscountsData();
     renderDiscounts();
-    showNotif('info', d.status === 'active' ? 'Faollashtirildi!' : 'O\\'chirildi!', `"${d.name}" ${d.status === 'active' ? 'faol' : 'o\\'chirilgan'}`);
+    showNotif('info', d.status === 'active' ? 'Faollashtirildi!' : 'O\\'chirildi!', `"${d.name}" ${d.status === 'active' ? 'faol' : 'o\\'chirilgan'} `);
 }
 
 function deleteDiscount(id) {
     if (!requireRole('admin')) return;
     const d = discounts.find(x => x.id === id);
     if (!confirm(`"${d?.name}" chegirmasini o\\'chirmoqchimisiz?`)) return;
-    discounts = discounts.filter(x => x.id !== id);
-    saveDiscountsData();
-    addLog('Chegirma', `"${d?.name}" o\\'chirildi`);
-    showNotif('info', 'O\\'chirildi!', 'Chegirma o\\'chirildi');
-    renderDiscounts();
+discounts = discounts.filter(x => x.id !== id);
+saveDiscountsData();
+addLog('Chegirma', `"${d?.name}" o\\'chirildi`);
+showNotif('info', 'O\\'chirildi!', 'Chegirma o\\'chirildi');
+renderDiscounts();
 }
 
 // Init: show home page or shop for guest on page load

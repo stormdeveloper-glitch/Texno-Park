@@ -19,7 +19,7 @@ class TexnoParkApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Texno Park POS',
+      title: 'Texno Park N1 POS',
       debugShowCheckedModeBanner: false,
       
       // Material 3 Och rangli premium mavzu

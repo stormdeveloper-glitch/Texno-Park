@@ -1,4 +1,4 @@
-# Texno Park POS — Cloudflare bilan ishlash qo'llanmasi
+# Texno Park N1 POS — Cloudflare bilan ishlash qo'llanmasi
 
 Ushbu hujjat saytni Cloudflare orqasida xavfsiz ishga tushirish uchun
 barcha qadamlarni o'z ichiga oladi: **Turnstile (CAPTCHA)**, WAF, rate limit,
@@ -15,7 +15,7 @@ Yaratilgan widget (Cloudflare hisobi: `Aniedituz@gmail.com`):
 | **Site key** (ochiq) | `0x4AAAAAAE-oOjwa55yt8NPr` | `.env` → `CF_TURNSTILE_SITE_KEY`, brauzerga `/api/config` orqali beriladi |
 | **Secret key** (maxfiy) | `0x4AAAAAAE-oOgyeBisDQXx5FT7tAfXlCVY` | `.env` → `CF_TURNSTILE_SECRET_KEY` (faqat serverda) |
 
-Widget nomi: **Texno Park POS**, rejim: `managed`.
+Widget nomi: **Texno Park N1 POS**, rejim: `managed`.
 Hozir ruxsat etilgan domenlar: `texnoo.com`, `universall.uz`, `localhost`, `127.0.0.1`.
 
 ### Yangi domen — faqat `.env` ga yoziladi
@@ -52,7 +52,7 @@ Tekshirish va qo'lda ishga tushirish:
 - yoki `POST /api/cloudflare/sync-domain` (admin tokeni bilan).
 
 > Token bo'lmasa ham hammasi ishlaydi — domenni dashboard'da qo'shasiz:
-> **Turnstile → Texno Park POS → Edit → Domains → Add domain**.
+> **Turnstile → Texno Park N1 POS → Edit → Domains → Add domain**.
 
 ### Server tomonda
 - `POST /api/auth/login` — token yuborilgan bo'lsa **doim** `siteverify` orqali

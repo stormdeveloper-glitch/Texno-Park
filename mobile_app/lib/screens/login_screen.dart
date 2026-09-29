@@ -95,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Icon(Icons.precision_manufacturing, size: 36, color: Theme.of(context).colorScheme.primary),
                           const SizedBox(width: 12),
                           Text(
-                            'Texno Park',
+                            'Texno Park N1',
                             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                   fontWeight: FontWeight.extrabold,
                                   color: Theme.of(context).colorScheme.onSurface,

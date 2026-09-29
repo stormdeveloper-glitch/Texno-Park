@@ -207,7 +207,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const Text(
-                            'Texno PARK',
+                            'Texno Park N1',
                             textAlign: TextAlign.center,
                             style: TextStyle(fontWeight: FontWeight.extrabold, fontSize: 20),
                           ),

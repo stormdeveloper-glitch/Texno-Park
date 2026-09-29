@@ -35,6 +35,8 @@ let systemSettings = {
     companyPhone: '',
     companyAddress: '',
     companyTin: '',
+    // ── Brending: kompaniya logotipi (havola: bucket yoki /uploads/...) ──
+    companyLogo: '',
     // ── Xavfsizlik ──
     sessionTimeoutMin: 20,
     maxLoginAttempts: 5,
@@ -442,9 +444,24 @@ async function uploadProductImageToBucket(input) {
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     }
 
+    const field = document.getElementById('p-img');
+
     try {
+        // 1) Bucketga (Railway/S3) yuklash — havola qaytsa shu havola ishlatiladi
+        const uploaded = await uploadToStorage(file, 'products');
+        if (uploaded.ok && uploaded.url) {
+            // Muhim: qaytgan havola AYNAN mahsulot rasmi maydoniga tushadi
+            if (field) field.value = uploaded.url;
+            updateProductImagePreview(uploaded.url);
+            playSuccess();
+            showNotif('success', 'Rasm yuklandi!',
+                'Havola mahsulot rasmi maydoniga biriktirildi');
+            return;
+        }
+
+        // 2) Zaxira yo'l: brauzerda siqish → bazaga (base64)
+        console.warn('Bucketga yuklash amalga oshmadi, bazaga saqlanadi:', uploaded.message);
         const dataUrl = await compressImageFile(file);
-        const field = document.getElementById('p-img');
         if (field) field.value = dataUrl;
         updateProductImagePreview(dataUrl);
         playSuccess();
@@ -452,7 +469,7 @@ async function uploadProductImageToBucket(input) {
         showNotif('success', 'Rasm tayyor!',
             `Rasm siqildi (${kb} KB) va mahsulot bilan birga bazaga saqlanadi`);
     } catch (e) {
-        console.error('Rasm siqishda xatolik:', e);
+        console.error('Rasm yuklashda xatolik:', e);
         playError();
         showNotif('error', 'Yuklanmadi!', e?.message || 'Rasmni qayta ishlab bo\'lmadi');
     } finally {
@@ -463,6 +480,168 @@ async function uploadProductImageToBucket(input) {
         input.value = '';
     }
 }
+
+// ============================================================
+// OBYEKT SAQLASH (Railway Bucket / S3) — yuklash yordamchisi
+// ============================================================
+/**
+ * Rasmni OBYEKT SAQLASHGA (Railway Bucket / S3) yuklaydi.
+ *
+ * Server `/api/upload` orqali faylni bucketga yuboradi va OCHIQ HAVOLANI
+ * qaytaradi. Havola qaytgach u AYNAN kerakli joyga yoziladi:
+ *   • mahsulot rasmi      → `p-img` maydoni
+ *   • kompaniya logotipi  → `systemSettings.companyLogo`
+ *   • filial logotipi     → filial yozuvi
+ *
+ * S3 sozlanmagan bo'lsa server lokal zaxira yo'lni ishlatadi (/uploads/...).
+ * Ikkala holatda ham javob bir xil: { ok, url, storage }.
+ */
+async function uploadToStorage(file, folder = 'products') {
+    try {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('folder', folder);
+        // Diqqat: Content-Type QO'YILMAYDI — brauzer multipart boundary'ni
+        // o'zi qo'shadi (aks holda server faylni o'qiy olmaydi).
+        const res = await fetchWithTimeout('/api/upload', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: form
+        }, 60000);
+        const data = await res.json().catch(() => null);
+        if (res.status === 401) {
+            handleSessionExpired();
+            return { ok: false, message: 'Sessiya tugadi — qayta kiring' };
+        }
+        if (!res.ok || !data || data.status !== 'success' || !data.url) {
+            return { ok: false, message: (data && data.message) || `Yuklashda xatolik (HTTP ${res.status})` };
+        }
+        return { ok: true, url: data.url, storage: data.storage || 'local' };
+    } catch (e) {
+        return { ok: false, message: e?.message || 'Serverga ulanib bo\'lmadi' };
+    }
+}
+// ============================================================
+// BRENDING — kompaniya logotipi (login, sidebar, do'kon, chek)
+// ============================================================
+/**
+ * Logotipni butun interfeysga qo'llaydi.
+ *
+ * Muammo: ilgari logo tanlanganda ham sayt boshidagi belgi (login, sidebar,
+ * do'kon) bir xil qolardi — "logo o'rni almashmayapti". Endi
+ * `systemSettings.companyLogo` to'ldirilganda AYNAN o'sha joylardagi belgi
+ * rasmga almashtiriladi; logotip o'chirilsa standart ikonka qaytadi.
+ */
+function applyBranding() {
+    const logo = safeImageUrl(systemSettings.companyLogo || '');
+    const name = cleanText(systemSettings.companyName, 120) || 'Texno Park N1';
+
+    // Kompaniya nomi ko'rinadigan joylar
+    [['loginCompanyName', name], ['loginShowcaseName', name], ['sideCompanyName', name], ['marketCompanyName', name]]
+        .forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        });
+
+    // Logotip konteynerlari: rasm bo'lsa rasm, bo'lmasa standart ikonka
+    const boxes = [
+        { id: 'loginLogoBox', fallback: '<i class="fas fa-plug"></i>' },
+        { id: 'loginShowcaseLogo', fallback: '<i class="fas fa-bolt"></i>' },
+        { id: 'sideLogoBox', fallback: '<i class="fas fa-plug"></i>' },
+        { id: 'marketLogoBox', fallback: '<i class="fas fa-bolt"></i>' },
+    ];
+    boxes.forEach(box => {
+        const el = document.getElementById(box.id);
+        if (!el) return;
+        el.innerHTML = logo
+            ? `<img src="${escapeHTML(logo)}" alt="Logo" class="brand-logo-img">`
+            : box.fallback;
+    });
+
+    // Sozlamalar sahifasidagi kichik ko'rinish (preview)
+    const preview = document.getElementById('logoPreview');
+    if (preview) {
+        preview.innerHTML = logo
+            ? `<img src="${escapeHTML(logo)}" alt="Logo" style="width:100%;height:100%;object-fit:contain">`
+            : '<span style="font-size:11px;color:var(--muted)">Logo yo\'q</span>';
+    }
+    const removeBtn = document.getElementById('logoRemoveBtn');
+    if (removeBtn) removeBtn.style.display = logo ? '' : 'none';
+}
+
+/** Brending sozlamasini keshga yozadi va serverga sinxronlaydi. */
+function persistBranding(message) {
+    try {
+        localStorage.setItem('tp_settings', JSON.stringify(systemSettings));
+    } catch (e) {
+        // base64 logotip kesh kvotasiga sig'masa — faqat havola saqlanadi
+        try {
+            localStorage.setItem('tp_settings', JSON.stringify({
+                ...systemSettings,
+                companyLogo: safeImageLink(systemSettings.companyLogo)
+            }));
+        } catch (e2) { }
+    }
+    scheduleSyncWithBackend(600);
+    addLog('Brending', 'Kompaniya logotipi yangilandi');
+    playSuccess();
+    if (message) showNotif('success', 'Logo', message);
+}
+
+/** Kompaniya logotipini bucketga yuklab, sozlamalarga yozadi. */
+async function uploadCompanyLogo(input) {
+    if (!requireRole('admin')) return;
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        playError();
+        showNotif('error', 'Xato!', 'Faqat rasm fayl yuklang');
+        input.value = '';
+        return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+        playError();
+        showNotif('error', 'Xato!', 'Logotip hajmi 8MB dan oshmasin');
+        input.value = '';
+        return;
+    }
+    const status = document.getElementById('logoUploadStatus');
+    if (status) status.textContent = 'Yuklanmoqda...';
+
+    try {
+        const uploaded = await uploadToStorage(file, 'logo');
+        if (uploaded.ok && uploaded.url) {
+            systemSettings.companyLogo = uploaded.url;
+            persistBranding('Logo yuklandi va havolasi biriktirildi');
+        } else {
+            // Zaxira: kichik logotipni bazaga (base64) saqlash
+            console.warn('Logo bucketga yuklanmadi, bazaga saqlanadi:', uploaded.message);
+            const dataUrl = await compressImageFile(file, 512, 0.85);
+            systemSettings.companyLogo = dataUrl;
+            persistBranding('Logo bazaga saqlandi (bucket mavjud emas)');
+        }
+        if (status) status.textContent = '';
+        applyBranding();
+    } catch (e) {
+        console.error('Logo yuklash xatosi:', e);
+        if (status) status.textContent = '';
+        playError();
+        showNotif('error', 'Yuklanmadi!', e?.message || 'Logotipni yuklab bo\'lmadi');
+    } finally {
+        input.value = '';
+    }
+}
+
+/** Logotipni o'chiradi (standart belgi qaytadi). */
+function removeCompanyLogo() {
+    if (!requireRole('admin')) return;
+    if (!confirm('Logotipni olib tashlaysizmi?')) return;
+    systemSettings.companyLogo = '';
+    persistBranding('Logotip olib tashlandi');
+    applyBranding();
+}
+
+
 
 function csvCell(value) {
     const text = String(value ?? '');
@@ -491,6 +670,15 @@ function normalizeProduct(p) {
         barcode: cleanText(p?.barcode, 64),
         img: safeImageUrl(p?.img),
         desc: cleanText(p?.desc, 300),
+        // ── Filial (ombor) biriktirilishi ──────────────────────────────
+        // MUHIM: bu maydon saqlanib qolishi shart — aks holda serverdan
+        // qaytgan mahsulot "filialsiz" bo'lib qoladi va har bir filial
+        // ombori bo'sh ko'rinadi.
+        branchId: cleanText(p?.branchId, 40),
+        // ── Fiskal chek maydonlari (QR-kodli chek uchun) ───────────────
+        ikpu: String(p?.ikpu ?? '').replace(/\D/g, '').slice(0, 17),
+        packageCode: cleanText(p?.packageCode, 20),
+        vatPercent: Number.isFinite(Number(p?.vatPercent)) ? Number(p.vatPercent) : 12,
     };
 }
 
@@ -597,7 +785,8 @@ function categoryFaIcon(name) { return CATEGORY_FA_ICON[name] || 'fa-box'; }
 // boshlanadi va faqat haqiqiy kiritilgan ma'lumot asosida o'sadi.
 // Eski demo keshni bir marta tozalab tashlaymiz.
 const DATA_VERSION = 'real-3';
-if (localStorage.getItem('tp_data_version') !== DATA_VERSION) {     ['tp_products', 'tp_customers', 'tp_sales', 'tp_logs', 'tp_salary_records',
+if (localStorage.getItem('tp_data_version') !== DATA_VERSION) {
+    ['tp_products', 'tp_customers', 'tp_sales', 'tp_logs', 'tp_salary_records',
         'tp_salary_history', 'tp_contracts', 'tp_security_log', 'tp_sms_history'].forEach(k => localStorage.removeItem(k));
     localStorage.setItem('tp_data_version', DATA_VERSION);
 }
@@ -702,14 +891,70 @@ salesHistory = Array.isArray(salesHistory) ? salesHistory : [];
 logs = Array.isArray(logs) ? logs : [];
 
 // ============================================================
+// KIRIM / CHIQIM / HARAJAT — filial bo'yicha moliyaviy nazorat
+// ============================================================
+// Admin asosan shu ko'rsatkichlarni kuzatadi: har bir filialga qancha
+// pul kirdi (kirim), qancha chiqdi (chiqim) va qancha harajat qilindi.
+// Yozuvlar server bazasida `cashFlow` kaliti ostida saqlanadi.
+const CASHFLOW_TYPES = {
+    kirim: { label: 'Kirim', icon: 'fa-arrow-down-long' },
+    chiqim: { label: 'Chiqim', icon: 'fa-arrow-up-long' },
+    harajat: { label: 'Harajat', icon: 'fa-receipt' },
+};
+const CASHFLOW_CATEGORIES = ['Savdo tushumi', "Ta'minotchi to'lovi", 'Ijara',
+    'Oylik maosh', 'Kommunal', 'Soliq', 'Transport', 'Reklama',
+    "Ta'mirlash", 'Kanselyariya', 'Boshqa'];
+
+/** Kirim/chiqim yozuvini xavfsiz shaklga keltiradi. */
+function normalizeCashFlow(c) {
+    if (!c || typeof c !== 'object') return null;
+    const amount = Number(c.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const type = Object.prototype.hasOwnProperty.call(CASHFLOW_TYPES, String(c.type))
+        ? String(c.type) : 'chiqim';
+    return {
+        id: String(c.id || ('cf-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8))).slice(0, 60),
+        type,
+        amount: Math.round(amount * 100) / 100,
+        category: cleanText(c.category, 60) || 'Boshqa',
+        note: cleanText(c.note, 240),
+        branchId: cleanText(c.branchId, 40),
+        date: cleanText(c.date, 10) || new Date().toISOString().slice(0, 10),
+        createdAt: cleanText(c.createdAt, 30) || new Date().toLocaleString('uz-UZ'),
+        user: cleanText(c.user, 120),
+    };
+}
+
+let cashFlow = safeJsonParse(localStorage.getItem('tp_cash_flow') || '[]', []);
+cashFlow = Array.isArray(cashFlow) ? cashFlow.map(normalizeCashFlow).filter(Boolean) : [];
+
+/** Faqat faol filialga (yoki barcha filiallarga) tegishli yozuvlar. */
+function cashFlowOfBranch(branchId) {
+    if (!branchId) return cashFlow;
+    return cashFlow.filter(c => String(c.branchId || '') === String(branchId));
+}
+
+/** Yozuvlar summasi (tur bo'yicha). */
+function cashFlowTotals(records) {
+    const list = records || cashFlow;
+    const totals = { kirim: 0, chiqim: 0, harajat: 0 };
+    list.forEach(c => {
+        if (totals[c.type] === undefined) totals[c.type] = 0;
+        totals[c.type] += Number(c.amount) || 0;
+    });
+    totals.net = totals.kirim - totals.chiqim - totals.harajat;
+    return totals;
+}
+
+// ============================================================
 // SMS TEMPLATES (COMPLETED)
 // ============================================================
 const smsTemplates = [
-    { title: 'Chegirma haqida', text: 'Hurmatli {ism}! Texno Parkda 20% chegirma kampaniyasi boshlandi. Muzlatgich, TV va konditsionerlarda katta chegirmalar. Tez keling!' },
-    { title: 'Chek tasdiqlash', text: 'Hurmatli {ism}! Siz {summa} so\'mlik xarid qildingiz. Chek raqamingiz: {chek}. Xarid uchun rahmat! Texno Park.' },
+    { title: 'Chegirma haqida', text: 'Hurmatli {ism}! Texno Park N1da 20% chegirma kampaniyasi boshlandi. Muzlatgich, TV va konditsionerlarda katta chegirmalar. Tez keling!' },
+    { title: 'Chek tasdiqlash', text: 'Hurmatli {ism}! Siz {summa} so\'mlik xarid qildingiz. Chek raqamingiz: {chek}. Xarid uchun rahmat! Texno Park N1.' },
     { title: 'Tug\'ilgan kun', text: 'Hurmatli {ism}! Tug\'ilgan kuningiz bilan qutlaymiz! 🎉 Sovg\'a sifatida keyingi xaridingizda 10% chegirma beramiz.' },
-    { title: 'Yangi mahsulot', text: 'Hurmatli {ism}! Texno Parkda yangi {mahsulot} keldi. Narxi: {narx} so\'m. Soni cheklangan, bugun keling!' },
-    { title: 'Qarz eslatma', text: 'Hurmatli {ism}! Qoldiq to\'lovingiz {summa} so\'m. Iltimos, {sana} gacha to\'lashingizni so\'raymiz. Texno Park.' },
+    { title: 'Yangi mahsulot', text: 'Hurmatli {ism}! Texno Park N1da yangi {mahsulot} keldi. Narxi: {narx} so\'m. Soni cheklangan, bugun keling!' },
+    { title: 'Qarz eslatma', text: 'Hurmatli {ism}! Qoldiq to\'lovingiz {summa} so\'m. Iltimos, {sana} gacha to\'lashingizni so\'raymiz. Texno Park N1.' },
     { title: 'Kafolat eslatma', text: 'Hurmatli {ism}! Sizning {mahsulot} qurilmangizning kafolati {sana} da tugaydi. Kafolatni uzaytirish uchun murojaat qiling.' },
 ];
 
@@ -736,6 +981,8 @@ function saveToStorage() {
         localStorage.setItem('tp_customers', JSON.stringify(customers));
         localStorage.setItem('tp_sales', JSON.stringify(salesHistory));
         localStorage.setItem('tp_logs', JSON.stringify(logs));
+        try { localStorage.setItem('tp_branches', JSON.stringify(branches)); } catch (e) { }
+        try { localStorage.setItem('tp_cash_flow', JSON.stringify(cashFlow)); } catch (e) { }
         try { localStorage.setItem('tp_contracts', JSON.stringify(contracts)); } catch (e) { }
         syncWithBackend(); // Sync with SQLite Database
     } catch (e) {
@@ -953,7 +1200,10 @@ function buildSyncPayload() {
         smsHistory: readLocalJSON('tp_sms_history', []),
         salaryRecords: readLocalJSON('tp_salary_records', []),
         salaryHistory: readLocalJSON('tp_salary_history', []),
-        securityLog: readLocalJSON('tp_security_log', [])
+        securityLog: readLocalJSON('tp_security_log', []),
+        branches: branches,
+        // Kirim / chiqim / harajat yozuvlari (filial bo'yicha)
+        cashFlow: cashFlow
     };
 }
 
@@ -1128,6 +1378,8 @@ async function loadFromBackend() {
                 contracts = data.contracts.map(normalizeContract).filter(c => c && c.customer);
             }
             if (data.settings) systemSettings = { ...systemSettings, ...data.settings };
+            // Brending (logotip/nom) serverdan kelgan sozlamalar bilan yangilanadi
+            try { applyBranding(); } catch (e) { }
 
             // Boshqa bo'limlar ma'lumotini ham bazadan tiklaymiz
             // (kategoriya, chegirma, SMS tarixi, maosh, xavfsizlik jurnali)
@@ -1150,10 +1402,18 @@ async function loadFromBackend() {
             }
             if (Array.isArray(data.salaryHistory)) {
                 try { localStorage.setItem('tp_salary_history', JSON.stringify(data.salaryHistory)); } catch (e) { }
-            }
-            if (Array.isArray(data.securityLog)) {
+            } if (Array.isArray(data.securityLog)) {
                 securityEvents = data.securityLog;
                 try { localStorage.setItem('tp_security_log', JSON.stringify(securityEvents)); } catch (e) { }
+            }
+            if (Array.isArray(data.branches)) {
+                branches = data.branches.map(normalizeBranch).filter(Boolean);
+                try { localStorage.setItem('tp_branches', JSON.stringify(branches)); } catch (e) { }
+            }
+            if (Array.isArray(data.cashFlow) || Array.isArray(data.expenses)) {
+                cashFlow = (data.cashFlow || data.expenses)
+                    .map(normalizeCashFlow).filter(Boolean);
+                try { localStorage.setItem('tp_cash_flow', JSON.stringify(cashFlow)); } catch (e) { }
             }
 
             // Save to local storage as fallback cache
@@ -1319,10 +1579,10 @@ function toggleEmployeeDropdown(e) {
     const dp = document.getElementById('topbarEmployeeDropdown');
     if (!dp) return;
     const isShowing = dp.style.display === 'block';
-    
+
     // Close other dropdowns first
     document.querySelectorAll('.employee-dropdown-menu').forEach(d => d.style.display = 'none');
-    
+
     if (!isShowing) {
         dp.style.display = 'block';
         renderEmployeeDropdown();
@@ -1332,7 +1592,7 @@ function toggleEmployeeDropdown(e) {
 }
 
 // Close dropdown when clicking outside
-document.addEventListener('click', function(e) {
+document.addEventListener('click', function (e) {
     const container = document.querySelector('.employee-dropdown-container');
     if (container && !container.contains(e.target)) {
         const dp = document.getElementById('topbarEmployeeDropdown');
@@ -1343,9 +1603,9 @@ document.addEventListener('click', function(e) {
 function renderEmployeeDropdown() {
     const dp = document.getElementById('topbarEmployeeDropdown');
     if (!dp) return;
-    
+
     const isLoggedIn = currentUser && currentUser.role !== 'customer';
-    
+
     let html = `
         <div class="employee-dropdown-item" onclick="showEmployeeProfile()">
             <i class="fas fa-user-circle" style="width:16px; margin-right:8px;"></i>
@@ -1364,7 +1624,7 @@ function renderEmployeeDropdown() {
             <span>Ro'yxatdan o'tish</span>
         </div>
     `;
-    
+
     if (isLoggedIn) {
         html += `
             <div class="employee-dropdown-item logout" onclick="doLogout(); document.getElementById('topbarEmployeeDropdown').style.display='none';">
@@ -1373,7 +1633,7 @@ function renderEmployeeDropdown() {
             </div>
         `;
     }
-    
+
     dp.innerHTML = html;
 }
 
@@ -1404,7 +1664,7 @@ function openEmployeeLogin() {
     const app = document.getElementById('app');
     if (loginPage) {
         loginPage.classList.add('active');
-        loginPage.style.display = 'flex';
+        loginPage.style.display = 'grid';
     }
     if (app) app.style.display = 'none';
     document.getElementById('loginUser')?.focus();
@@ -1619,12 +1879,25 @@ function doLogout(force = false) {
 // ============================================================
 function initApp() {
     loadSettings();
+
+    // Public marketplace/guest mode does not need POS, payroll, security or
+    // dashboard modules. Keeping this path small also makes the catalog
+    // available when the API is offline or opened from file://.
+    if (!currentUser) {
+        setupRoleBasedNav();
+        renderShop();
+        updateShopCart();
+        initMarketChrome();
+        return;
+    }
+
     checkClickCallback();
     setupRoleBasedNav();
     initClock();
     loadDashboard();
     loadPOS();
     renderShop();
+    initMarketChrome();
     renderProducts();
     renderCustomers();
     renderEmployees();
@@ -1652,6 +1925,10 @@ function initApp() {
     if (helpTourBtn) helpTourBtn.style.display = hasTour ? '' : 'none';
     // Har bir panel uchun sayohat (birinchi kirishda avtomatik)
     if (typeof Tour !== 'undefined') Tour.maybeAutoStart();
+    // Filiallar: yorliq badge, faol filial tanlagich
+    if (typeof Branches !== 'undefined') Branches.init();
+    // Kirim / chiqim / harajat (filial bo'yicha moliyaviy nazorat)
+    if (typeof CashFlow !== 'undefined') CashFlow.init();
 }
 
 function showLoginScreen() {
@@ -1661,7 +1938,7 @@ function showLoginScreen() {
 
     if (loginPage) {
         loginPage.classList.add('active');
-        loginPage.style.display = 'flex';
+        loginPage.style.display = 'grid';
     }
     if (app) app.style.display = 'none';
 }
@@ -1770,6 +2047,8 @@ function goTo(pageId, el) {
         discounts: ['Chegirmalar', 'Chegirma va promo-kodlar boshqaruvi'],
         contracts: ['Shartnomalar', 'Avtomatik shakllantiriladigan shartnomalar'],
         pos: ['Kassa (POS)', 'F2=To\'lov | Esc=Tozala | F3=Kassa | F8=Chek'],
+        branches: ['Filiallar va joylashuv', 'Filiallar ro\'yxati va boshqaruv'],
+        cashflow: ['Kirim / Chiqim / Harajat', 'Filiallar bo\'yicha pul harakati nazorati'],
         settings: ['Sozlamalar', 'Tizim sozlamalari'],
         assistant: ['AI Yordamchi', 'Bazadagi real ko\'rsatkichlar bo\'yicha yordamchi (admin)'],
     };
@@ -1789,6 +2068,8 @@ function goTo(pageId, el) {
     if (key === 'logs') renderSecurityPanel();
     if (key === 'settings') { Security.renderSettings(); PaymentGateway.renderSettings(); }
     if (key === 'assistant') { Assistant.init(); }
+    if (key === 'branches' && typeof Branches !== 'undefined') Branches.onPageOpen();
+    if (key === 'cashflow' && typeof CashFlow !== 'undefined') CashFlow.onPageOpen();
 
     // 6) chart va layout moslashuvlari
     // Agar sahifa grafiklarni o'z ichiga olsa, kerakli init/update funksiyalarni chaqiramiz
@@ -1843,14 +2124,25 @@ function toggleSidebar() {
 // THEME
 // ============================================================
 function syncThemeIcon() {
-    const currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
     const icon = document.getElementById('themeIcon');
-    if (icon) icon.className = currentTheme === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+    // POS topbar icon reflects the current theme (moon = dark, sun = light).
+    if (icon) icon.className = isLight ? 'fas fa-sun' : 'fas fa-moon';
+    // Market header lock button reflects the theme it switches to.
+    const marketIcon = document.getElementById('marketThemeIcon');
+    if (marketIcon) marketIcon.className = isLight ? 'fas fa-moon' : 'fas fa-sun';
+    const marketBtn = document.getElementById('marketThemeToggle');
+    if (marketBtn) {
+        const label = isLight ? 'Tungi rejim' : 'Kunduzgi rejim';
+        marketBtn.setAttribute('title', label);
+        marketBtn.setAttribute('aria-label', label);
+    }
 }
 
 function applySavedTheme() {
-    const savedTheme = localStorage.getItem('tp_theme');
-    const nextTheme = savedTheme === 'light' ? 'light' : 'dark';
+    let savedTheme = null;
+    try { savedTheme = localStorage.getItem('tp_theme'); } catch (e) { savedTheme = null; }
+    const nextTheme = savedTheme === 'dark' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', nextTheme);
     syncThemeIcon();
 }
@@ -1859,7 +2151,7 @@ function toggleTheme() {
     const current = document.documentElement.getAttribute('data-theme');
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('tp_theme', next);
+    try { localStorage.setItem('tp_theme', next); } catch (e) { /* storage blocked (e.g. file://) */ }
     syncThemeIcon();
 }
 
@@ -1935,7 +2227,7 @@ function loadAdminDashboard() {
                 });
             }
         });
-        
+
         // Faqat haqiqiy savdo: ma'lumot bo'lmasa ro'yxat bo'sh qoladi
         let topProds = Object.entries(productSales)
             .map(([name, qty]) => ({ name, sales: qty }))
@@ -1947,7 +2239,7 @@ function loadAdminDashboard() {
             setTimeout(() => { initSalesChart(); initPayChart(); }, 100);
             return;
         }
-        
+
         const maxSales = Math.max(...topProds.map(p => p.sales)) || 1;
         topProds = topProds.map(p => ({
             ...p,
@@ -2117,7 +2409,7 @@ function initSalesChart() {
     const ctx = canvas.getContext('2d');
     if (salesChart) salesChart.destroy();
     const week7 = last7DaysSeries();
-    
+
     // Create gradient
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
     gradient.addColorStop(0, 'rgba(255,107,53,0.35)');
@@ -2415,6 +2707,116 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// ============================================================
+// XOHISHLAR RO'YXATI (wishlist) — mijoz tomonida lokal saqlanadi
+// ============================================================
+const WISHLIST_STORAGE_KEY = 'tp_wishlist';
+
+function getWishlist() {
+    const list = safeJsonParse(localStorage.getItem(WISHLIST_STORAGE_KEY) || '[]', []);
+    return Array.isArray(list) ? list.map(Number).filter(n => Number.isFinite(n)) : [];
+}
+
+function isWished(productId) {
+    return getWishlist().includes(Number(productId));
+}
+
+/** Savat/katalog kartasidagi yurak tugmasi. */
+function toggleWishlist(event, productId) {
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+    const id = Number(productId);
+    const list = getWishlist();
+    const index = list.indexOf(id);
+    const added = index === -1;
+    if (added) list.push(id); else list.splice(index, 1);
+    try { localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(list)); } catch (e) { }
+
+    syncWishlistIcons();
+    const product = products.find(p => p.id === id);
+    showNotif(added ? 'success' : 'info',
+        added ? 'Xohishlarga qo\'shildi' : 'Xohishlardan olindi',
+        product ? product.name : 'Xohishlar ro\'yxati yangilandi');
+}
+
+/** Saqlangan xohishlarga qarab barcha yurak tugmalarini yangilaydi. */
+function syncWishlistIcons() {
+    const list = getWishlist();
+    document.querySelectorAll('.pc-wish[data-wish]').forEach(btn => {
+        const on = list.includes(Number(btn.dataset.wish));
+        btn.classList.toggle('on', on);
+        const icon = btn.querySelector('i');
+        if (icon) icon.className = `fa${on ? 's' : 'r'} fa-heart`;
+    });
+}
+
+/** Demo chegirma foizi — mahsulot ID siga bog'langan barqaror qiymat. */
+function shopDiscountPct(productId) {
+    return 5 + ((Number(productId) * 7) % 6) * 5;
+}
+
+/** Chegirmadan oldingi (chizilgan) narx. */
+function shopOldPrice(price, discountPct) {
+    const value = Number(price) || 0;
+    const pct = Number(discountPct) || 0;
+    if (pct <= 0 || pct >= 100) return value;
+    return Math.round(value / (1 - pct / 100) / 1000) * 1000;
+}
+
+/** Katalog va aksiya bo'limlari uchun yagona mahsulot kartasi. */
+function shopProductCardHTML(p) {
+    const imgSrc = productImageSrc(p.img) || shopFallbackImage(p.cat);
+    const rating = (4.4 + ((p.id * 3) % 7) * 0.1).toFixed(1);
+    const reviewCount = (p.id * 7 + 12);
+    const discountPct = shopDiscountPct(p.id);
+    const oldPrice = shopOldPrice(p.price, discountPct);
+    const monthlyInst = Math.round(p.price / 12);
+    const wished = isWished(p.id);
+
+    return `
+    <div class="product-card shop-product-card" onclick="openProductDetails(${p.id})">
+      <div class="pc-media">
+        <span class="pc-discount">-${discountPct}%</span>
+        <button type="button" class="pc-wish${wished ? ' on' : ''}" data-wish="${p.id}" title="Xohishlar ro'yxati" onclick="toggleWishlist(event, ${p.id})"><i class="fa${wished ? 's' : 'r'} fa-heart"></i></button>
+        <img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">
+        <div class="product-card-img-placeholder" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
+          ${CATEGORY_EMOJI[p.cat] || '📦'}
+        </div>
+      </div>
+      <div class="product-card-body">
+        <div class="pc-rating"><i class="fas fa-star"></i><b>${rating}</b><span>(${reviewCount} sharh)</span></div>
+        <div class="product-card-name">${escapeHTML(p.name)}</div>
+        <span class="product-card-inst">${fmt(monthlyInst)} so'm/oyiga</span>
+        <div class="pc-price-row">
+          <div>
+            <div class="pc-old"><s>${fmt(oldPrice)} so'm</s><em>-${discountPct}%</em></div>
+            <div class="product-card-price">${fmt(p.price)} so'm</div>
+            <div class="product-card-stock">Qoldiq: <strong>${p.stock} ta</strong></div>
+          </div>
+          <button type="button" class="product-add-btn" title="Savatga qo'shish" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id})"><i class="fas fa-cart-plus"></i></button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/** Mobil pastki navigatsiyadagi faol bo'limni belgilaydi. */
+function syncMarketBottomNav(section) {
+    const nav = document.querySelector('.market-bottom-nav');
+    if (!nav) return;
+    nav.querySelectorAll('button[data-nav]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.nav === section);
+    });
+}
+
+/** Footer yili, xohishlar va mobil navigatsiya holatini tayyorlaydi. */
+function initMarketChrome() {
+    const year = document.getElementById('marketFooterYear');
+    if (year) year.textContent = String(new Date().getFullYear());
+    syncWishlistIcons();
+    syncMarketBottomNav('home');
+    const bottomBadge = document.getElementById('marketBottomCartCount');
+    if (bottomBadge) bottomBadge.textContent = shopCart.reduce((s, x) => s + x.qty, 0);
+}
+
 function renderShop() {
     const grid = document.getElementById('shopProductGrid');
     const tabs = document.getElementById('shopCatSidebarList');
@@ -2423,6 +2825,13 @@ function renderShop() {
     shopFilter = cleanText(document.getElementById('shopSearch')?.value || shopFilter, 80).toLowerCase();
     // Kategoriyalar doimiy ro'yxatdan — mahsulot soni 0 bo'lsa ham ko'rinadi
     const cats = ['Barchasi', ...CATEGORIES];
+    const nav = document.getElementById('marketCategoryNav');
+    if (nav) {
+        const toggle = nav.querySelector('.market-category-toggle');
+        nav.innerHTML = '';
+        if (toggle) nav.appendChild(toggle);
+        nav.insertAdjacentHTML('beforeend', cats.slice(0, 8).map(c => `<button type="button" class="market-nav-category ${(!shopCat && c === 'Barchasi') || shopCat === c ? 'active' : ''}" onclick='filterShopCat(${JSON.stringify(c)}, this)'><i class="fas ${categoryFaIcon(c)}"></i><span>${escapeHTML(c)}</span></button>`).join(''));
+    }
 
     tabs.innerHTML = cats.map(c => {
         const count = c === 'Barchasi' ? products.length : products.filter(p => p.cat === c).length;
@@ -2433,7 +2842,6 @@ function renderShop() {
         </button>`;
     }).join('');
 
-    const icons = CATEGORY_EMOJI;
     const list = products.filter(p =>
         (!shopCat || p.cat === shopCat) &&
         p.stock > 0 &&
@@ -2450,64 +2858,17 @@ function renderShop() {
         list.sort((a, b) => a.name.localeCompare(b.name));
     }
 
-    grid.innerHTML = list.map(p => {
-        const catImages = {
-            'Muzlatgichlar': 'https://images.unsplash.com/photo-1571175432247-fe3702b899f1?auto=format&fit=crop&w=400&q=80',
-            'Kir Yuvish Mashinalari': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=400&q=80',
-            'Konditsionerlar': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=400&q=80',
-            'Televizorlar': 'https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=400&q=80',
-            'Changyutgichlar': 'https://images.unsplash.com/photo-1558317374-067fb5f30001?auto=format&fit=crop&w=400&q=80',
-            'Pechlar': 'https://images.unsplash.com/photo-1578643463396-0997cb5328c1?auto=format&fit=crop&w=400&q=80',
-            'Mikrotolqinli Pechlar': 'https://images.unsplash.com/photo-1574269909862-7e1d70bb8078?auto=format&fit=crop&w=400&q=80',
-            'Aksessuarlar': 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=400&q=80'
-        };
-        const rawImgSrc = productImageSrc(p.img);
-        const imgSrc = rawImgSrc || catImages[p.cat] || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=400&q=80';
-        
-        // Mock rating details
-        const rating = (4.4 + ((p.id * 3) % 7) * 0.1).toFixed(1);
-        const reviewCount = (p.id * 7 + 12);
-        
-        // Mock installment
-        const monthlyInst = Math.round(p.price / 12);
-        
-        return `
-    <div class="product-card shop-product-card" onclick="addToShopCart(${p.id})" style="position:relative; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor:pointer; display:flex; flex-direction:column; justify-content:space-between; height:100%">
-      <div>
-        <span class="product-card-badge" style="position:absolute;top:10px;left:10px;background:rgba(15,23,42,0.75);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:var(--primary);z-index:2;border:1px solid rgba(255,255,255,0.05)">${escapeHTML(p.cat)}</span>
-        <div style="width:100%;height:180px;overflow:hidden;position:relative;background:#1e293b">
-          <img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'" style="width:100%;height:100%;object-fit:cover;transition:transform 0.5s ease">
-          <div class="product-card-img-placeholder" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
-            ${icons[p.cat] || '📦'}
-          </div>
-        </div>
-        <div class="product-card-body" style="padding:14px 14px 0 14px;position:relative">
-          <!-- Rating -->
-          <div style="display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:12px;color:#fbbf24">
-            <i class="fas fa-star"></i>
-            <span style="font-weight:700;color:var(--text)">${rating}</span>
-            <span style="color:var(--text-secondary)">(${reviewCount} sharh)</span>
-          </div>
-          <div class="product-card-name" style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:6px;min-height:36px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHTML(p.name)}</div>
-          
-          <!-- Installment Tag -->
-          <div style="display:inline-block;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.15);color:var(--primary);font-size:11px;font-weight:700;padding:3px 6px;border-radius:4px;margin-bottom:8px">
-            ${fmt(monthlyInst)} so'm/oyiga
-          </div>
-        </div>
-      </div>
-      
-      <div style="padding:0 14px 14px 14px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px">
-          <div>
-            <div class="product-card-price" style="font-weight:800;color:var(--text);font-size:16px;line-height:1">${fmt(p.price)} so'm</div>
-            <div class="product-card-stock" style="font-size:11px;color:var(--text-secondary);margin-top:4px">Qoldiq: <strong style="color:var(--success)">${p.stock} ta</strong></div>
-          </div>
-          <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id})" style="background:var(--primary);color:white;width:34px;height:34px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 10px rgba(249,115,22,0.3)"><i class="fas fa-cart-plus"></i></button>
-        </div>
-      </div>
-    </div>`;
-    }).join('') || '<div style="text-align:center;padding:60px;color:var(--muted);grid-column:1/-1"><div style="font-size:48px;margin-bottom:16px;opacity:.3">🔍</div><p>Mahsulot topilmadi</p></div>';
+    const emptyHTML = '<div style="text-align:center;padding:60px;color:var(--muted);grid-column:1/-1"><div style="font-size:48px;margin-bottom:16px;opacity:.3">🔍</div><p>Mahsulot topilmadi</p></div>';
+    grid.innerHTML = list.map(p => shopProductCardHTML(p)).join('') || emptyHTML;
+
+    // "Aksiya mahsulotlari" bo'limi — chegirmasi eng katta mahsulotlar
+    const dealGrid = document.getElementById('marketDealGrid');
+    if (dealGrid) {
+        const deals = list.slice()
+            .sort((a, b) => shopDiscountPct(b.id) - shopDiscountPct(a.id))
+            .slice(0, 12);
+        dealGrid.innerHTML = deals.map(p => shopProductCardHTML(p)).join('') || emptyHTML;
+    }
     updateShopCart();
 }
 
@@ -2516,6 +2877,55 @@ function filterShopCat(cat, el) {
     document.querySelectorAll('#shopCatSidebarList .cat-tab').forEach(t => t.classList.remove('active'));
     if (el) el.classList.add('active');
     renderShop();
+}
+
+function shopFallbackImage(category) {
+    const images = {
+        'Muzlatgichlar': 'https://images.unsplash.com/photo-1571175432247-fe3702b899f1?auto=format&fit=crop&w=700&q=80',
+        'Kir Yuvish Mashinalari': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=700&q=80',
+        'Konditsionerlar': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=700&q=80',
+        'Televizorlar': 'https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=700&q=80',
+        'Changyutgichlar': 'https://images.unsplash.com/photo-1558317374-067fb5f30001?auto=format&fit=crop&w=700&q=80',
+        'Pechlar': 'https://images.unsplash.com/photo-1578643463396-0997cb5328c1?auto=format&fit=crop&w=700&q=80',
+        'Mikrotolqinli Pechlar': 'https://images.unsplash.com/photo-1574269909862-7e1d70bb8078?auto=format&fit=crop&w=700&q=80',
+        'Aksessuarlar': 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=700&q=80'
+    };
+    return images[category] || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=700&q=80';
+}
+
+function closeProductDetail() {
+    closeModal('productDetailModal');
+}
+
+function openProductDetails(id) {
+    const product = products.find(p => p.id === id);
+    const box = document.getElementById('productDetailContent');
+    if (!product || !box) return;
+    const image = productImageSrc(product.img) || shopFallbackImage(product.cat);
+    const originalPrice = Math.round(product.price * 1.18);
+    const rating = (4.5 + ((product.id * 3) % 5) * 0.1).toFixed(1);
+    const monthly = Math.round(product.price / 12);
+    box.innerHTML = `
+        <div class="product-detail-gallery">
+            <div class="product-detail-badge"><i class="fas fa-check"></i> Original mahsulot</div>
+            <img src="${escapeHTML(image)}" alt="${escapeHTML(product.name)}" onerror="this.src='${shopFallbackImage(product.cat)}'">
+        </div>
+        <div class="product-detail-info">
+            <span class="product-detail-category">${escapeHTML(product.cat)}</span>
+            <h2 id="productDetailName">${escapeHTML(product.name)}</h2>
+            <div class="product-detail-rating"><i class="fas fa-star"></i><strong>${rating}</strong><span>${product.id * 7 + 12} ta sharh</span></div>
+            <div class="product-detail-stock"><span class="dot"></span> Omborda ${product.stock} ta mavjut</div>
+            <p class="product-detail-description">${escapeHTML(product.desc || 'Texno Park N1 kafolati bilan original va ishonchli mahsulot. Buyurtmadan oldin barcha texnik xususiyatlari tekshiriladi.')}</p>
+            <div class="product-detail-pricing"><span>${fmt(product.price)} so'm</span><del>${fmt(originalPrice)} so'm</del><small>${fmt(monthly)} so'm / oyiga</small></div>
+            <div class="product-detail-actions"><button type="button" class="market-primary-action" onclick="addProductDetailsToCart(${product.id})"><i class="fas fa-cart-plus"></i> Savatga qo'shish</button><button type="button" class="market-secondary-action" onclick="addProductDetailsToCart(${product.id}); showCartView()"><i class="fas fa-bolt"></i> Hozir xarid qilish</button></div>
+            <div class="product-detail-services"><span><i class="fas fa-shield-check"></i> 12 oy kafolat</span><span><i class="fas fa-truck-fast"></i> Tez yetkazish</span><span><i class="fas fa-credit-card"></i> Bo'lib to'lash</span></div>
+        </div>`;
+    openModal('productDetailModal');
+}
+
+function addProductDetailsToCart(id) {
+    addToShopCart(id);
+    closeProductDetail();
 }
 
 function addToShopCart(id) {
@@ -2551,19 +2961,26 @@ function clearShopCart() {
 
 function showCartView() {
     const catalog = document.getElementById('shopCatalogView');
+    const layout = document.querySelector('#page-shop .market-layout');
     const cart = document.getElementById('shopCartView');
     if (catalog) catalog.style.display = 'none';
+    if (layout) layout.style.display = 'none';
     if (cart) {
         cart.style.display = 'block';
         updateShopCart();
     }
+    syncMarketBottomNav('cart');
 }
 
 function showCatalogView() {
     const catalog = document.getElementById('shopCatalogView');
+    const layout = document.querySelector('#page-shop .market-layout');
     const cart = document.getElementById('shopCartView');
     if (catalog) catalog.style.display = 'block';
+    if (layout) layout.style.display = 'grid';
     if (cart) cart.style.display = 'none';
+    renderShop();
+    syncMarketBottomNav('home');
 }
 
 function removeItemFromShopCart(id) {
@@ -2584,6 +3001,10 @@ function updateShopCart() {
     const summaryTotal = document.getElementById('uzumSummaryTotal');
 
     if (countText) countText.textContent = count + ' ta mahsulot';
+    const cartBadge = document.getElementById('marketCartCount');
+    if (cartBadge) cartBadge.textContent = count;
+    const bottomBadge = document.getElementById('marketBottomCartCount');
+    if (bottomBadge) bottomBadge.textContent = count;
     if (summaryCount) summaryCount.textContent = count;
     if (summarySubtotal) summarySubtotal.textContent = fmt(total) + ' so\'m';
     if (summaryTotal) summaryTotal.textContent = fmt(total) + ' so\'m';
@@ -2684,7 +3105,7 @@ function renderUzumRecommendations() {
     grid.innerHTML = list.map(p => {
         const imgSrc = productImageSrc(p.img);
         return `
-            <div class="product-card shop-product-card" onclick="addToShopCart(${p.id}); showNotif('success', 'Savatga qo\\'shildi', '${escapeHTML(p.name)}')">
+            <div class="product-card shop-product-card" onclick="openProductDetails(${p.id})">
                 <span class="product-card-badge" style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:var(--primary);z-index:2;border:1px solid rgba(255,255,255,0.05)">${escapeHTML(p.cat)}</span>
                 <div style="width:100%;height:160px;overflow:hidden;position:relative;border-radius:8px">
                     ${imgSrc
@@ -2789,7 +3210,8 @@ function renderProductGrid() {
     const el = document.getElementById('productGrid');
     if (!el) return;
     const q = cleanText(posFilter, 80).toLowerCase();
-    const list = products.filter(p =>
+    const branch = selectedBranch();
+    const list = visibleProducts().filter(p =>
         (!posCat || p.cat === posCat) &&
         (!q || p.name.toLowerCase().includes(q) || (p.barcode || '').includes(q))
     );
@@ -2810,6 +3232,8 @@ function renderProductGrid() {
         <div class="product-card-stock" style="${p.stock < 5 ? 'color:var(--danger)' : ''}">
           ${p.stock < 5 ? '⚠️ ' : ''}Qoldiq: <strong>${p.stock}</strong>
         </div>
+        ${branch ? '<div class="product-card-branch"><i class="fas fa-map-location-dot"></i> ' +
+                escapeHTML(branch.name) + '</div>' : ''}
         <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToCart(${p.id})">+</button>
       </div>
     </div>
@@ -3230,16 +3654,16 @@ function openClickPopup(url) {
 
 function startClickPaymentPolling(saleId) {
     if (clickPollingInterval) clearInterval(clickPollingInterval);
-    
+
     clickPollingInterval = setInterval(async () => {
         try {
             const res = await fetch(`/api/payment/status/${saleId}`);
             const data = await res.json();
-            
+
             if (data.status === 'paid') {
                 clearInterval(clickPollingInterval);
                 clickPollingInterval = null;
-                
+
                 const sale = salesHistory.find(s => s.id === saleId);
                 if (sale) {
                     sale.status = 'paid';
@@ -3247,11 +3671,11 @@ function startClickPaymentPolling(saleId) {
                         const p = products.find(x => x.id === ci.id);
                         if (p) p.stock = Math.max(0, p.stock - ci.qty);
                     });
-                    
+
                     saveToStorage();
                     playSuccess();
                     showNotif('success', 'To\'lov tasdiqlandi!', `Click to'lovi muvaffaqiyatli qabul qilindi (Buyurtma #${saleId})`);
-                    
+
                     renderReceipt(sale);
                     finishPaidSale(sale);
                     renderProducts();
@@ -3320,7 +3744,7 @@ function renderProducts() {
             .join('');
     }
     const cnt = document.getElementById('productCount');
-    const list = products.filter(p =>
+    const list = visibleProducts().filter(p =>
         (!currentCategory || p.cat === currentCategory) &&
         (!productFilter2 || p.name.toLowerCase().includes(productFilter2.toLowerCase()))
     );
@@ -3328,6 +3752,7 @@ function renderProducts() {
     const icons = CATEGORY_EMOJI;
     document.getElementById('productsTable').innerHTML = list.map(p => {
         const imgSrc = productImageSrc(p.img);
+        const branch = getBranchById(p.branchId);
         return `<tr>
     <td>
       ${imgSrc
@@ -3336,6 +3761,9 @@ function renderProducts() {
     </td>
     <td><strong>${escapeHTML(p.name)}</strong>${p.ikpu ? '' : ' <span class="badge badge-red" title="Fiskal chek chiqmaydi">IKPU yo\'q</span>'}<br><small style="color:var(--muted)">${escapeHTML(p.desc || '')}</small></td>
     <td><span class="badge badge-blue">${escapeHTML(p.cat)}</span></td>
+    <td>${branch
+                ? '<span class="badge" style="background:' + escapeHTML(branch.markerColor) + '22;color:' + escapeHTML(branch.markerColor) + '">' + escapeHTML(branch.markerIcon + ' ' + branch.name) + '</span>'
+                : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
     <td style="font-weight:700;color:var(--primary)">${fmt(p.price)} so'm</td>
     <td><span class="${p.stock < 5 ? 'badge badge-red' : 'badge badge-green'}">${p.stock} dona</span></td>
     <td><span class="badge ${p.stock > 0 ? 'badge-green' : 'badge-red'}">${p.stock > 0 ? 'Bor' : 'Tugagan'}</span></td>
@@ -3344,7 +3772,7 @@ function renderProducts() {
       <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteProduct(${p.id})"><i class="fas fa-trash"></i></button>
     </td>
   </tr>`;
-    }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing</td></tr>';
+    }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing</td></tr>';
 }
 
 function filterByCategory(val) { currentCategory = val; renderProducts(); }
@@ -3734,6 +4162,8 @@ function loadSettings() {
     setVal('barcodeTimeout', systemSettings.barcodeTimeout ?? 50);
     setChecked('soundEnabled', systemSettings.soundEnabled ?? true);
     setChecked('autoPrint', systemSettings.autoPrint ?? true);
+    // Brending: logotip va kompaniya nomi butun interfeysga qo'llaniladi
+    try { applyBranding(); } catch (e) { }
 }
 
 function saveSettings() {
@@ -3757,6 +4187,7 @@ function saveSettings() {
 
     localStorage.setItem('tp_settings', JSON.stringify(systemSettings));
     scheduleSyncWithBackend(); // sozlamalar bazaga yoziladi
+    applyBranding();           // logotip/nom darhol barcha joyga qo'llaniladi
 
     addLog('Sozlama', 'Tizim sozlamalari saqlandi');
     playSuccess();
@@ -3887,16 +4318,28 @@ function importData(input) {
 // ============================================================
 // MODAL
 // ============================================================
-function openModal(id) { document.getElementById(id).classList.add('open'); }
+function openModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusable) setTimeout(() => focusable.focus(), 0);
+}
+
 function closeModal(id) {
-    document.getElementById(id).classList.remove('open');
+    const modal = document.getElementById(id);
+    if (modal) {
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+    }
     if (id === 'checkoutModal' && clickPollingInterval) {
         clearInterval(clickPollingInterval);
         clickPollingInterval = null;
     }
 }
 document.addEventListener('click', e => {
-    if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
+    if (e.target.classList.contains('modal-overlay')) closeModal(e.target.id);
 });
 
 // ============================================================
@@ -3948,8 +4391,9 @@ function globalSearch(q) {
     }
 }
 
+/** Eski nom (moslik uchun) — endi haqiqiy yuklashni chaqiradi. */
 function previewLogo(input) {
-    if (input.files && input.files[0]) showNotif('success', 'Logo!', 'Logo muvaffaqiyatli yuklandi');
+    return uploadCompanyLogo(input);
 }
 
 // ============================================================
@@ -3981,12 +4425,10 @@ document.addEventListener('keydown', e => {
     if (e.key === 'F8') { e.preventDefault(); printReceipt(); }
     // Escape — Close modals / clear cart
     if (e.key === 'Escape') {
-        const openModals = document.querySelectorAll('.modal-overlay.open');
-        if (openModals.length > 0) { openModals.forEach(m => m.classList.remove('open')); }
-        else if (!inInput) {
-            const pagePos = document.getElementById('page-pos');
-            if (pagePos && pagePos.classList.contains('active')) clearCart();
-        }
+        hideSearchSuggestions();
+        const openModals = Array.from(document.querySelectorAll('.modal-overlay.open')).reverse();
+        if (openModals.length > 0) openModals.forEach(m => closeModal(m.id));
+        return;
     }
     // Ctrl+F — Focus global search
     if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
@@ -5503,12 +5945,16 @@ const Fiscal = {
         const opts = options || {};
         if (!sale) return { ok: false, fiscalError: 'Savdo topilmadi' };
         if (sale.status !== 'paid') {
-            return { ok: false, fiscalStatus: 'payment_not_confirmed',
-                     fiscalError: 'To\'lov tasdiqlanmaguncha fiskal chek chiqarilmaydi' };
+            return {
+                ok: false, fiscalStatus: 'payment_not_confirmed',
+                fiscalError: 'To\'lov tasdiqlanmaguncha fiskal chek chiqarilmaydi'
+            };
         }
         if (sale.fiscalSign && sale.fiscalUrl && !opts.force) {
-            return { ok: true, fiscalUrl: sale.fiscalUrl, fiscalSign: sale.fiscalSign,
-                     fiscalNumber: sale.fiscalNumber, cached: true };
+            return {
+                ok: true, fiscalUrl: sale.fiscalUrl, fiscalSign: sale.fiscalSign,
+                fiscalNumber: sale.fiscalNumber, cached: true
+            };
         }
         if (!staffToken) {
             return { ok: false, fiscalError: 'Server bilan aloqa yo\'q — fiskal chek faqat server orqali chiqadi' };
@@ -5561,8 +6007,10 @@ const Fiscal = {
             return { ok: false, reason: 'Fiskal chek hali chiqarilmagan — «QR chekni chiqarish» tugmasini bosing' };
         }
         if (this.isRequired()) {
-            return { ok: false, reason: 'Fiskal modul sozlanmagan (.env: FISCAL_PROVIDER, FISCAL_API_URL, ' +
-                       'FISCAL_SECRET_KEY) — QR-kodsiz chek chop etilmaydi' };
+            return {
+                ok: false, reason: 'Fiskal modul sozlanmagan (.env: FISCAL_PROVIDER, FISCAL_API_URL, ' +
+                    'FISCAL_SECRET_KEY) — QR-kodsiz chek chop etilmaydi'
+            };
         }
         // Modul ixtiyoriy (FISCAL_REQUIRED=false) — chek "FISKAL EMAS" belgisi bilan chiqadi
         return { ok: true, fiscal: false };
@@ -5594,8 +6042,10 @@ const Fiscal = {
             const holder = document.createElement('div');
             holder.style.display = 'none';
             document.body.appendChild(holder);
-            new QRCode(holder, { text: String(text), width: 220, height: 220,
-                                 correctLevel: QRCode.CorrectLevel.M });
+            new QRCode(holder, {
+                text: String(text), width: 220, height: 220,
+                correctLevel: QRCode.CorrectLevel.M
+            });
             // Kutubxona rasmni asinxron to'ldiradi — shuning uchun avval
             // to'g'ridan-to'g'ri canvas'dan o'qiymiz (u sinxron chiziladi).
             let src = '';
@@ -5657,7 +6107,7 @@ const Fiscal = {
         const missing = !this.isConfigured();
         const hint = missing
             ? 'Fiskal modul sozlanmagan: <code>.env</code> da <code>FISCAL_PROVIDER</code>, <code>FISCAL_API_URL</code>, ' +
-              '<code>FISCAL_MERCHANT_ID</code>, <code>FISCAL_SECRET_KEY</code> ni to\'ldiring (batafsil: FISCAL.md).'
+            '<code>FISCAL_MERCHANT_ID</code>, <code>FISCAL_SECRET_KEY</code> ni to\'ldiring (batafsil: FISCAL.md).'
             : 'OFD javob bermadi yoki mahsulotda IKPU (MXIK) / qadoqlash kodi to\'liq emas.';
         return `
         <div style="margin-top:16px;padding:14px;border-radius:12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3)">
@@ -6067,7 +6517,7 @@ const PaymentGateway = {
 
         // Shartnoma avtomatik shakllanadi
         // Shartnoma AVTOMATIK tuzilmaydi — administrator «Shartnomalar» bo'limida
-    // «Qo'lda shartnoma» yoki «Cheklardan import» orqali o'zi tuzadi.
+        // «Qo'lda shartnoma» yoki «Cheklardan import» orqali o'zi tuzadi.
 
         closeModal('paymentModal');
         renderReceipt(sale);
@@ -6375,7 +6825,7 @@ function buildContractFromSale(sale, byAdmin = true) {
         createdBy: byAdmin ? (currentUser?.name || 'Administrator') : (sale?.cashier || 'Tizim'),
         createdAt: new Date().toLocaleString('uz-UZ'),
         note: byAdmin ? 'Administrator tasdig\'i bilan chek asosida tuzilgan'
-                      : 'Savdo asosida shakllantirilgan'
+            : 'Savdo asosida shakllantirilgan'
     });
 }
 
@@ -6432,7 +6882,7 @@ const Contracts = {
             playSuccess();
             showNotif('success', 'Yangilandi',
                 changed ? `${changed} ta shartnoma holati yangilandi`
-                        : 'Barcha shartnoma holatlari joyida');
+                    : 'Barcha shartnoma holatlari joyida');
         }
         return { created: 0, changed };
     },
@@ -6640,7 +7090,7 @@ const Contracts = {
                 createdBy: currentUser?.name || 'Admin',
                 createdAt: new Date().toLocaleString('uz-UZ'),
                 note: note || (saleId ? `Chek #${saleId} asosida tuzilgan (admin)`
-                                     : 'Qo\'lda kiritilgan shartnoma')
+                    : 'Qo\'lda kiritilgan shartnoma')
             });
             contracts.unshift(contract);
             addLog('Shartnoma', `${contract.number} tuzildi (${contract.customer})`);
@@ -6804,7 +7254,7 @@ function buildContractPrintHTML(c) {
     return `
   <div class="contract-doc">
     <div class="cd-head">
-      <div class="cd-brand">TEXNO PARK</div>
+      <div class="cd-brand">Texno Park N1</div>
       <div class="cd-sub">Chilonzor 12, Toshkent • +998 90 123 45 67 • www.texnopark.uz</div>
     </div>
     <h1 class="cd-title">${escapeHTML(c.type)}</h1>
@@ -6815,7 +7265,7 @@ function buildContractPrintHTML(c) {
       <div><b>Kafolat:</b> ${c.warrantyMonths} oy (${fmtDateISO(c.endDate)} gacha)</div>
     </div>
     <div class="cd-parties">
-      <div><b>Ijrochi:</b> "Texno Park" MChJ, INN 123456789</div>
+      <div><b>Ijrochi:</b> "Texno Park N1" MChJ, INN 123456789</div>
       <div><b>Buyurtmachi:</b> ${escapeHTML(c.customer)}${c.phone ? ', tel: ' + escapeHTML(c.phone) : ''}</div>
     </div>
     <table class="cd-table">
@@ -6831,7 +7281,7 @@ function buildContractPrintHTML(c) {
       ${c.note ? `<p>5. Qo'shimcha shartlar: ${escapeHTML(c.note)}</p>` : ''}
     </div>
     <div class="cd-signs">
-      <div><b>Ijrochi:</b> ____________________ / Texno Park /</div>
+      <div><b>Ijrochi:</b> ____________________ / Texno Park N1 /</div>
       <div><b>Buyurtmachi:</b> ____________________ / ${escapeHTML(c.customer)} /</div>
     </div>
     <div class="cd-foot">
@@ -6842,8 +7292,16 @@ function buildContractPrintHTML(c) {
 /* [CONTRACTS-MODULE-END] */
 
 applySavedTheme();
-initApp();
-goTo('page-shop', document.getElementById('nav-shop'));
+function bootstrapApp() {
+    initApp();
+    goTo('page-shop', document.getElementById('nav-shop'));
+    renderShop();
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => window.setTimeout(bootstrapApp, 0), { once: true });
+} else {
+    window.setTimeout(bootstrapApp, 0);
+}
 
 // ============================================================
 // DYNAMIC RENDER FUNCTIONS FOR NEW PAGES
@@ -6881,8 +7339,10 @@ function viewCategoryProducts(cat) {
 }
 
 function renderWarehousePage() {
-    const lowStock = products.filter(p => p.stock < 5);
-    const totalValue = products.reduce((acc, p) => acc + (p.price * p.stock), 0);
+    const branch = selectedBranch();
+    const list = visibleProducts();
+    const lowStock = list.filter(p => p.stock < 5);
+    const totalValue = list.reduce((acc, p) => acc + (p.price * p.stock), 0);
 
     const valEl = document.getElementById('warehouseTotalValue');
     if (valEl) valEl.textContent = fmt(totalValue) + ' so\'m';
@@ -6890,19 +7350,32 @@ function renderWarehousePage() {
     const lowEl = document.getElementById('warehouseLowStockCount');
     if (lowEl) lowEl.textContent = lowStock.length + ' ta';
 
+    const scopeEl = document.getElementById('warehouseScope');
+    if (scopeEl) {
+        scopeEl.textContent = branch
+            ? '— ' + branch.name + ' ombori (' + list.length + ' ta mahsulot)'
+            : '— barcha filiallar ombori (' + list.length + ' ta mahsulot)';
+    }
+
     const tbody = document.getElementById('warehouseTableBody');
     if (!tbody) return;
 
-    tbody.innerHTML = products.map((p, i) => `
+    tbody.innerHTML = list.map((p, i) => {
+        const b = getBranchById(p.branchId);
+        return `
         <tr>
             <td>${i + 1}</td>
             <td><strong>${escapeHTML(p.name)}</strong></td>
             <td><span class="badge">${escapeHTML(p.cat)}</span></td>
+            <td>${b
+                ? '<span class="badge" style="background:' + escapeHTML(b.markerColor) + '22;color:' + escapeHTML(b.markerColor) + '">' + escapeHTML(b.markerIcon + ' ' + b.name) + '</span>'
+                : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
             <td style="font-weight:700;color:${p.stock < 5 ? 'var(--danger)' : 'var(--success)'}">${p.stock} ta</td>
             <td>${fmt(p.price)} so'm</td>
             <td style="font-weight:700">${fmt(p.price * p.stock)} so'm</td>
         </tr>
-    `).join('');
+    `;
+    }).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Mahsulot yo\'q</td></tr>';
 }
 
 // Chegirma kampaniyalari — faqat real kiritilgan kampaniyalar (demo yo'q)
@@ -7252,12 +7725,100 @@ function startSlideShow() {
 // Start slideshow and load data on load
 document.addEventListener('DOMContentLoaded', () => {
     startSlideShow();
-    loadFromBackend();
+    window.setTimeout(loadFromBackend, 0);
 });
 // Fallback if DOMContentLoaded already fired
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
     startSlideShow();
-    loadFromBackend();
+    window.setTimeout(loadFromBackend, 0);
+}
+
+// ============================================================
+// FILIALLAR (BRANCHES)
+// ============================================================
+// Filiallar `branches` massivida saqlanadi, bazaga `/api/sync`
+// orqali yuboriladi (`tp_branches` keshi + server `store_data`).
+let branches = safeJsonParse(localStorage.getItem('tp_branches') || 'null', null);
+if (!Array.isArray(branches)) branches = [];
+let branchSummary = [];
+let activeBranchId = '';
+try { activeBranchId = localStorage.getItem('tp_active_branch') || ''; } catch (e) { activeBranchId = ''; }
+let editingBranchId = null;
+let branchPickIcon = '🏬';
+let branchPickColor = '#ff6b35';
+
+const BRANCH_ICONS = ['🏬', '🏪', '🏢', '🏭', '🛒', '📦', '⭐', '🏠', '🏤', '🛍️', '💡', '🔧'];
+const BRANCH_COLORS = ['#ff6b35', '#2563eb', '#10b981', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16'];
+
+function normalizeBranch(b) {
+    if (!b || typeof b !== 'object') return null;
+    const lat = Number(b.lat);
+    const lng = Number(b.lng);
+    const hasCoords = isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+    const name = cleanText(b.name, 120);
+    if (!name) return null;
+    return {
+        id: String(b.id || ('br-' + Date.now())).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || ('br-' + Date.now()),
+        name,
+        code: cleanText(b.code, 20),
+        city: cleanText(b.city, 80),
+        address: cleanText(b.address, 200),
+        phone: cleanText(b.phone, 40),
+        hours: cleanText(b.hours, 80),
+        lat: hasCoords ? Math.round(lat * 1e6) / 1e6 : null,
+        lng: hasCoords ? Math.round(lng * 1e6) / 1e6 : null,
+        markerIcon: BRANCH_ICONS.includes(b.markerIcon) ? b.markerIcon : '🏬',
+        markerColor: /^#[0-9a-fA-F]{6}$/.test(String(b.markerColor || '')) ? b.markerColor : '#ff6b35',
+        status: b.status === 'inactive' ? 'inactive' : 'active',
+        isMain: Boolean(b.isMain),
+    };
+}
+
+function saveBranches() {
+    try { localStorage.setItem('tp_branches', JSON.stringify(branches)); } catch (e) { }
+    try { scheduleSyncWithBackend(800); } catch (e) { }
+}
+
+function activeBranches() {
+    return branches.filter(b => b && b.status === 'active');
+}
+
+function getBranchById(id) {
+    return branches.find(b => String(b.id) === String(id)) || null;
+}
+
+function getActiveBranch() {
+    return getBranchById(activeBranchId) || branches.find(b => b.isMain) || branches[0] || null;
+}
+
+/** Faol filialdagi mahsulotlar (ombor/KPI filtri uchun). */
+function productsOfBranch(branchId) {
+    if (!branchId) return products;
+    return products.filter(p => String(p.branchId || '') === String(branchId));
+}
+
+/** Aynan tanlangan filial ("Barcha filiallar" tanlangan bo'lsa — null). */
+function selectedBranch() {
+    return activeBranchId ? getBranchById(activeBranchId) : null;
+}
+
+/**
+ * Ko'rinadigan mahsulotlar (POS, mahsulotlar ro'yxati, ombor).
+ *
+ * Filial tanlangan bo'lsa: shu filial mahsulotlari + hali filialga
+ * biriktirilmagan (umumiy) mahsulotlar ko'rinadi — shu sababli filial
+ * tanlanganda ham sotish ishlashda davom etadi.
+ */
+function visibleProducts() {
+    const b = selectedBranch();
+    if (!b) return products;
+    const bid = String(b.id);
+    return products.filter(p => !p.branchId || String(p.branchId) === bid);
+}
+
+/** "Barcha filiallar" tanlanganini bildiradi (admin umumiy ko'rinishi). */
+function isAllBranchesView() {
+    return !selectedBranch();
 }
 
 function toggleFaq(el) {
@@ -7281,6 +7842,615 @@ function toggleFaq(el) {
     }
 }
 
+// ============================================================
+// BRANCHES MODULI — filiallar ro'yxati, KPI, CSV eksport,
+// faol filial tanlagichi va CRUD. Tahrirlash admin/managerga
+// beriladi.
+// ============================================================
+const Branches = {
+
+    /* ── INIT: badge, switcher, server ma'lumoti ─────────────── */
+    init() {
+        try { this.refreshBranchSwitcher(); } catch (e) { }
+        try { this.updateNavBadge(); } catch (e) { }
+    },
+
+    /** Sahifa ochilganda (goTo orqali): render. */
+    onPageOpen() {
+        if (!this._summaryLoaded) { this.loadSummary(false); this._summaryLoaded = true; }
+        this.render();
+    },
+
+    /* ── DATA: server bilan sinxronlash ───────────────────────── */
+    async loadFromServer() {
+        try {
+            const res = await fetchWithTimeout('/api/branches', {}, 8000);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data && Array.isArray(data.branches)) {
+                branches = data.branches.map(normalizeBranch).filter(Boolean);
+                try { localStorage.setItem('tp_branches', JSON.stringify(branches)); } catch (e) { }
+            }
+        } catch (e) { /* offline — lokal nusxa ishlaydi */ }
+    },
+
+    /* ── YARLIOQ BADGE va FAOL FILIAL TANLAGICH ──────────────── */
+    updateNavBadge() {
+        const badge = document.getElementById('navBranchesBadge');
+        if (badge) badge.textContent = String(branches.length);
+    },
+
+    refreshBranchSwitcher() {
+        const sel = document.getElementById('branchSwitcher');
+        if (!sel) return;
+        const active = getActiveBranch();
+        const options = ['<option value="">Barcha filiallar</option>'].concat(
+            branches.map(b => '<option value="' + escapeHTML(b.id) + '"' +
+                (String(b.id) === String(active ? active.id : '') ? ' selected' : '') + '>' +
+                escapeHTML(b.name) + '</option>'));
+        sel.innerHTML = options.join('');
+        if (!active && sel.value !== '') sel.value = '';
+    },
+
+    setActive(id) {
+        activeBranchId = String(id || '');
+        try {
+            if (activeBranchId) localStorage.setItem('tp_active_branch', activeBranchId);
+            else localStorage.removeItem('tp_active_branch');
+        } catch (e) { }
+        const b = getActiveBranch();
+        showNotif('info', 'Faol filial', b ? (b.name + ' tanlandi — savdo va ombor shu filialga tegishli bo\'ladi') : 'Barcha filiallar ko\'rsatilmoqda');
+        this.refreshBranchSwitcher();
+        this.render();
+    },
+
+    /* ── SAHIFA RENDER: statistika + jadval + taqsimot ───────── */
+    render() {
+        if (!document.getElementById('branchesTable')) return;
+        this.renderStats();
+        this.renderTable();
+        this.renderDistribution();
+        this.updateNavBadge();
+        this.refreshBranchSwitcher();
+    },
+
+    renderStats() {
+        const q = (id) => document.getElementById(id);
+        const total = branches.length;
+        const active = activeBranches().length;
+        let productsCount = 0;
+        const activeBranch = getActiveBranch();
+        if (activeBranch) {
+            productsCount = products.filter(p => String(p.branchId || '') === String(activeBranch.id)).length;
+        } else {
+            productsCount = products.filter(p => p.branchId).length;
+        }
+        let nearest = null;
+        if (activeBranch) nearest = activeBranch;
+        else if (activeBranches().length) nearest = activeBranches().find(b => b.isMain) || activeBranches()[0];
+        if (q('branchCount')) q('branchCount').textContent = String(total);
+        if (q('branchActiveCount')) q('branchActiveCount').textContent = String(active);
+        if (q('branchProductsCount')) q('branchProductsCount').textContent = String(productsCount);
+        if (q('branchNearestLabel')) q('branchNearestLabel').textContent = nearest ? nearest.name : '—';
+    },
+
+    filteredBranches() {
+        const searchEl = document.getElementById('branchSearch');
+        const statusEl = document.getElementById('branchStatusFilter');
+        const term = (searchEl ? searchEl.value : '').trim().toLowerCase();
+        const status = statusEl ? statusEl.value : '';
+        return branches.filter(b => {
+            if (status && b.status !== status) return false;
+            if (!term) return true;
+            return [b.name, b.city, b.address, b.code, b.phone].some(v => String(v || '').toLowerCase().includes(term));
+        });
+    },
+
+    renderTable() {
+        const tbody = document.getElementById('branchesTable');
+        if (!tbody) return;
+        const list = this.filteredBranches();
+        if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--muted)">' +
+                (branches.length ? 'Qidiruv natijasi topilmadi' : 'Hali filial qo\'shilmagan — "Yangi filial" tugmasini bosing') + '</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(b => {
+            const prodCount = products.filter(p => String(p.branchId || '') === String(b.id)).length;
+            const stockValue = products.filter(p => String(p.branchId || '') === String(b.id))
+                .reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.stock) || 0), 0);
+            const soldCount = salesHistory.filter(s => String(s.branchId || '') === String(b.id)).length;
+            const soldTotal = salesHistory.filter(s => String(s.branchId || '') === String(b.id))
+                .reduce((s, x) => s + (Number(x.total) || 0), 0);
+            const isMain = b.isMain ? '<span class="branch-main-tag"><i class="fas fa-star"></i> Asosiy</span>' : '';
+            return '<tr>' +
+                '<td><div class="branch-badge" style="background:' + escapeHTML(b.markerColor) + '">' +
+                '<span>' + escapeHTML(b.markerIcon) + '</span></div></td>' +
+                '<td><strong>' + escapeHTML(b.name) + '</strong>' + isMain +
+                (b.code ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.code) + '</div>' : '') + '</td>' +
+                '<td>' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
+                '<td>' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
+                (b.hours ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.hours) + '</div>' : '') + '</td>' +
+                '<td>' + prodCount + '</td>' +
+                '<td>' + fmt(stockValue) + ' so\'m</td>' +
+                '<td>' + soldCount + ' ta / ' + fmt(soldTotal) + ' so\'m</td>' +
+                '<td>' + (b.status === 'active'
+                    ? '<span style="color:var(--success)"><i class="fas fa-circle-check"></i> Faol</span>'
+                    : '<span style="color:var(--muted)"><i class="fas fa-circle-pause"></i> Nofaol</span>') + '</td>' +
+                '<td><div style="display:flex;gap:6px">' +
+                '<button class="btn btn-outline btn-sm" onclick="Branches.view(\'' + escapeHTML(b.id) + '\')" title="Batafsil"><i class="fas fa-eye"></i></button>' +
+                (requireRoleSilent('admin', 'manager')
+                    ? '<button class="btn btn-outline btn-sm" onclick="Branches.edit(\'' + escapeHTML(b.id) + '\')" title="Tahrirlash"><i class="fas fa-pen"></i></button>' +
+                    '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'" + escapeHTML(b.id) + "\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
+                    : '') +
+                '</div></td></tr>';
+        }).join('');
+    },
+
+    renderDistribution() {
+        const wrap = document.getElementById('branchDistribution');
+        if (!wrap) return;
+        const cities = {};
+        branches.forEach(b => {
+            const key = cleanText(b.city, 80) || 'Ko\'rsatilmagan';
+            cities[key] = (cities[key] || 0) + 1;
+        });
+        const entries = Object.entries(cities).sort((a, b2) => b2[1] - a[1]);
+        if (!entries.length) { wrap.innerHTML = '<div style="color:var(--muted);font-size:13px">Ma\'lumot yo\'q</div>'; return; }
+        const max = entries[0][1];
+        wrap.innerHTML = entries.map(([city, count]) =>
+            '<div class="branch-dist-row">' +
+            '<span class="branch-dist-city">' + escapeHTML(city) + '</span>' +
+            '<div class="branch-dist-bar"><div style="width:' + Math.round((count / max) * 100) + '%"></div></div>' +
+            '<span class="branch-dist-count">' + count + '</span></div>').join('');
+    },
+
+    /* ── KPI yuklash (server /api/branches dan) ──────────────── */
+    async loadSummary(showNotifOnDone) {
+        await this.loadFromServer();
+        this.render();
+        if (showNotifOnDone) showNotif('success', 'Yangilandi', 'Filial ma\'lumotlari serverdan olindi');
+    },
+
+    /* ── KO'RISH / TAHRIRLASH / O'CHIRISH ────────────────────── */
+    view(id) {
+        const b = getBranchById(id);
+        if (!b) return;
+        const body = document.getElementById('branchViewBody');
+        if (!body) return;
+        document.getElementById('branchViewTitle').innerHTML =
+            '<i class="fas fa-map-location-dot" style="color:var(--primary);margin-right:8px"></i>' + escapeHTML(b.name);
+        const rows = [
+            ['Kod', b.code || '—'], ['Shahar', b.city || '—'], ['Manzil', b.address || '—'],
+            ['Telefon', b.phone || '—'], ['Ish vaqti', b.hours || '—'],
+            ['Holat', b.status === 'active' ? 'Faol' : 'Nofaol'],
+            ['Asosiy filial', b.isMain ? 'Ha' : 'Yo\'q'],
+            ['Koordinata', (b.lat != null && b.lng != null) ? (b.lat.toFixed(6) + ', ' + b.lng.toFixed(6)) : '—']
+        ];
+        body.innerHTML = '<div class="branch-view-grid">' + rows.map(([k, v]) => {
+            const safeVal = (typeof v === 'string' && v.startsWith('<')) ? v : escapeHTML(v);
+            return '<div class="branch-view-label">' + escapeHTML(k) + '</div><div class="branch-view-value">' +
+                safeVal + '</div>';
+        }).join('') + '</div>' +
+            '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">' +
+            (requireRoleSilent('admin', 'manager')
+                ? '<button class="btn btn-outline" onclick="closeModal(\'branchViewModal\');Branches.edit(\'' + escapeHTML(b.id) + '\')"><i class="fas fa-pen"></i> Tahrirlash</button>' : '') +
+            '<button class="btn btn-primary" onclick="closeModal(\'branchViewModal\')">Yopish</button></div>';
+        openModal('branchViewModal');
+    },
+
+    openAddModal() {
+        if (!requireRole('admin', 'manager')) return;
+        this._editingId = null;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        set('br-name', ''); set('br-code', ''); set('br-city', '');
+        set('br-phone', ''); set('br-address', ''); set('br-hours', '09:00 — 20:00');
+        set('br-status', 'active');
+        const colorEl = document.getElementById('br-color');
+        if (colorEl) colorEl.value = BRANCH_COLORS[branches.length % BRANCH_COLORS.length];
+        const mainEl = document.getElementById('br-main');
+        if (mainEl) mainEl.checked = false;
+        branchPickIcon = BRANCH_ICONS[0];
+        branchPickColor = BRANCH_COLORS[branches.length % BRANCH_COLORS.length];
+        const title = document.getElementById('branchModalTitle');
+        if (title) title.innerHTML = '<i class="fas fa-map-location-dot" style="color:var(--primary);margin-right:8px"></i>Yangi filial';
+        this.renderPickers();
+        this.renderMarkerPreview();
+        openModal('branchModal');
+    },
+
+    edit(id) {
+        if (!requireRole('admin', 'manager')) return;
+        const b = getBranchById(id);
+        if (!b) return;
+        this._editingId = String(b.id);
+        const set = (id2, v) => { const el = document.getElementById(id2); if (el) el.value = v; };
+        set('br-name', b.name); set('br-code', b.code); set('br-city', b.city);
+        set('br-phone', b.phone); set('br-address', b.address); set('br-hours', b.hours);
+        set('br-status', b.status);
+        const colorEl = document.getElementById('br-color');
+        if (colorEl) colorEl.value = b.markerColor;
+        const mainEl = document.getElementById('br-main');
+        if (mainEl) mainEl.checked = Boolean(b.isMain);
+        branchPickIcon = b.markerIcon; branchPickColor = b.markerColor;
+        const title = document.getElementById('branchModalTitle');
+        if (title) title.innerHTML = '<i class="fas fa-pen" style="color:var(--primary);margin-right:8px"></i>Filialni tahrirlash';
+        this.renderPickers();
+        this.renderMarkerPreview();
+        openModal('branchModal');
+    },
+
+    remove(id) {
+        if (!requireRole('admin', 'manager')) return;
+        const b = getBranchById(id);
+        if (!b) return;
+        if (!confirm('"' + b.name + '" filialini o\'chirmoqchimisiz?')) return;
+        branches = branches.filter(x => String(x.id) !== String(id));
+        if (activeBranchId === String(id)) { activeBranchId = ''; try { localStorage.removeItem('tp_active_branch'); } catch (e) { } }
+        saveBranches();
+        this.render();
+        addLog('Filial o\'chirildi', b.name);
+        playSuccess();
+        showNotif('success', 'O\'chirildi', '"' + b.name + '" filiali o\'chirildi');
+    },
+
+    save() {
+        if (!requireRole('admin', 'manager')) return;
+        const get = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+        const raw = {
+            id: this._editingId || ('br-' + Date.now()),
+            name: get('br-name'), code: get('br-code'), city: get('br-city'),
+            address: get('br-address'), phone: get('br-phone'), hours: get('br-hours'),
+            status: get('br-status') === 'inactive' ? 'inactive' : 'active',
+            isMain: Boolean(document.getElementById('br-main')?.checked),
+            markerIcon: branchPickIcon, markerColor: branchPickColor
+        };
+        if (!cleanText(raw.name, 120)) { playError(); showNotif('error', 'Xato', 'Filial nomini kiriting'); return; }
+        if (raw.isMain) branches.forEach(b => { b.isMain = false; });
+        const norm = normalizeBranch(raw);
+        if (!norm) { playError(); showNotif('error', 'Xato', 'Ma\'lumotlarni tekshirib qayta urinib ko\'ring'); return; }
+        if (this._editingId) {
+            const idx = branches.findIndex(b => String(b.id) === String(this._editingId));
+            if (idx >= 0) branches[idx] = norm;
+        } else {
+            branches.push(norm);
+        }
+        saveBranches();
+        closeModal('branchModal');
+        this.render();
+        addLog(this._editingId ? 'Filial tahrirlandi' : 'Filial qo\'shildi', norm.name);
+        playSuccess();
+        showNotif('success', 'Saqlandi', '"' + norm.name + '" filiali saqlandi');
+        this._editingId = null;
+    },
+
+    /* ── MARKER PICKER (emoji + rang) ────────────────────────── */
+    renderPickers() {
+        const iconWrap = document.getElementById('branchIconPicker');
+        if (iconWrap) {
+            iconWrap.innerHTML = BRANCH_ICONS.map(ic =>
+                '<button type="button" class="marker-option' + (ic === branchPickIcon ? ' selected' : '') +
+                '" onclick="Branches.setPickIcon(\'' + ic + '\')">' + ic + '</button>').join('');
+        }
+        const swWrap = document.getElementById('branchColorSwatches');
+        if (swWrap) {
+            swWrap.innerHTML = BRANCH_COLORS.map(c =>
+                '<button type="button" class="color-swatch' + (c === branchPickColor ? ' selected' : '') +
+                '" style="background:' + c + '" onclick="Branches.setPickColor(\'' + c + '\')"></button>').join('');
+        }
+        const colorInput = document.getElementById('br-color');
+        if (colorInput && !colorInput.dataset.bound) {
+            colorInput.dataset.bound = '1';
+            colorInput.addEventListener('input', () => {
+                branchPickColor = /^#[0-9a-fA-F]{6}$/.test(colorInput.value) ? colorInput.value : branchPickColor;
+                this.renderMarkerPreview();
+            });
+        }
+    },
+
+    setPickIcon(icon) { branchPickIcon = icon; this.renderPickers(); this.renderMarkerPreview(); },
+    setPickColor(color) {
+        branchPickColor = /^#[0-9a-fA-F]{6}$/.test(color) ? color : branchPickColor;
+        this.renderPickers(); this.renderMarkerPreview();
+    },
+
+    renderMarkerPreview() {
+        const el = document.getElementById('branchMarkerPreview');
+        if (el) el.innerHTML = '<div class="branch-badge" style="background:' + escapeHTML(branchPickColor) + '">' +
+            '<span>' + escapeHTML(branchPickIcon) + '</span></div>';
+    },
+
+    /* ── CSV EKSPORT ─────────────────────────────────────────── */
+    exportCSV() {
+        if (!branches.length) { showNotif('warning', 'Bo\'sh', 'Eksport uchun filial yo\'q'); return; }
+        const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+        const head = ['Nomi', 'Kod', 'Shahar', 'Manzil', 'Telefon', 'Ish vaqti', 'Kenglik', 'Uzunlik', 'Holat', 'Mahsulot'].join(';');
+        const lines = branches.map(b => [
+            b.name, b.code, b.city, b.address, b.phone, b.hours,
+            b.lat, b.lng, b.status === 'active' ? 'Faol' : 'Nofaol',
+            products.filter(p => String(p.branchId || '') === String(b.id)).length
+        ].map(esc).join(';'));
+        const csv = '\ufeff' + head + '\n' + lines.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'filiallar-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        showNotif('success', 'CSV yuklab olindi', branches.length + ' ta filial eksport qilindi');
+    }
+};
+
+// ============================================================
+// KIRIM / CHIQIM / HARAJAT MODULI — admin uchun moliyaviy nazorat
+// ============================================================
+// Admin asosan kirim/chiqim/harajatga qaraydi: har bir filial bo'yicha
+// pul harakati kuzatiladi, savdo tushumi esa alohida ko'rsatiladi.
+const CashFlow = {
+    _type: 'kirim',
+
+    init() {
+        this.setType('kirim');
+        const dateEl = document.getElementById('cf-date');
+        if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+        try { this.fillBranchSelects(); } catch (e) { }
+        try { this.render(); } catch (e) { }
+    },
+
+    onPageOpen() {
+        try { this.fillBranchSelects(); } catch (e) { }
+        this.render();
+    },
+
+    /** Yozuv formasi va filtr uchun filial tanlagichlarini to'ldiradi. */
+    fillBranchSelects() {
+        const activeId = (getActiveBranch() || {}).id || '';
+        const options = branches.map(b =>
+            '<option value="' + escapeHTML(b.id) + '">' + escapeHTML(b.name) + '</option>').join('');
+
+        const sel = document.getElementById('cf-branch');
+        if (sel) {
+            const cur = sel.value || activeId;
+            sel.innerHTML = '<option value="">Umumiy (filialga bog\'lanmagan)</option>' + options;
+            if (cur && branches.some(b => String(b.id) === String(cur))) sel.value = cur;
+        }
+        const filter = document.getElementById('cfFilterBranch');
+        if (filter) {
+            const cur = filter.value;
+            filter.innerHTML = '<option value="">Barcha filiallar</option>' + options;
+            if (cur && branches.some(b => String(b.id) === String(cur))) filter.value = cur;
+        }
+    },
+
+    setType(type) {
+        this._type = Object.prototype.hasOwnProperty.call(CASHFLOW_TYPES, type) ? type : 'kirim';
+        document.querySelectorAll('[data-cf-type]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-cf-type') === this._type);
+        });
+    },
+
+    /** Filtrlar bo'yicha yozuvlar (eng yangisi birinchi). */
+    filtered() {
+        const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+        const branch = val('cfFilterBranch');
+        const type = val('cfFilterType');
+        const from = val('cfFrom');
+        const to = val('cfTo');
+        return cashFlow.filter(c => {
+            if (branch && String(c.branchId || '') !== String(branch)) return false;
+            if (type && c.type !== type) return false;
+            if (from && String(c.date) < from) return false;
+            if (to && String(c.date) > to) return false;
+            return true;
+        }).sort((a, b) => String(b.date + ' ' + b.createdAt).localeCompare(String(a.date + ' ' + a.createdAt)));
+    },
+
+    /** Filtrga mos to'langan savdolar tushumi. */
+    saleRevenue() {
+        const el = document.getElementById('cfFilterBranch');
+        const branch = el ? el.value : '';
+        return salesHistory
+            .filter(s => String(s.status) === 'paid' && (!branch || String(s.branchId || '') === String(branch)))
+            .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+    },
+
+    render() {
+        const tbody = document.getElementById('cashFlowTableBody');
+        if (!tbody) return;
+        this.fillBranchSelects();
+
+        const list = this.filtered();
+        const totals = cashFlowTotals(list);
+        const revenue = this.saleRevenue();
+        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+
+        setText('cfSaleRevenue', fmt(revenue) + " so'm");
+        setText('cfKirim', fmt(totals.kirim) + " so'm");
+        setText('cfChiqim', fmt(totals.chiqim) + " so'm");
+        setText('cfHarajat', fmt(totals.harajat) + " so'm");
+        setText('cfNet', fmt(revenue + totals.kirim - totals.chiqim - totals.harajat) + " so'm");
+        setText('cfRecordCount', list.length + ' ta yozuv');
+
+        this.renderBranchMonitor();
+        this.renderTable(list);
+    },
+
+    /** Har bir filial bo'yicha: savdo, kirim, chiqim, harajat va sof natija. */
+    renderBranchMonitor() {
+        const tbody = document.getElementById('branchMonitorTable');
+        if (!tbody) return;
+        const rows = branches.map(b => {
+            const bid = String(b.id);
+            const revenue = salesHistory
+                .filter(s => String(s.status) === 'paid' && String(s.branchId || '') === bid)
+                .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+            const t = cashFlowTotals(cashFlowOfBranch(bid));
+            const net = revenue + t.kirim - t.chiqim - t.harajat;
+            return '<tr>' +
+                '<td><div class="branch-badge" style="background:' + escapeHTML(b.markerColor) + '">' +
+                '<span>' + escapeHTML(b.markerIcon) + '</span></div> ' +
+                '<strong>' + escapeHTML(b.name) + '</strong>' +
+                (b.isMain ? ' <span class="branch-main-tag"><i class="fas fa-star"></i></span>' : '') + '</td>' +
+                '<td style="color:var(--success);font-weight:700">' + fmt(revenue) + '</td>' +
+                '<td style="font-weight:700">' + fmt(t.kirim) + '</td>' +
+                '<td style="color:var(--danger);font-weight:700">' + fmt(t.chiqim) + '</td>' +
+                '<td style="color:var(--warning);font-weight:700">' + fmt(t.harajat) + '</td>' +
+                '<td style="font-weight:800;color:' + (net >= 0 ? 'var(--success)' : 'var(--danger)') + '">' +
+                fmt(net) + '</td>' +
+                '<td><button class="btn btn-outline btn-sm" onclick="CashFlow.focusBranch(\'' +
+                escapeHTML(b.id) + '\')" title="Shu filial yozuvlarini ko\'rish">' +
+                '<i class="fas fa-filter"></i></button></td></tr>';
+        });
+
+        // Filialga bog'lanmagan (umumiy) yozuvlar ham ko'rinadi
+        const unassigned = cashFlow.filter(c => !String(c.branchId || ''));
+        if (unassigned.length) {
+            const t = cashFlowTotals(unassigned);
+            rows.push('<tr style="opacity:.85"><td><em>Umumiy (filialsiz)</em></td>' +
+                '<td>—</td><td style="font-weight:700">' + fmt(t.kirim) + '</td>' +
+                '<td style="color:var(--danger);font-weight:700">' + fmt(t.chiqim) + '</td>' +
+                '<td style="color:var(--warning);font-weight:700">' + fmt(t.harajat) + '</td>' +
+                '<td style="font-weight:800">' + fmt(t.net) + '</td><td></td></tr>');
+        }
+
+        tbody.innerHTML = rows.join('') ||
+            '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">' +
+            'Filial qo\'shilmagan — «Filiallar» bo\'limidan qo\'shing</td></tr>';
+    },
+    renderTable(list) {
+        const tbody = document.getElementById('cashFlowTableBody');
+        if (!tbody) return;
+        if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">' +
+                'Yozuv topilmadi — yuqoridagi forma orqali kirim/chiqim/harajat qo\'shing</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.slice(0, 500).map(c => {
+            const meta = CASHFLOW_TYPES[c.type] || CASHFLOW_TYPES.chiqim;
+            const branch = getBranchById(c.branchId);
+            const sign = c.type === 'kirim' ? '+' : '\u2212';
+            const color = c.type === 'kirim' ? 'var(--success)'
+                : (c.type === 'harajat' ? 'var(--warning)' : 'var(--danger)');
+            return '<tr>' +
+                '<td><span class="badge">' + escapeHTML(c.date) + '</span>' +
+                (c.createdAt ? '<div style="font-size:11px;color:var(--muted)">' +
+                    escapeHTML(String(c.createdAt).slice(-8)) + '</div>' : '') + '</td>' +
+                '<td><i class="fas ' + meta.icon + '" style="color:' + color + '"></i> ' +
+                escapeHTML(meta.label) + '</td>' +
+                '<td>' + escapeHTML(c.category) + '</td>' +
+                '<td>' + (branch ? escapeHTML(branch.name) : '<span style="color:var(--muted)">Umumiy</span>') + '</td>' +
+                '<td style="font-weight:800;color:' + color + '">' + sign + ' ' + fmt(c.amount) + '</td>' +
+                '<td style="font-size:12px;color:var(--text-secondary)">' + escapeHTML(c.note || '—') + '</td>' +
+                '<td>' + (requireRoleSilent('admin', 'manager')
+                    ? '<button class="btn btn-outline btn-sm" style="color:var(--danger)" ' +
+                    'onclick="CashFlow.remove(\'' + escapeHTML(c.id) + '\')" title="O\'chirish">' +
+                    '<i class="fas fa-trash"></i></button>' : '') + '</td></tr>';
+        }).join('');
+    },
+
+    save() {
+        if (!requireRole('admin', 'manager')) return;
+        const amountRaw = String(document.getElementById('cf-amount')?.value || '').replace(/[^\d.]/g, '');
+        const amount = Number(amountRaw);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            playError();
+            showNotif('error', 'Xato!', 'Summani kiriting (0 dan katta bo\'lishi kerak)');
+            return;
+        }
+        const record = normalizeCashFlow({
+            type: this._type,
+            amount,
+            category: document.getElementById('cf-category')?.value,
+            note: document.getElementById('cf-note')?.value,
+            branchId: document.getElementById('cf-branch')?.value,
+            date: document.getElementById('cf-date')?.value,
+            user: currentUser?.name || '—',
+        });
+        if (!record) {
+            playError();
+            showNotif('error', 'Xato!', 'Ma\'lumotlar yaroqsiz — qayta tekshiring');
+            return;
+        }
+        cashFlow.unshift(record);
+        saveToStorage();
+        const branch = getBranchById(record.branchId);
+        addLog('Kassa harakati', CASHFLOW_TYPES[record.type].label + ': ' + fmt(record.amount) +
+            " so'm — " + record.category + (branch ? ' (' + branch.name + ')' : ''));
+
+        const amountEl = document.getElementById('cf-amount');
+        const noteEl = document.getElementById('cf-note');
+        if (amountEl) amountEl.value = '';
+        if (noteEl) noteEl.value = '';
+        this.render();
+        playSuccess();
+        showNotif('success', 'Saqlandi!', CASHFLOW_TYPES[record.type].label + ' — ' +
+            fmt(record.amount) + " so'm qo'shildi");
+    },
+
+    remove(id) {
+        if (!requireRole('admin', 'manager')) return;
+        const rec = cashFlow.find(c => String(c.id) === String(id));
+        if (!rec) return;
+        if (!confirm('Bu yozuvni o\'chirasizmi? (' + fmt(rec.amount) + " so'm)")) return;
+        cashFlow = cashFlow.filter(c => String(c.id) !== String(id));
+        saveToStorage();
+        this.render();
+        addLog('Kassa harakati', 'Yozuv o\'chirildi — ' + fmt(rec.amount) + " so'm");
+        showNotif('info', 'O\'chirildi', 'Yozuv o\'chirildi');
+    },
+
+    /** Filial ustunidagi filtr tugmasi: shu filial yozuvlarini ko'rsatadi. */
+    focusBranch(branchId) {
+        const el = document.getElementById('cfFilterBranch');
+        if (el) el.value = branchId;
+        this.render();
+        const b = getBranchById(branchId);
+        showNotif('info', 'Filtr', (b ? b.name : 'Filial') + ' bo\'yicha yozuvlar ko\'rsatilmoqda');
+    },
+
+    clearFilters() {
+        ['cfFilterBranch', 'cfFilterType', 'cfFrom', 'cfTo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        this.render();
+    },
+
+    exportCSV() {
+        const list = this.filtered();
+        if (!list.length) {
+            showNotif('warning', 'Bo\'sh', 'Eksport uchun yozuv yo\'q');
+            return;
+        }
+        const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+        const head = ['Sana', 'Turi', 'Kategoriya', 'Filial', 'Summa', 'Izoh', 'Xodim'].join(';');
+        const lines = list.map(c => {
+            const b = getBranchById(c.branchId);
+            return [c.date, CASHFLOW_TYPES[c.type] ? CASHFLOW_TYPES[c.type].label : c.type,
+            c.category, b ? b.name : 'Umumiy', c.amount, c.note, c.user].map(esc).join(';');
+        });
+        const csv = '\ufeff' + head + '\n' + lines.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'kirim-chiqim-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        showNotif('success', 'CSV yuklab olindi', list.length + ' ta yozuv eksport qilindi');
+    }
+};
+
+
+
+
+
+/* Oddiy tekshiruv: notif chiqarmasdan rol bo'yicha true/false */
+function requireRoleSilent(...roles) {
+    return Boolean(currentUser && roles.includes(currentUser.role));
+}
+
+
+// Filial ma'lumotlari serverdan (ommaviy endpoint) boshlang'ich yuklash
+try { if (typeof Branches !== 'undefined') Branches.loadFromServer(); } catch (e) { }
+
 function simulateGoogleSignIn() {
     showNotif('info', 'Google Login', 'Google orqali tizimga kirish simulyatsiya qilinmoqda...');
     setTimeout(() => {
@@ -7292,10 +8462,10 @@ function simulateGoogleSignIn() {
             color: '#4285F4'
         };
         currentUser = googleUser;
-        
+
         const topName = document.getElementById('topbarEmployeeName');
         if (topName) topName.textContent = googleUser.name;
-        
+
         document.getElementById('sideUser').textContent = googleUser.name;
         document.getElementById('sideRole').textContent = ROLES[googleUser.role];
         const av = document.getElementById('sideAvatar');
@@ -7303,7 +8473,7 @@ function simulateGoogleSignIn() {
             av.textContent = googleUser.name[0];
             av.style.background = `linear-gradient(135deg,${googleUser.color},#10B981)`;
         }
-        
+
         const loginPage = document.getElementById('loginPage');
         const app = document.getElementById('app');
         if (loginPage) {
@@ -7314,7 +8484,7 @@ function simulateGoogleSignIn() {
             app.style.display = 'block';
             app.classList.add('market-mode');
         }
-        
+
         initApp();
         playSuccess();
         showNotif('success', 'Muvaffaqiyatli!', 'Google orqali tizimga kirildi');
@@ -7327,29 +8497,29 @@ function simulateGoogleSignIn() {
 function openReportModal() {
     const reportForm = document.getElementById('reportForm');
     if (reportForm) reportForm.reset();
-    
+
     // Auto-fill contact info if user is logged in
     const contactInput = document.getElementById('reportContact');
     if (contactInput && currentUser) {
         contactInput.value = `${currentUser.name} (${currentUser.role})`;
     }
-    
+
     openModal('reportModal');
 }
 
 async function submitReport(event) {
     if (event) event.preventDefault();
-    
+
     const type = document.getElementById('reportType')?.value || 'complaint';
     const message = document.getElementById('reportMessage')?.value || '';
     const contact = document.getElementById('reportContact')?.value || '';
-    
+
     if (!message.trim()) {
         playError();
         showNotif('error', 'Xato!', 'Iltimos, xabarni kiriting');
         return;
     }
-    
+
     const newReport = {
         type,
         message,
@@ -7368,7 +8538,7 @@ async function submitReport(event) {
             body: JSON.stringify(newReport)
         });
         const result = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(result.message || 'Murojaatni yuborib bo\'lmadi');
         }
@@ -7378,11 +8548,11 @@ async function submitReport(event) {
         newReport.id = reports.length + 1;
         reports.push(newReport);
         localStorage.setItem('tp_reports', JSON.stringify(reports));
-        
+
         // Add to system log
         const typeLabels = { complaint: 'Shikoyat', bug: 'Xatolik', suggestion: 'Taklif' };
         addLog('Murojaat qabul qilindi', `${typeLabels[type]} — ${message.substring(0, 30)}...`);
-        
+
         closeModal('reportModal');
         playSuccess();
         showNotif('success', 'Yuborildi!', 'Murojaatingiz muvaffaqiyatli yuborildi. Rahmat!');
@@ -7393,7 +8563,7 @@ async function submitReport(event) {
         newReport.id = reports.length + 1;
         reports.push(newReport);
         localStorage.setItem('tp_reports', JSON.stringify(reports));
-        
+
         // Add to system log
         const typeLabels = { complaint: 'Shikoyat', bug: 'Xatolik', suggestion: 'Taklif' };
         addLog('Murojaat saqlandi (offline)', `${typeLabels[type]} — ${message.substring(0, 30)}...`);

@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="uz" data-theme="dark">
+<html lang="uz" data-theme="light">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta name="color-scheme" content="dark light">
-  <title>Texno Park POS — Premium</title>
+  <meta name="color-scheme" content="light dark">
+  <title>Texno Park N1 POS — Premium</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=1.0.7">
+  <link rel="stylesheet" href="style.css?v=1.0.9-light-market">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
@@ -25,10 +25,21 @@
      LOGIN PAGE
      ============================================================ -->
   <div id="loginPage">
+    <section class="login-showcase" aria-label="Texno Park N1 xizmatlari">
+      <div class="login-showcase-brand"><span id="loginShowcaseLogo"><i class="fas fa-bolt"></i></span><strong
+          id="loginShowcaseName">Texno Park N1</strong></div>
+      <div class="login-showcase-copy"><span>TECHNOLOGIYALAR DUNYOSI</span>
+        <h2>Texnologiyalar<br>dunyosi sizga yaqin.</h2>
+        <p>Ishonchli mahsulotlar, qulay xarid va professional qo'llab-quvvatlash.</p>
+        <div class="login-showcase-points"><span><i class="fas fa-shield-check"></i> 100% original</span><span><i
+              class="fas fa-headset"></i> 24/7 yordam</span><span><i class="fas fa-truck-fast"></i> Tez yetkazish</span>
+        </div>
+      </div>
+    </section>
     <div class="login-box">
       <div class="login-logo">
-        <div class="logo-icon"><i class="fas fa-plug"></i></div>
-        <h1>TEXNO PARK</h1>
+        <div class="logo-icon" id="loginLogoBox"><i class="fas fa-plug"></i></div>
+        <h1 id="loginCompanyName">Texno Park N1</h1>
         <p>Xodimlar uchun kirish</p>
       </div>
       <div class="form-group">
@@ -104,9 +115,9 @@
     <!-- SIDEBAR -->
     <div class="sidebar" id="sidebar">
       <div class="sidebar-logo">
-        <div class="logo-sq"><i class="fas fa-plug"></i></div>
+        <div class="logo-sq" id="sideLogoBox"><i class="fas fa-plug"></i></div>
         <div>
-          <span>TEXNO PARK</span>
+          <span id="sideCompanyName">Texno Park N1</span>
           <small>POS System v3.0</small>
         </div>
       </div>
@@ -137,6 +148,13 @@
         <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers" data-role="admin,cashier">
           <i class="fas fa-users"></i><span>Mijozlar</span>
           <span class="nav-badge" id="navCustomersBadge">0</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-branches',this)" id="nav-branches" data-role="admin,manager,cashier">
+          <i class="fas fa-map-location-dot"></i><span>Filiallar</span>
+          <span class="nav-badge" id="navBranchesBadge">0</span>
+        </div>
+        <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
+          <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
         <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin,manager" style="width:100%">
           <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees">
@@ -211,8 +229,15 @@
         <i class="fas fa-search"></i>
         <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="globalSearch(this.value)" id="globalSearchInput">
       </div>
+      <!-- FAOL FILIAL TANLAGICH -->
+      <div class="branch-switcher" id="branchSwitcherWrap"
+        title="Faol filial — barcha savdo va ombor shu filialga tegishli bo'ladi">
+        <i class="fas fa-map-location-dot"></i>
+        <select id="branchSwitcher" onchange="Branches.setActive(this.value)" aria-label="Faol filial"></select>
+      </div>
       <div class="topbar-actions">
-        <div class="icon-btn" onclick="Tour.startTour()" id="topbarTourBtn" title="Sayohat: panel bo'ylab qo'llanma (F1)">
+        <div class="icon-btn" onclick="Tour.startTour()" id="topbarTourBtn"
+          title="Sayohat: panel bo'ylab qo'llanma (F1)">
           <i class="fas fa-route"></i>
         </div>
         <div class="icon-btn" onclick="openReportModal()" title="Shikoyat va takliflar" style="color:var(--warning)">
@@ -229,11 +254,14 @@
           <i class="fas fa-moon" id="themeIcon"></i>
         </button>
         <div class="employee-dropdown-container" style="position:relative; display:inline-block">
-          <button type="button" onclick="toggleEmployeeDropdown(event)" class="btn btn-outline btn-sm employee-login-btn" id="topbarEmployeeBtn">
-            <i class="fas fa-user-tie"></i> <span id="topbarEmployeeName">Xodim</span> <i class="fas fa-chevron-down" style="margin-left:6px;font-size:10px;opacity:0.7"></i>
+          <button type="button" onclick="toggleEmployeeDropdown(event)"
+            class="btn btn-outline btn-sm employee-login-btn" id="topbarEmployeeBtn">
+            <i class="fas fa-user-tie"></i> <span id="topbarEmployeeName">Xodim</span> <i class="fas fa-chevron-down"
+              style="margin-left:6px;font-size:10px;opacity:0.7"></i>
           </button>
-          <div class="employee-dropdown-menu" id="topbarEmployeeDropdown" style="display:none; position:absolute; right:0; top:100%; margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-md); z-index:1000; min-width:220px; padding:6px 0">
-             <!-- Dynamically populated employees go here -->
+          <div class="employee-dropdown-menu" id="topbarEmployeeDropdown"
+            style="display:none; position:absolute; right:0; top:100%; margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-md); z-index:1000; min-width:220px; padding:6px 0">
+            <!-- Dynamically populated employees go here -->
           </div>
         </div>
         <div class="topbar-clock" id="clock">00:00:00</div>
@@ -280,14 +308,16 @@
               </div>
               <div class="stat-num" id="d-customers">0</div>
               <div class="stat-label">Jami Mijozlar</div>
-              <div class="stat-change up" id="d-customers-change"><i class="fas fa-user-check"></i> Faol: 0 · VIP: 0</div>
+              <div class="stat-change up" id="d-customers-change"><i class="fas fa-user-check"></i> Faol: 0 · VIP: 0
+              </div>
             </div>
             <div class="stat-card" style="--card-accent:rgba(239,68,68,.12)">
               <div class="stat-icon" style="background:rgba(239,68,68,.15);color:#FCA5A5"><i class="fas fa-tv"></i>
               </div>
               <div class="stat-num" id="d-products">0</div>
               <div class="stat-label">Mahsulotlar</div>
-              <div class="stat-change down" id="d-products-change"><i class="fas fa-triangle-exclamation"></i> Kam qolgan: 0 ta</div>
+              <div class="stat-change down" id="d-products-change"><i class="fas fa-triangle-exclamation"></i> Kam
+                qolgan: 0 ta</div>
             </div>
             <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
               <div class="stat-icon" style="background:rgba(255,107,53,.15);color:#ff8a5b"><i class="fas fa-coins"></i>
@@ -301,7 +331,8 @@
                   class="fas fa-users-cog"></i></div>
               <div class="stat-num" id="d-employees">0</div>
               <div class="stat-label">Faol Xodimlar</div>
-              <div class="stat-change up" id="d-employees-change"><i class="fas fa-id-badge"></i> Xodimlar ro'yxati</div>
+              <div class="stat-change up" id="d-employees-change"><i class="fas fa-id-badge"></i> Xodimlar ro'yxati
+              </div>
             </div>
           </div>
           <div class="grid-2">
@@ -368,14 +399,16 @@
               </div>
               <div class="stat-num" id="d-sales-cashier">0 so'm</div>
               <div class="stat-label">Bugungi Savdo</div>
-              <div class="stat-change up" id="d-sales-cashier-note"><i class="fas fa-calendar-day"></i> Bugungi ko'rsatkich</div>
+              <div class="stat-change up" id="d-sales-cashier-note"><i class="fas fa-calendar-day"></i> Bugungi
+                ko'rsatkich</div>
             </div>
             <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
               <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
                   class="fas fa-receipt"></i></div>
               <div class="stat-num" id="d-orders-cashier">0</div>
               <div class="stat-label">Cheklar soni</div>
-              <div class="stat-change up" id="d-orders-cashier-note"><i class="fas fa-receipt"></i> Bugungi cheklar</div>
+              <div class="stat-change up" id="d-orders-cashier-note"><i class="fas fa-receipt"></i> Bugungi cheklar
+              </div>
             </div>
             <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
               <div class="stat-icon" style="background:rgba(255,107,53,.15);color:#ff8a5b"><i
@@ -428,7 +461,8 @@
                   class="fas fa-users-cog"></i></div>
               <div class="stat-num" id="m-employees">0</div>
               <div class="stat-label">Faol Xodimlar</div>
-              <div class="stat-change up" id="m-employees-change"><i class="fas fa-id-badge"></i> Xodimlar ro'yxati</div>
+              <div class="stat-change up" id="m-employees-change"><i class="fas fa-id-badge"></i> Xodimlar ro'yxati
+              </div>
             </div>
             <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
               <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i class="fas fa-trophy"></i>
@@ -466,227 +500,303 @@
       <div class="page active" id="page-shop">
         <div class="market-shell">
           <div class="market-top">
-            <div class="market-brand" style="cursor:pointer" onclick="showCatalogView()">
-              <div class="market-logo"><i class="fas fa-bolt"></i></div>
-              <div>
-                <strong>TEXNO PARK</strong>
-                <span>Online market</span>
+            <div class="market-top-main">
+              <div class="market-brand" style="cursor:pointer" onclick="showCatalogView()">
+                <div class="market-logo" id="marketLogoBox"><i class="fas fa-bolt"></i></div>
+                <div>
+                  <strong id="marketCompanyName">Texno Park N1</strong>
+                  <span>Texnologiya do'koni</span>
+                </div>
+              </div>
+              <button type="button" class="market-catalog-button" onclick="toggleShopCatSidebar()">
+                <i class="fas fa-bars"></i><span>Katalog</span>
+              </button>
+              <div class="market-search" style="position:relative">
+                <i class="fas fa-search"></i>
+                <input type="text" id="marketSearch" placeholder="Mahsulot, turkum yoki brend qidiring..."
+                  oninput="syncShopSearch(this.value)" autocomplete="off">
+                <div id="searchSuggestions" class="search-suggestions-dropdown" style="display:none"></div>
+              </div>
+              <div class="market-phone">
+                <i class="fas fa-headset"></i>
+                <span>
+                  <strong>+998 71 200 30 40</strong>
+                  <small>Har kuni 09:00 – 22:00</small>
+                </span>
+              </div>
+              <div class="market-location"><i class="fas fa-map-marker-alt"></i><span>Toshkent</span></div>
+              <div class="market-top-actions">
+                <button type="button" class="market-icon-btn" title="Mening xohishlarim"
+                  onclick="showNotif('info', 'Xohishlar', 'Bu yerga xohgan mahsulotlarni saqlashingiz mumkin.')">
+                  <i class="far fa-heart"></i>
+                </button>
+                <button type="button" class="market-cart-btn" onclick="showCartView()">
+                  <i class="fas fa-shopping-cart"></i><span>Savat</span><b id="marketCartCount">0</b>
+                </button>
+                <button type="button" class="market-icon-btn" title="Murojaat" onclick="openReportModal()">
+                  <i class="fas fa-headset"></i>
+                </button>
+                <button type="button" class="market-theme-lock" id="marketThemeToggle" title="Tungi rejim"
+                  aria-label="Tungi rejim" onclick="toggleTheme()">
+                  <i class="fas fa-moon" id="marketThemeIcon"></i>
+                </button>
+                <button type="button" class="market-login-btn" onclick="openEmployeeLogin()">
+                  <i class="fas fa-user"></i><span>Kirish</span>
+                </button>
               </div>
             </div>
-            <div class="market-search" style="position:relative">
-              <i class="fas fa-search"></i>
-              <input type="text" id="marketSearch" placeholder="Mahsulot va turkumlarni qidirish..."
-                oninput="syncShopSearch(this.value)" autocomplete="off">
-              <div id="searchSuggestions" class="search-suggestions-dropdown" style="display:none"></div>
+            <div class="market-category-bar" id="marketCategoryNav">
+              <button type="button" class="market-category-toggle" onclick="toggleShopCatSidebar()">
+                <i class="fas fa-th-list"></i><span>Barcha kategoriyalar</span><i class="fas fa-chevron-down"></i>
+              </button>
+              <button type="button" class="market-nav-category active" onclick="filterShopCat('Barchasi', this)"><i
+                  class="fas fa-th-large"></i><span>Barchasi</span></button>
+              <button type="button" class="market-nav-category" onclick="filterShopCat('Muzlatgichlar', this)"><i
+                  class="fas fa-snowflake"></i><span>Muzlatgichlar</span></button>
+              <button type="button" class="market-nav-category"
+                onclick="filterShopCat('Kir Yuvish Mashinalari', this)"><i class="fas fa-soap"></i><span>Kir yuvish
+                  mashinalari</span></button>
+              <button type="button" class="market-nav-category" onclick="filterShopCat('Konditsionerlar', this)"><i
+                  class="fas fa-wind"></i><span>Konditsionerlar</span></button>
+              <button type="button" class="market-nav-category" onclick="filterShopCat('Televizorlar', this)"><i
+                  class="fas fa-tv"></i><span>Televizorlar</span></button>
+              <button type="button" class="market-nav-category" onclick="filterShopCat('Changyutgichlar', this)"><i
+                  class="fas fa-broom"></i><span>Changyutgichlar</span></button>
+              <button type="button" class="market-nav-category" onclick="filterShopCat('Pechlar', this)"><i
+                  class="fas fa-fire"></i><span>Pechlar</span></button>
+              <button type="button" class="market-nav-category" onclick="filterShopCat('Aksessuarlar', this)"><i
+                  class="fas fa-plug"></i><span>Aksessuarlar</span></button>
             </div>
-            <button type="button" class="market-cart-btn" onclick="showCartView()">
-              <i class="fas fa-shopping-cart"></i>
-              <span>Savat</span>
-            </button>
-            <button type="button" class="market-cart-btn" style="background:transparent;border:1px solid var(--border);color:var(--text)" onclick="openReportModal()">
-              <i class="fas fa-comment-alt"></i>
-              <span>Murojaat</span>
-            </button>
           </div>
 
           <!-- CATALOG VIEW -->
           <div id="shopCatalogView">
-            <!-- INTERACTIVE SLIDER BANNER -->
-            <div class="slider-container" style="position:relative; width:100%; height:340px; border-radius:var(--radius-lg); overflow:hidden; margin-bottom:30px; box-shadow:var(--shadow-lg);">
-              <div class="slide-wrapper" id="slideWrapper">
-                <!-- Slide 1 -->
-                <div class="slide-item" style="background: linear-gradient(90deg, rgba(15,23,42,0.95) 30%, rgba(15,23,42,0.4) 100%), url('https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;">
-                  <div class="slide-info">
-                    <span class="market-chip" style="background:var(--primary-subtle);color:var(--primary);padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Yozgi Chegirmalar</span>
-                    <h2 style="margin-top:14px; font-size:32px; font-weight:800; line-height:1.2; color:#fff">Smart Televizorlar uchun<br><span style="color:var(--primary)">20% gacha Chegirma!</span></h2>
-                    <p style="margin-top:10px; font-size:14px; color:rgba(255,255,255,0.7); max-width:400px">Promo-kod: <strong style="color:var(--primary);background:rgba(249,115,22,0.15);padding:2px 6px;border-radius:4px">SUMMER20</strong>. Yangi avlod 4K Smart TV modellarini maxsus bahoda xarid qiling.</p>
-                    <a href="#shopProductGrid" class="btn btn-primary btn-sm" style="margin-top:16px; padding:10px 20px; font-weight:700; border-radius:var(--radius-sm); text-decoration:none; display:inline-flex; align-items:center; gap:8px"><span>Hozir xarid qilish</span> <i class="fas fa-shopping-bag"></i></a>
-                  </div>
-                  <div class="slide-art" style="margin-right:40px"><i class="fas fa-tv" style="color:var(--primary);font-size:100px;filter:drop-shadow(0 0 20px rgba(249,115,22,0.6))"></i></div>
+            <div class="market-hero-row">
+              <section class="market-hero" aria-label="Texno Park N1 afzalliklari">
+                <div class="market-hero-copy">
+                  <span class="market-hero-kicker"><i class="fas fa-sparkles"></i> Yangi avlod texnologiyalari</span>
+                  <h1>Kuchli texnologiya<br><em>sizga yaqinroq.</em></h1>
+                  <p>Telefon, noutbuk, televizor va boshqa texnikalarni original va ishonchli xarid qiling.</p>
+                  <div class="market-hero-actions"><button type="button" class="market-primary-action"
+                      onclick="document.getElementById('shopProductGrid')?.scrollIntoView({behavior:'smooth'})"><i
+                        class="fas fa-bag-shopping"></i> Xarid qilish</button><button type="button"
+                      class="market-secondary-action" onclick="toggleShopCatSidebar()"><i
+                        class="fas fa-layer-group"></i> Katalog</button></div>
                 </div>
-                <!-- Slide 2 -->
-                <div class="slide-item" style="background: linear-gradient(90deg, rgba(15,23,42,0.95) 30%, rgba(15,23,42,0.4) 100%), url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;">
-                  <div class="slide-info">
-                    <span class="market-chip" style="background:rgba(34,197,94,0.15);color:var(--success);padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Tezkor Xizmat</span>
-                    <h2 style="margin-top:14px; font-size:32px; font-weight:800; line-height:1.2; color:#fff">15,000,000 so'mdan ko'p<br><span style="color:var(--success)">Xaridga Bepul Yetkazish!</span></h2>
-                    <p style="margin-top:10px; font-size:14px; color:rgba(255,255,255,0.7); max-width:400px">Savatni to'ldiring va O'zbekiston bo'ylab mutlaqo bepul va xavfsiz yetkazib berish xizmatidan foydalaning.</p>
-                    <a href="#shopProductGrid" class="btn btn-success btn-sm" style="margin-top:16px; padding:10px 20px; font-weight:700; border-radius:var(--radius-sm); text-decoration:none; display:inline-flex; align-items:center; gap:8px; color:white; background:var(--success)"><span>Katalogga o'tish</span> <i class="fas fa-arrow-right"></i></a>
-                  </div>
-                  <div class="slide-art" style="margin-right:40px"><i class="fas fa-shipping-fast" style="color:var(--success);font-size:100px;filter:drop-shadow(0 0 20px rgba(34,197,94,0.6))"></i></div>
+                <div class="market-hero-art" aria-hidden="true">
+                  <div class="market-hero-orb"></div>
+                  <div class="market-hero-device"><i class="fas fa-mobile-screen-button"></i></div>
+                  <div class="market-hero-float market-hero-float-one"><i class="fas fa-headset"></i><span>24/7
+                      xizmat</span></div>
+                  <div class="market-hero-float market-hero-float-two"><i class="fas fa-shield-halved"></i><span>100%
+                      original</span></div>
                 </div>
-                <!-- Slide 3 -->
-                <div class="slide-item" style="background: linear-gradient(90deg, rgba(15,23,42,0.95) 30%, rgba(15,23,42,0.4) 100%), url('https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;">
-                  <div class="slide-info">
-                    <span class="market-chip" style="background:rgba(59,130,246,0.15);color:var(--info);padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Kafolat va Ishonch</span>
-                    <h2 style="margin-top:14px; font-size:32px; font-weight:800; line-height:1.2; color:#fff">Barcha Texnikalarga<br><span style="color:var(--info)">1 Yillik Rasmiy Kafolat!</span></h2>
-                    <p style="margin-top:10px; font-size:14px; color:rgba(255,255,255,0.7); max-width:400px">Biz faqat sertifikatlangan, original mahsulotlar va ishonchli rasmiy servis xizmatlarini taklif etamiz.</p>
-                    <a href="#shopProductGrid" class="btn btn-info btn-sm" style="margin-top:16px; padding:10px 20px; font-weight:700; border-radius:var(--radius-sm); text-decoration:none; display:inline-flex; align-items:center; gap:8px; color:white; background:var(--info)"><span>Batafsil ma'lumot</span> <i class="fas fa-shield-alt"></i></a>
-                  </div>
-                  <div class="slide-art" style="margin-right:40px"><i class="fas fa-shield-halved" style="color:var(--info);font-size:100px;filter:drop-shadow(0 0 20px rgba(59,130,246,0.6))"></i></div>
-                </div>
-              </div>
-              <div class="slider-dots">
-                <div class="slider-dot active" onclick="setSlide(0)"></div>
-                <div class="slider-dot" onclick="setSlide(1)"></div>
-                <div class="slider-dot" onclick="setSlide(2)"></div>
+              </section>
+              <div class="market-promo-rail" aria-label="Aksiyalar">
+                <button type="button" class="market-promo-card" onclick="filterShopCat('Muzlatgichlar', null)">
+                  <span><small>Hafta aksiyasi</small><strong>Muzlatgichlar<br>-30% gacha</strong></span>
+                  <span class="promo-cta">Ko'rish <i class="fas fa-arrow-right"></i></span>
+                  <i class="fas fa-snowflake promo-art"></i>
+                </button>
+                <button type="button" class="market-promo-card" onclick="filterShopCat('Televizorlar', null)">
+                  <span><small>Yangi to'plam</small><strong>Smart TV<br>0% bo'lib to'lash</strong></span>
+                  <span class="promo-cta">Ko'rish <i class="fas fa-arrow-right"></i></span>
+                  <i class="fas fa-tv promo-art"></i>
+                </button>
               </div>
             </div>
-            <div class="market-section-title">
-              <h3>Ommabop mahsulotlar</h3>
-              <span>Qoldiqdagi barcha mahsulotlar</span>
+            <div class="market-perks" aria-label="Xizmatlar">
+              <div class="market-perk"><i class="fas fa-truck-fast"></i><span><strong>Tez yetkazish</strong><small>Butun
+                    O'zbekiston bo'ylab</small></span></div>
+              <div class="market-perk"><i class="fas fa-rotate-left"></i><span><strong>Qaytarish
+                    kafolati</strong><small>Muddat ichida qaytarish</small></span></div>
+              <div class="market-perk"><i class="fas fa-headset"></i><span><strong>Qo'llab-quvvatlash</strong><small>Har
+                    kuni 09:00–22:00</small></span></div>
+              <div class="market-perk"><i class="fas fa-credit-card"></i><span><strong>Bo'lib
+                    to'lash</strong><small>Qulay va xavfsiz</small></span></div>
             </div>
-          </div>
-          <div class="shop-layout market-layout">
-            <!-- COLLAPSIBLE LEFT CATEGORY SIDEBAR -->
-            <div class="shop-cat-sidebar" id="shopCatSidebar">
-              <button type="button" class="shop-cat-toggle-btn" onclick="toggleShopCatSidebar()">
-                <i class="fas fa-chevron-left"></i>
-              </button>
-              <div class="cat-sidebar-header">
-                <i class="fas fa-th-list"></i>
-                <span>Kategoriyalar</span>
-              </div>
-              <div class="cat-sidebar-list" id="shopCatSidebarList">
-                <!-- Dynamically populated categories go here -->
-              </div>
-            </div>
-
-            <div class="shop-main">
-              <div class="shop-hero market-filterbar">
-                <div>
-                  <h2>Katalog</h2>
-                  <p>Kategoriya tanlang yoki qidiruvdan foydalaning.</p>
-                </div>
-                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <div class="shop-search">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="renderShop()">
-                  </div>
-                  <div class="shop-sort">
-                    <select id="shopSortSelect" onchange="renderShop()" class="form-control"
-                      style="padding:0 12px;height:42px;border-radius:var(--radius-sm);font-weight:600;min-width:160px;cursor:pointer">
-                      <option value="default">Ommaboplik</option>
-                      <option value="price-asc">Narx: Arzonroq</option>
-                      <option value="price-desc">Narx: Qimmatroq</option>
-                      <option value="name-asc">Nomi: A-Z</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div class="product-grid" id="shopProductGrid"></div>
-
-              <!-- TRUST BADGES GRID -->
-              <div class="trust-grid" style="margin-top: 40px;">
-                <div class="trust-card">
-                  <div class="trust-icon"><i class="fas fa-truck"></i></div>
-                  <div>
-                    <h4>Bepul Yetkazish</h4>
-                    <p>15,000,000 so'mdan oshganda</p>
-                  </div>
-                </div>
-                <div class="trust-card">
-                  <div class="trust-icon"><i class="fas fa-shield-alt"></i></div>
-                  <div>
-                    <h4>1 Yillik Kafolat</h4>
-                    <p>100% original mahsulotlar</p>
-                  </div>
-                </div>
-                <div class="trust-card">
-                  <div class="trust-icon"><i class="fas fa-credit-card"></i></div>
-                  <div>
-                    <h4>Bo'lib To'lash</h4>
-                    <p>Qulay va foizsiz to'lovlar</p>
-                  </div>
-                </div>
-                <div class="trust-card">
-                  <div class="trust-icon"><i class="fas fa-headset"></i></div>
-                  <div>
-                    <h4>24/7 Qo'llab-quvvatlash</h4>
-                    <p>Mijozlar uchun doimiy aloqa</p>
-                  </div>
+            <section class="market-section-title">
+              <div><span class="market-section-eyebrow">Tanlovlar</span>
+                <h3>Ommabop mahsulotlar</h3>
+              </div><button type="button" class="market-section-link"
+                onclick="filterShopCat('Barchasi', this)">Barchasini ko'rish <i class="fas fa-arrow-right"></i></button>
+            </section>
+            <div class="shop-layout market-layout">
+              <!-- COLLAPSIBLE LEFT CATEGORY SIDEBAR -->
+              <div class="shop-cat-sidebar" id="shopCatSidebar">
+                <button type="button" class="shop-cat-toggle-btn" onclick="toggleShopCatSidebar()">
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="cat-sidebar-header"><i class="fas fa-th-list"></i><span>Kategoriyalar</span></div>
+                <div class="cat-sidebar-list" id="shopCatSidebarList"><!-- Dynamically populated categories go here -->
                 </div>
               </div>
 
-              <!-- TESTIMONIALS SECTION -->
-              <div class="testimonials-section">
-                <h3>💬 Xaridorlarimiz Fikrlari</h3>
-                <div class="testimonials-grid">
-                  <div class="testimonial-card">
-                    <div class="testimonial-stars">★★★★★</div>
-                    <p class="testimonial-text">"Konditsioner sotib oldim, o'rnatib berish bepul bo'ldi. Yetkazib berish
-                      juda tez, xizmat ko'rsatish a'lo darajada!"</p>
-                    <div class="testimonial-user">
-                      <img
-                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=60&h=60"
-                        alt="Avatar">
-                      <div>
-                        <h5>Malika Axmedova</h5>
-                        <span>Toshkent shahri</span>
-                      </div>
+              <div class="shop-main">
+                <div class="shop-hero market-filterbar">
+                  <div>
+                    <h2>Katalog</h2>
+                    <p>Kategoriya tanlang yoki qidiruvdan foydalaning.</p>
+                  </div>
+                  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <div class="shop-search">
+                      <i class="fas fa-search"></i>
+                      <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="renderShop()">
                     </div>
-                  </div>
-                  <div class="testimonial-card">
-                    <div class="testimonial-stars">★★★★★</div>
-                    <p class="testimonial-text">"Google orqali kirib buyurtma berish juda qulay bo'ldi. Click orqali
-                      to'ladim, chek va kafolat talonini ham topshirishdi."</p>
-                    <div class="testimonial-user">
-                      <img
-                        src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=60&h=60"
-                        alt="Avatar">
-                      <div>
-                        <h5>Sardor Rustamov</h5>
-                        <span>Samarqand shahri</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="testimonial-card">
-                    <div class="testimonial-stars">★★★★★</div>
-                    <p class="testimonial-text">"Televizor sotib oldik, sifati juda zo'r. Yetkazib beruvchi yordam berib
-                      sozlab berdi. Katta rahmat Texno Park jamoasiga!"</p>
-                    <div class="testimonial-user">
-                      <img
-                        src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=60&h=60"
-                        alt="Avatar">
-                      <div>
-                        <h5>Dilnoza Qodirova</h5>
-                        <span>Buxoro shahri</span>
-                      </div>
+                    <div class="shop-sort">
+                      <select id="shopSortSelect" onchange="renderShop()" class="form-control"
+                        style="padding:0 12px;height:42px;border-radius:var(--radius-sm);font-weight:600;min-width:160px;cursor:pointer">
+                        <option value="default">Ommaboplik</option>
+                        <option value="price-asc">Narx: Arzonroq</option>
+                        <option value="price-desc">Narx: Qimmatroq</option>
+                        <option value="name-asc">Nomi: A-Z</option>
+                      </select>
                     </div>
                   </div>
                 </div>
-              </div>
+                <div class="product-grid" id="shopProductGrid"></div>
 
-              <!-- FAQ SECTION -->
-              <div class="faq-section">
-                <h3>❓ Ko'p beriladigan savollar</h3>
-                <div class="faq-item">
-                  <div class="faq-question" onclick="toggleFaq(this)">
-                    <span>Buyurtmani qanday rasmiylashtiraman?</span>
-                    <i class="fas fa-chevron-down"></i>
+                <!-- PROMO BANNER -->
+                <section class="market-banner" id="marketPromoBanner" aria-label="Hafta taklifi">
+                  <div class="market-banner-copy">
+                    <span class="market-banner-kicker"><i class="fas fa-bolt"></i> Hafta taklifi</span>
+                    <h3>Smart TV va konditsionerlarga <em>12% chegirma</em></h3>
+                    <p>Chegirma 7 kun davomida amal qiladi. Toshkent shahri bo'ylab yetkazib berish bepul.</p>
                   </div>
-                  <div class="faq-answer">
-                    Siz kerakli mahsulotlarni tanlab, savatga qo'shishingiz va o'ng tomondagi panel orqali to'lov turini
-                    tanlab "Buyurtma berish" tugmasini bosishingiz kifoya.
+                  <button type="button" class="market-banner-cta"
+                    onclick="filterShopCat('Televizorlar', null); document.getElementById('shopProductGrid')?.scrollIntoView({behavior:'smooth'})">
+                    Ko'rish <i class="fas fa-arrow-right"></i>
+                  </button>
+                </section>
+
+                <!-- DEALS GRID -->
+                <section class="market-section-title market-deals-title">
+                  <div><span class="market-section-eyebrow">Chegirmalar</span>
+                    <h3>Aksiya mahsulotlari</h3>
+                  </div>
+                  <button type="button" class="market-section-link" onclick="filterShopCat('Barchasi', null)">Barchasini
+                    ko'rish <i class="fas fa-arrow-right"></i></button>
+                </section>
+                <div class="product-grid" id="marketDealGrid"></div>
+
+                <!-- TRUST BADGES GRID -->
+                <div class="trust-grid" style="margin-top: 40px;">
+                  <div class="trust-card">
+                    <div class="trust-icon"><i class="fas fa-truck"></i></div>
+                    <div>
+                      <h4>Bepul Yetkazish</h4>
+                      <p>15,000,000 so'mdan oshganda</p>
+                    </div>
+                  </div>
+                  <div class="trust-card">
+                    <div class="trust-icon"><i class="fas fa-shield-alt"></i></div>
+                    <div>
+                      <h4>1 Yillik Kafolat</h4>
+                      <p>100% original mahsulotlar</p>
+                    </div>
+                  </div>
+                  <div class="trust-card">
+                    <div class="trust-icon"><i class="fas fa-credit-card"></i></div>
+                    <div>
+                      <h4>Bo'lib To'lash</h4>
+                      <p>Qulay va foizsiz to'lovlar</p>
+                    </div>
+                  </div>
+                  <div class="trust-card">
+                    <div class="trust-icon"><i class="fas fa-headset"></i></div>
+                    <div>
+                      <h4>24/7 Qo'llab-quvvatlash</h4>
+                      <p>Mijozlar uchun doimiy aloqa</p>
+                    </div>
                   </div>
                 </div>
-                <div class="faq-item">
-                  <div class="faq-question" onclick="toggleFaq(this)">
-                    <span>Yetkazib berish xizmati qancha vaqt oladi?</span>
-                    <i class="fas fa-chevron-down"></i>
-                  </div>
-                  <div class="faq-answer">
-                    Toshkent shahri bo'ylab yetkazib berish 24 soat ichida, viloyat markazlariga esa 2-3 ish kuni ichida
-                    amalga oshiriladi.
+
+                <!-- TESTIMONIALS SECTION -->
+                <div class="testimonials-section">
+                  <h3>💬 Xaridorlarimiz Fikrlari</h3>
+                  <div class="testimonials-grid">
+                    <div class="testimonial-card">
+                      <div class="testimonial-stars">★★★★★</div>
+                      <p class="testimonial-text">"Konditsioner sotib oldim, o'rnatib berish bepul bo'ldi. Yetkazib
+                        berish
+                        juda tez, xizmat ko'rsatish a'lo darajada!"</p>
+                      <div class="testimonial-user">
+                        <img
+                          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=60&h=60"
+                          alt="Avatar">
+                        <div>
+                          <h5>Malika Axmedova</h5>
+                          <span>Toshkent shahri</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="testimonial-card">
+                      <div class="testimonial-stars">★★★★★</div>
+                      <p class="testimonial-text">"Google orqali kirib buyurtma berish juda qulay bo'ldi. Click orqali
+                        to'ladim, chek va kafolat talonini ham topshirishdi."</p>
+                      <div class="testimonial-user">
+                        <img
+                          src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=60&h=60"
+                          alt="Avatar">
+                        <div>
+                          <h5>Sardor Rustamov</h5>
+                          <span>Samarqand shahri</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="testimonial-card">
+                      <div class="testimonial-stars">★★★★★</div>
+                      <p class="testimonial-text">"Televizor sotib oldik, sifati juda zo'r. Yetkazib beruvchi yordam
+                        berib
+                        sozlab berdi. Katta rahmat Texno Park N1 jamoasiga!"</p>
+                      <div class="testimonial-user">
+                        <img
+                          src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=60&h=60"
+                          alt="Avatar">
+                        <div>
+                          <h5>Dilnoza Qodirova</h5>
+                          <span>Buxoro shahri</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div class="faq-item">
-                  <div class="faq-question" onclick="toggleFaq(this)">
-                    <span>Muddatli to'lov (kredit) shartlari qanday?</span>
-                    <i class="fas fa-chevron-down"></i>
+
+                <!-- FAQ SECTION -->
+                <div class="faq-section">
+                  <h3>❓ Ko'p beriladigan savollar</h3>
+                  <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                      <span>Buyurtmani qanday rasmiylashtiraman?</span>
+                      <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                      Siz kerakli mahsulotlarni tanlab, savatga qo'shishingiz va o'ng tomondagi panel orqali to'lov
+                      turini
+                      tanlab "Buyurtma berish" tugmasini bosishingiz kifoya.
+                    </div>
                   </div>
-                  <div class="faq-answer">
-                    Bo'lib to'lash xizmati 3 oydan 12 oygacha taklif etiladi. Boshlang'ich to'lov ixtiyoriy va ortiqcha
-                    foizlar hisoblanmaydi.
+                  <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                      <span>Yetkazib berish xizmati qancha vaqt oladi?</span>
+                      <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                      Toshkent shahri bo'ylab yetkazib berish 24 soat ichida, viloyat markazlariga esa 2-3 ish kuni
+                      ichida
+                      amalga oshiriladi.
+                    </div>
+                  </div>
+                  <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                      <span>Muddatli to'lov (kredit) shartlari qanday?</span>
+                      <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="faq-answer">
+                      Bo'lib to'lash xizmati 3 oydan 12 oygacha taklif etiladi. Boshlang'ich to'lov ixtiyoriy va
+                      ortiqcha
+                      foizlar hisoblanmaydi.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -708,7 +818,7 @@
                   <div class="banner-icon"><i class="fas fa-truck"></i></div>
                   <div class="banner-text">
                     <strong>Indinga yetkazib beramiz</strong>
-                    <span>Texno Park tezkor kuryerlik xizmati orqali O'zbekiston bo'ylab.</span>
+                    <span>Texno Park N1 tezkor kuryerlik xizmati orqali O'zbekiston bo'ylab.</span>
                   </div>
                 </div>
 
@@ -869,8 +979,7 @@
                 <button type="button" class="pay-type" data-provider="credit" onclick="setPayType('credit',this)">
                   <i class="fas fa-calendar-check"></i>Kredit
                 </button>
-                <button type="button" class="pay-type" data-provider="transfer"
-                  onclick="setPayType('transfer',this)">
+                <button type="button" class="pay-type" data-provider="transfer" onclick="setPayType('transfer',this)">
                   <i class="fas fa-building-columns"></i>O'tkazma
                 </button>
               </div>
@@ -937,6 +1046,7 @@
                     <th>Rasm</th>
                     <th>Nomi</th>
                     <th>Kategoriya</th>
+                    <th>Filial</th>
                     <th>Narxi</th>
                     <th>Qoldiq</th>
                     <th>Holati</th>
@@ -1164,7 +1274,8 @@
 
       <!-- ===== SHARTNOMALAR ===== -->
       <div class="page" id="page-contracts">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div
+          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
           <div>
             <h2 style="font-size:20px;font-weight:700">📄 Shartnomalar</h2>
             <p style="color:var(--muted);font-size:13px;margin-top:3px">
@@ -1262,6 +1373,277 @@
                   </tr>
                 </thead>
                 <tbody id="contractsTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== FILIALLAR ===== -->
+      <div class="page" id="page-branches">
+        <div
+          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">🏬 Filiallar</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">
+              Filiallar ro'yxati, statistika va boshqaruv
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" onclick="Branches.openAddModal()"><i class="fas fa-plus"></i> Yangi
+              filial</button>
+          </div>
+        </div>
+
+        <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
+          <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
+            <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i
+                class="fas fa-map-location-dot"></i></div>
+            <div class="stat-num" id="branchCount">0</div>
+            <div class="stat-label">Jami Filiallar</div>
+          </div>
+          <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
+            <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
+                class="fas fa-circle-check"></i></div>
+            <div class="stat-num" id="branchActiveCount">0</div>
+            <div class="stat-label">Faol Filiallar</div>
+          </div>
+          <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
+            <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i class="fas fa-store"></i>
+            </div>
+            <div class="stat-num" id="branchProductsCount">0</div>
+            <div class="stat-label">Filialga biriktirilgan mahsulot</div>
+          </div>
+          <div class="stat-card" style="--card-accent:rgba(245,158,11,.12)">
+            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i
+                class="fas fa-location-arrow"></i></div>
+            <div class="stat-num" id="branchNearestLabel">—</div>
+            <div class="stat-label">Eng yaqin filial</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
+            <h3><i class="fas fa-list-check" style="color:var(--primary)"></i> Filiallar ro'yxati va KPI</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input class="form-control" id="branchSearch" placeholder="Nomi / shahar / manzil..."
+                style="min-width:220px;height:38px" oninput="Branches.render()">
+              <select class="form-control" id="branchStatusFilter" style="height:38px;width:auto"
+                onchange="Branches.render()">
+                <option value="">Barcha holat</option>
+                <option value="active">Faol</option>
+                <option value="inactive">Nofaol</option>
+              </select>
+              <button class="btn btn-outline btn-sm" onclick="Branches.loadSummary(true)"><i class="fas fa-rotate"></i>
+                KPI yangilash</button>
+              <button class="btn btn-outline btn-sm" onclick="Branches.exportCSV()"><i class="fas fa-file-csv"></i>
+                CSV</button>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Belgi</th>
+                    <th>Filial</th>
+                    <th>Manzil</th>
+                    <th>Aloqa</th>
+                    <th>Mahsulot</th>
+                    <th>Zaxira qiymati</th>
+                    <th>Savdo / Tushum</th>
+                    <th>Kirim</th>
+                    <th>Chiqim / Harajat</th>
+                    <th>Sof natija</th>
+                    <th>Holat</th>
+                    <th>Amallar</th>
+                  </tr>
+                </thead>
+                <tbody id="branchesTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:18px">
+          <div class="panel-header">
+            <h3><i class="fas fa-circle-info" style="color:var(--accent)"></i> Filiallar bo'yicha taqsimot</h3>
+          </div>
+          <div class="panel-body">
+            <div id="branchDistribution" class="branch-distribution"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== KIRIM / CHIQIM / HARAJAT ===== -->
+      <div class="page" id="page-cashflow">
+        <div
+          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">💵 Kirim / Chiqim / Harajat</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">
+              Filiallar bo'yicha pul harakati nazorati — admin barcha filialni bir joyda kuzatadi
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="CashFlow.render()"><i class="fas fa-rotate"></i>
+              Yangilash</button>
+            <button class="btn btn-outline btn-sm" onclick="CashFlow.exportCSV()"><i class="fas fa-file-csv"></i>
+              CSV</button>
+          </div>
+        </div>
+
+        <div class="stat-grid" style="grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+          <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
+            <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
+                class="fas fa-cash-register"></i></div>
+            <div class="stat-num" id="cfSaleRevenue">0 so'm</div>
+            <div class="stat-label">Savdo tushumi</div>
+          </div>
+          <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
+            <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i
+                class="fas fa-arrow-down-long"></i></div>
+            <div class="stat-num" id="cfKirim">0 so'm</div>
+            <div class="stat-label">Kirim</div>
+          </div>
+          <div class="stat-card" style="--card-accent:rgba(239,68,68,.12)">
+            <div class="stat-icon" style="background:rgba(239,68,68,.15);color:#FCA5A5"><i
+                class="fas fa-arrow-up-long"></i></div>
+            <div class="stat-num" id="cfChiqim">0 so'm</div>
+            <div class="stat-label">Chiqim</div>
+          </div>
+          <div class="stat-card" style="--card-accent:rgba(245,158,11,.12)">
+            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i class="fas fa-receipt"></i>
+            </div>
+            <div class="stat-num" id="cfHarajat">0 so'm</div>
+            <div class="stat-label">Harajat</div>
+          </div>
+          <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
+            <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i
+                class="fas fa-scale-balanced"></i></div>
+            <div class="stat-num" id="cfNet">0 so'm</div>
+            <div class="stat-label">Sof natija</div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:18px">
+          <div class="panel-header">
+            <h3><i class="fas fa-plus-circle" style="color:var(--primary)"></i> Yangi yozuv qo'shish</h3>
+          </div>
+          <div class="panel-body">
+            <div class="cf-type-group" id="cfTypeGroup">
+              <button type="button" class="cf-type-btn active" data-cf-type="kirim" onclick="CashFlow.setType('kirim')">
+                <i class="fas fa-arrow-down-long"></i> Kirim (pul kirdi)</button>
+              <button type="button" class="cf-type-btn" data-cf-type="chiqim" onclick="CashFlow.setType('chiqim')">
+                <i class="fas fa-arrow-up-long"></i> Chiqim (pul chiqdi)</button>
+              <button type="button" class="cf-type-btn" data-cf-type="harajat" onclick="CashFlow.setType('harajat')">
+                <i class="fas fa-receipt"></i> Harajat (xarajat)</button>
+            </div>
+            <div class="form-row">
+              <div class="form-col"><label>Summa (so'm) *</label>
+                <input class="form-control" id="cf-amount" type="number" min="0" placeholder="0">
+              </div>
+              <div class="form-col"><label>Kategoriya</label>
+                <select class="form-control" id="cf-category">
+                  <option>Savdo tushumi</option>
+                  <option>Ta'minotchi to'lovi</option>
+                  <option>Ijara</option>
+                  <option>Oylik maosh</option>
+                  <option>Kommunal</option>
+                  <option>Soliq</option>
+                  <option>Transport</option>
+                  <option>Reklama</option>
+                  <option>Ta'mirlash</option>
+                  <option>Kanselyariya</option>
+                  <option>Boshqa</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-col"><label>Filial</label>
+                <select class="form-control" id="cf-branch">
+                  <option value="">Umumiy (filialga bog'lanmagan)</option>
+                </select>
+              </div>
+              <div class="form-col"><label>Sana</label>
+                <input class="form-control" id="cf-date" type="date">
+              </div>
+            </div>
+            <div class="form-col" style="margin-bottom:14px">
+              <label>Izoh</label>
+              <input class="form-control" id="cf-note" maxlength="240" placeholder="Masalan: sentabr oyi ijarasi">
+            </div>
+            <button class="btn btn-primary" onclick="CashFlow.save()"><i class="fas fa-save"></i> Yozuvni
+              saqlash</button>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:18px">
+          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
+            <h3><i class="fas fa-building-columns" style="color:var(--accent)"></i> Filiallar bo'yicha moliyaviy nazorat
+            </h3>
+            <small style="color:var(--muted);font-size:12px">Barcha filial bir jadvalda — savdo, kirim, chiqim, harajat
+              va sof natija</small>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Filial</th>
+                    <th>Savdo tushumi</th>
+                    <th>Kirim</th>
+                    <th>Chiqim</th>
+                    <th>Harajat</th>
+                    <th>Sof natija</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="branchMonitorTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
+            <h3><i class="fas fa-list-ul" style="color:var(--primary)"></i> Yozuvlar tarixi
+              <small id="cfRecordCount" style="color:var(--muted);font-size:12px;font-weight:400"></small>
+            </h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <select class="form-control" id="cfFilterBranch" style="height:38px;width:auto"
+                onchange="CashFlow.render()">
+                <option value="">Barcha filiallar</option>
+              </select>
+              <select class="form-control" id="cfFilterType" style="height:38px;width:auto"
+                onchange="CashFlow.render()">
+                <option value="">Barcha turlar</option>
+                <option value="kirim">Kirim</option>
+                <option value="chiqim">Chiqim</option>
+                <option value="harajat">Harajat</option>
+              </select>
+              <input class="form-control" id="cfFrom" type="date" style="height:38px;width:auto"
+                onchange="CashFlow.render()" title="Boshlanish sanasi">
+              <input class="form-control" id="cfTo" type="date" style="height:38px;width:auto"
+                onchange="CashFlow.render()" title="Tugash sanasi">
+              <button class="btn btn-outline btn-sm" onclick="CashFlow.clearFilters()"><i
+                  class="fas fa-filter-circle-xmark"></i> Tozalash</button>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Sana</th>
+                    <th>Turi</th>
+                    <th>Kategoriya</th>
+                    <th>Filial</th>
+                    <th>Summa</th>
+                    <th>Izoh</th>
+                    <th>Amal</th>
+                  </tr>
+                </thead>
+                <tbody id="cashFlowTableBody"></tbody>
               </table>
             </div>
           </div>
@@ -1418,8 +1800,8 @@
         <!-- ===== XAVFSIZLIK MONITORINGI ===== -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin:26px 0 16px">
           <div>
-            <h3 style="font-size:17px;font-weight:700"><i class="fas fa-shield-halved"
-                style="color:var(--primary)"></i> Xavfsizlik Monitoringi</h3>
+            <h3 style="font-size:17px;font-weight:700"><i class="fas fa-shield-halved" style="color:var(--primary)"></i>
+              Xavfsizlik Monitoringi</h3>
             <p style="color:var(--muted);font-size:13px;margin-top:3px">Shubhali urinishlar va xavfsizlik hodisalari
               (avtomatik yozib boriladi)</p>
           </div>
@@ -1446,8 +1828,8 @@
             <div class="stat-change down"><i class="fas fa-triangle-exclamation"></i> 24 soat ichida</div>
           </div>
           <div class="stat-card" style="--card-accent:rgba(245,158,11,.12)">
-            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i
-                class="fas fa-ban"></i></div>
+            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i class="fas fa-ban"></i>
+            </div>
             <div class="stat-num" id="securityBlocked">0</div>
             <div class="stat-label">Bloklangan Hujumlar</div>
             <div class="stat-change up"><i class="fas fa-lock"></i> Avtomatik bloklandi</div>
@@ -1515,8 +1897,11 @@
       <div class="page" id="page-warehouse">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
           <div>
-            <h2 style="font-size:20px;font-weight:700">🏬 Ombor Nazorati</h2>
-            <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulotlar zaxirasi va umumiy qiymati</p>
+            <h2 style="font-size:20px;font-weight:700">🏬 Ombor Nazorati
+              <span id="warehouseScope" style="font-size:13px;color:var(--muted);font-weight:500"></span>
+            </h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulotlar zaxirasi va umumiy qiymati (filial
+              tanlanganda faqat shu filial ombori)</p>
           </div>
         </div>
         <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:20px">
@@ -1588,14 +1973,18 @@
 
       <!-- ===== SETTINGS ===== -->
       <div class="page" id="page-assistant">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div
+          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
           <div>
-            <h2 style="font-size:20px;font-weight:700"><i class="fas fa-robot" style="color:var(--primary)"></i> AI Yordamchi</h2>
-            <p style="color:var(--muted);font-size:13px;margin-top:3px">Bazadagi real ko'rsatkichlar asosida javob beradi — faqat admin uchun</p>
+            <h2 style="font-size:20px;font-weight:700"><i class="fas fa-robot" style="color:var(--primary)"></i> AI
+              Yordamchi</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Bazadagi real ko'rsatkichlar asosida javob
+              beradi — faqat admin uchun</p>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <span class="badge" id="ai-source-badge">Tayyor</span>
-            <button class="btn btn-outline" onclick="Assistant.reset()"><i class="fas fa-broom"></i> Suhbatni tozalash</button>
+            <button class="btn btn-outline" onclick="Assistant.reset()"><i class="fas fa-broom"></i> Suhbatni
+              tozalash</button>
           </div>
         </div>
 
@@ -1606,7 +1995,9 @@
             <h3><i class="fas fa-comments" style="color:var(--primary)"></i> Suhbat</h3>
           </div>
           <div class="panel-body">
-            <div id="ai-chat" style="display:flex;flex-direction:column;gap:12px;max-height:440px;overflow-y:auto;padding:4px 2px"></div>
+            <div id="ai-chat"
+              style="display:flex;flex-direction:column;gap:12px;max-height:440px;overflow-y:auto;padding:4px 2px">
+            </div>
 
             <div id="ai-quick" style="display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 12px">
               <button class="btn btn-outline" onclick="Assistant.askQuick(this)">Bugungi savdo qancha?</button>
@@ -1654,7 +2045,7 @@
             <div class="panel-body">
               <div class="form-row">
                 <div class="form-col"><label>Kompaniya Nomi</label><input class="form-control" id="companyName"
-                    placeholder="Masalan: Texno Park MChJ"></div>
+                    placeholder="Masalan: Texno Park N1 MChJ"></div>
                 <div class="form-col"><label>Telefon</label><input class="form-control" id="companyPhone"
                     placeholder="+998 71 000 00 00"></div>
               </div>
@@ -1670,12 +2061,29 @@
                 bo'lsa fiskal modul chek chiqishini to'xtatadi.
               </small>
               <div class="form-col" style="margin-bottom:16px">
-                <label>Logo</label>
-                <div class="img-upload" onclick="this.querySelector('input').click()">
-                  <i class="fas fa-cloud-upload-alt"></i>
-                  <p>Rasm yuklash</p>
-                  <input type="file" accept="image/*" onchange="previewLogo(this)">
+                <label>Kompaniya logotipi</label>
+                <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+                  <div id="logoPreview" class="logo-preview-box">
+                    <span style="font-size:11px;color:var(--muted)">Logo yo'q</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <div class="img-upload" style="padding:10px 18px;min-height:auto"
+                      onclick="this.querySelector('input').click()">
+                      <i class="fas fa-cloud-upload-alt"></i>
+                      <p>Logotip yuklash</p>
+                      <input type="file" accept="image/*" onchange="uploadCompanyLogo(this)">
+                    </div>
+                    <button type="button" class="btn btn-outline btn-sm" id="logoRemoveBtn"
+                      style="display:none;color:var(--danger)" onclick="removeCompanyLogo()">
+                      <i class="fas fa-trash"></i> Logotipni olib tashlash
+                    </button>
+                  </div>
+                  <small id="logoUploadStatus" style="color:var(--muted);font-size:11px"></small>
                 </div>
+                <small style="display:block;color:var(--text-muted);font-size:11px;margin-top:8px">
+                  Logotip Railway bucketga (bucket sozlanmagan bo'lsa bazaga) yuklanadi va
+                  login sahifasi, yon panel, do'kon hamda chek sarlavhasida avtomatik ko'rinadi.
+                </small>
               </div>
               <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Saqlash</button>
             </div>
@@ -1732,6 +2140,19 @@
                 <label style="margin-left:auto;cursor:pointer">
                   <input type="checkbox" id="autoPrint" checked style="width:20px;height:20px">
                 </label>
+              </div>
+
+              <div style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:12px">
+                <strong style="display:block;margin-bottom:8px">Rasm saqlash (Railway Bucket / S3)</strong>
+                <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+                  Bucket bilan aloqani tekshiradi: bucket mavjudmi, fayl yuklanadimi va ochiq havola
+                  ishlaydimi. Rasm yuklanmasa — muammo shu yerda ko'rinadi.
+                </p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <button class="btn btn-outline" onclick="checkStorage()">
+                    <i class="fas fa-cloud-arrow-up"></i> Saqlashni tekshirish</button>
+                  <small id="storageCheckResult" style="font-size:12px;color:var(--muted)"></small>
+                </div>
               </div>
 
               <div style="margin-bottom:16px;padding:16px;background:var(--bg);border-radius:12px">
@@ -2049,7 +2470,7 @@
             </div>
             <div class="panel-body">
               <div class="form-row">
-                <div class="form-col"><label>Chek Sarlavhasi</label><input class="form-control" value="Texno PARK">
+                <div class="form-col"><label>Chek Sarlavhasi</label><input class="form-control" value="Texno Park N1">
                 </div>
                 <div class="form-col"><label>Footer Matni</label><input class="form-control"
                     value="Rahmat xarid uchun!"></div>
@@ -2057,13 +2478,14 @@
               <div class="form-col" style="margin-bottom:14px">
                 <label>Chek Ko'rinishi (Preview)</label>
                 <div class="receipt">
-                  <h2>Texno PARK</h2>
+                  <h2>Texno Park N1</h2>
                   <div class="r-center">Chilonzor 12, Toshkent<br>+998 90 123 45 67</div>
                   <hr>
                   <div class="r-row"><span>Sana:</span><span id="rDate"></span></div>
                   <div class="r-row"><span>Chek #:</span><span>00001</span></div>
                   <hr>
-                  <div class="r-row"><span id="receiptPreviewItem">Mahsulot qo'shilmagan</span><span id="receiptPreviewSum">0</span></div>
+                  <div class="r-row"><span id="receiptPreviewItem">Mahsulot qo'shilmagan</span><span
+                      id="receiptPreviewSum">0</span></div>
                   <hr>
                   <div class="r-row"><span>Jami:</span><span id="receiptPreviewTotal">0</span></div>
                   <div class="r-row"><span>QQS (12%):</span><span id="receiptPreviewTax">0</span></div>
@@ -2079,7 +2501,106 @@
       </div>
 
     </div><!-- /main -->
+
+    <!-- ===== MARKET FOOTER (navy) ===== -->
+    <footer class="market-footer">
+      <div class="market-footer-inner">
+        <div>
+          <div class="market-footer-brand">
+            <div class="market-logo"><i class="fas fa-bolt"></i></div>
+            <strong>Texno Park N1</strong>
+          </div>
+          <p>Texno Park N1 — original maishiy texnika va elektronika do'koni. Rasmiy kafolat, tez yetkazib
+            berish va qulay bo'lib to'lash xizmatlari.</p>
+          <div class="market-footer-socials">
+            <a href="javascript:void(0)" title="Telegram"
+              onclick="showNotif('info','Telegram','Texno Park N1 rasmiy kanali')"><i class="fab fa-telegram"></i></a>
+            <a href="javascript:void(0)" title="Instagram"
+              onclick="showNotif('info','Instagram','Texno Park N1 rasmiy sahifasi')"><i
+                class="fab fa-instagram"></i></a>
+            <a href="javascript:void(0)" title="Facebook"
+              onclick="showNotif('info','Facebook','Texno Park N1 rasmiy sahifasi')"><i
+                class="fab fa-facebook-f"></i></a>
+            <a href="javascript:void(0)" title="YouTube"
+              onclick="showNotif('info','YouTube','Texno Park N1 rasmiy kanali')"><i class="fab fa-youtube"></i></a>
+          </div>
+        </div>
+        <div>
+          <h4>Kategoriyalar</h4>
+          <ul>
+            <li><button type="button" class="market-footer-link"
+                onclick="filterShopCat('Muzlatgichlar', null)">Muzlatgichlar</button></li>
+            <li><button type="button" class="market-footer-link"
+                onclick="filterShopCat('Kir Yuvish Mashinalari', null)">Kir yuvish mashinalari</button></li>
+            <li><button type="button" class="market-footer-link"
+                onclick="filterShopCat('Konditsionerlar', null)">Konditsionerlar</button></li>
+            <li><button type="button" class="market-footer-link"
+                onclick="filterShopCat('Televizorlar', null)">Televizorlar</button></li>
+            <li><button type="button" class="market-footer-link"
+                onclick="filterShopCat('Aksessuarlar', null)">Aksessuarlar</button></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Xizmatlar</h4>
+          <ul>
+            <li><button type="button" class="market-footer-link"
+                onclick="showNotif('info','Yetkazib berish','Toshkent shahri boylab 24 soat ichida yetkazamiz')">Yetkazib
+                berish</button></li>
+            <li><button type="button" class="market-footer-link"
+                onclick="showNotif('info','Kafolat','Barcha mahsulotlarga 1 yil rasmiy kafolat beriladi')">Kafolat</button>
+            </li>
+            <li><button type="button" class="market-footer-link"
+                onclick="showNotif('info','Bolib tolash','Ustama bilan 12 oygacha muddatli tolov xizmati')">Bo'lib
+                to'lash</button></li>
+            <li><button type="button" class="market-footer-link"
+                onclick="showNotif('info','Qaytarish','10 kun ichida qaytarish imkoniyati mavjud')">Qaytarish</button>
+            </li>
+            <li><button type="button" class="market-footer-link"
+                onclick="showNotif('info','Xohishlar','Saqlangan mahsulotlar shu qurilmada saqlanadi')">Xohishlar</button>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <h4>Bog'lanish</h4>
+          <div class="market-footer-contact">
+            <span><i class="fas fa-location-dot"></i> Toshkent sh., Chilonzor tumani</span>
+            <span><i class="fas fa-phone"></i> +998 71 200 30 40</span>
+            <span><i class="fas fa-envelope"></i> info@texnopark.uz</span>
+            <span><i class="fas fa-clock"></i> Har kuni 09:00 – 22:00</span>
+          </div>
+        </div>
+      </div>
+      <div class="market-footer-bottom">
+        <span>© <span id="marketFooterYear">2026</span> Texno Park N1. Barcha huquqlar himoyalangan.</span>
+        <div class="market-footer-pay">
+          <span>Click</span><span>Payme</span><span>Uzum
+            Bank</span><span>Paynet</span><span>Visa</span><span>Mastercard</span>
+        </div>
+      </div>
+    </footer>
+
+    <!-- ===== MOBILE BOTTOM NAV ===== -->
+    <nav class="market-bottom-nav" aria-label="Mobil navigatsiya">
+      <button type="button" data-nav="home" class="active"
+        onclick="showCatalogView(); document.getElementById('page-shop')?.scrollIntoView({behavior:'smooth'})">
+        <i class="fas fa-house"></i><span>Asosiy</span>
+      </button>
+      <button type="button" data-nav="catalog"
+        onclick="showCatalogView(); document.getElementById('shopProductGrid')?.scrollIntoView({behavior:'smooth'})">
+        <i class="fas fa-grip"></i><span>Katalog</span>
+      </button>
+      <button type="button" data-nav="search" onclick="document.getElementById('marketSearch')?.focus()">
+        <i class="fas fa-magnifying-glass"></i><span>Qidiruv</span>
+      </button>
+      <button type="button" data-nav="cart" onclick="showCartView()">
+        <i class="fas fa-shopping-cart"></i><span>Savat</span><b id="marketBottomCartCount">0</b>
+      </button>
+      <button type="button" data-nav="login" onclick="openEmployeeLogin()">
+        <i class="fas fa-user"></i><span>Kirish</span>
+      </button>
+    </nav>
   </div><!-- /app -->
+
 
   <!-- ===== SALARY MODALS ===== -->
 
@@ -2254,10 +2775,18 @@
         <div class="form-col"><label>Qoldiq (dona) *</label><input class="form-control" id="p-stock" type="number"
             placeholder="0"></div>
       </div>
+      <div class="form-col" style="margin-bottom:14px">
+        <label>Filial (ombor) — mahsulot qaysi filialga tegishli</label>
+        <select class="form-control" id="p-branchId">
+          <option value="">Umumiy ombor (filial tanlanmagan)</option>
+        </select>
+        <small style="color:var(--text-muted);font-size:11px">
+          Filial tanlansa, mahsulot va uning qoldig'i shu filial omborida ko'rinadi.
+        </small>
+      </div>
       <div class="form-row">
         <div class="form-col"><label>IKPU (MXIK) kodi — 17 xonali</label>
-          <input class="form-control" id="p-ikpu" maxlength="17" inputmode="numeric"
-            placeholder="08801001001000000">
+          <input class="form-control" id="p-ikpu" maxlength="17" inputmode="numeric" placeholder="08801001001000000">
         </div>
         <div class="form-col"><label>Qadoqlash kodi</label>
           <input class="form-control" id="p-package" maxlength="20" placeholder="PKG-01">
@@ -2283,8 +2812,7 @@
           <div class="image-url-group">
             <input class="form-control" id="p-img" placeholder="Rasm yuklang yoki https://..."
               oninput="updateProductImagePreview(this.value)">
-            <button class="btn btn-outline" type="button" id="bucketUploadBtn"
-              title="Rasm yuklash (bazaga saqlanadi)"
+            <button class="btn btn-outline" type="button" id="bucketUploadBtn" title="Rasm yuklash (bazaga saqlanadi)"
               onclick="document.getElementById('p-img-file').click()">
               <i class="fas fa-upload"></i>
             </button>
@@ -2454,8 +2982,8 @@
       </div>
       <div class="form-row">
         <div class="form-col"><label>Mijoz F.I.Sh *</label>
-          <input class="form-control" id="ct-customer" placeholder="F.I.Sh" maxlength="120"
-            list="contractCustomerList" autocomplete="off">
+          <input class="form-control" id="ct-customer" placeholder="F.I.Sh" maxlength="120" list="contractCustomerList"
+            autocomplete="off">
           <datalist id="contractCustomerList"></datalist>
         </div>
         <div class="form-col"><label>Telefon</label><input class="form-control" id="ct-phone" placeholder="+998..."
@@ -2472,11 +3000,12 @@
             <option>Yetkazib berish shartnomasi</option>
           </select>
         </div>
-        <div class="form-col"><label>Summa (so'm)</label><input type="number" class="form-control" id="ct-amount" min="0"
-            placeholder="0"></div>
+        <div class="form-col"><label>Summa (so'm)</label><input type="number" class="form-control" id="ct-amount"
+            min="0" placeholder="0"></div>
       </div>
       <div class="form-row">
-        <div class="form-col"><label>Boshlanish sanasi</label><input type="date" class="form-control" id="ct-start"></div>
+        <div class="form-col"><label>Boshlanish sanasi</label><input type="date" class="form-control" id="ct-start">
+        </div>
         <div class="form-col"><label>Kafolat muddati (oy)</label><input type="number" class="form-control"
             id="ct-warranty" min="1" max="120" value="12"></div>
       </div>
@@ -2505,6 +3034,114 @@
         <button class="modal-close" onclick="closeModal('contractViewModal')">✕</button>
       </div>
       <div class="modal-body" id="contractViewBody" style="padding:0 20px 20px"></div>
+    </div>
+  </div>
+
+  <!-- ===== FILIAL MODAL (qo'shish / tahrirlash) ===== -->
+  <div class="modal-overlay" id="branchModal">
+    <div class="modal" style="max-width:720px">
+      <div class="modal-header">
+        <h3 id="branchModalTitle"><i class="fas fa-map-location-dot"
+            style="color:var(--primary);margin-right:8px"></i>Yangi filial</h3>
+        <button class="modal-close" onclick="closeModal('branchModal')">✕</button>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Filial nomi *</label><input class="form-control" id="br-name"
+            placeholder="Masalan: Texno Park N1 — Chilonzor" maxlength="120"></div>
+        <div class="form-col"><label>Filial kodi</label><input class="form-control" id="br-code" placeholder="CHZ-01"
+            maxlength="20"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Shahar / tuman</label><input class="form-control" id="br-city"
+            placeholder="Toshkent" maxlength="80"></div>
+        <div class="form-col"><label>Telefon</label><input class="form-control" id="br-phone"
+            placeholder="+998 71 200 00 00" maxlength="40"></div>
+      </div>
+      <div class="form-col" style="margin-bottom:14px">
+        <label>Manzil</label>
+        <input class="form-control" id="br-address" placeholder="Chilonzor 12, Toshkent" maxlength="200">
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Ish vaqti</label><input class="form-control" id="br-hours"
+            placeholder="09:00 — 20:00" maxlength="80"></div>
+        <div class="form-col"><label>Holat</label>
+          <select class="form-control" id="br-status">
+            <option value="active">Faol</option>
+            <option value="inactive">Nofaol</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Kenglik (lat)</label><input class="form-control" id="br-lat"
+            placeholder="41.311081" inputmode="decimal"></div>
+        <div class="form-col"><label>Uzunlik (lng)</label><input class="form-control" id="br-lng"
+            placeholder="69.240562" inputmode="decimal"></div>
+      </div>
+      <small style="display:block;color:var(--text-muted);font-size:11px;margin-bottom:12px">
+        Koordinata IXTIYORIY — to'ldirilmasa ham filial saqlanadi (xarita belgisi ko'rinmaydi).
+      </small>
+
+      <!-- FILIAL OMBORI: yangi filialga mahsulotlarni biriktirish -->
+      <div class="form-col" style="margin-bottom:10px">
+        <label><i class="fas fa-warehouse"></i> Filial ombori — mahsulotlar va qoldiq</label>
+        <div class="branch-stock-toolbar">
+          <input class="form-control btn-sm" id="brStockSearch" placeholder="Mahsulot qidirish..." style="height:34px"
+            oninput="Branches.renderStockPicker()">
+          <button type="button" class="btn btn-outline btn-sm" onclick="Branches.stockSelectAll(true)">
+            <i class="fas fa-check-double"></i> Barchasini tanlash</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="Branches.stockSelectAll(false)">
+            <i class="fas fa-xmark"></i> Tozalash</button>
+        </div>
+        <div id="branchStockPicker" class="branch-stock-picker"></div>
+        <small style="display:block;color:var(--text-muted);font-size:11px;margin-top:6px">
+          Tanlangan mahsulotlar <strong>shu filial omboriga</strong> alohida nusxa sifatida
+          qo'shiladi (asosiy katalogdagi qoldiq o'zgarmaydi). Tahrirlashda faqat tanlanganlar
+          filialga o'tkaziladi.
+        </small>
+      </div>
+
+      <!-- CUSTOM BELGI (marker) -->
+      <div class="form-col" style="margin-bottom:10px">
+        <label><i class="fas fa-icons"></i> Filial belgisi (custom marker)</label>
+        <div id="branchIconPicker" class="marker-picker"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-col">
+          <label>Belgi rangi</label>
+          <div class="marker-color-row">
+            <input type="color" id="br-color" value="#ff6b35" class="marker-color-input">
+            <div id="branchColorSwatches" class="marker-swatches"></div>
+          </div>
+        </div>
+        <div class="form-col" style="justify-content:flex-end">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="br-main" style="width:18px;height:18px">
+            <span>Asosiy filial (bosh ofis)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="branch-preview">
+        <span class="cv-label">Filial belgisi ko'rinishi</span>
+        <div id="branchMarkerPreview" class="marker-preview"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-outline" onclick="closeModal('branchModal')">Bekor</button>
+        <button class="btn btn-primary" onclick="Branches.save()"><i class="fas fa-save"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FILIAL KO'RISH MODAL ===== -->
+  <div class="modal-overlay" id="branchViewModal">
+    <div class="modal" style="max-width:620px">
+      <div class="modal-header">
+        <h3 id="branchViewTitle"><i class="fas fa-map-location-dot"
+            style="color:var(--primary);margin-right:8px"></i>Filial</h3>
+        <button class="modal-close" onclick="closeModal('branchViewModal')">✕</button>
+      </div>
+      <div class="modal-body" id="branchViewBody" style="padding:0 20px 20px"></div>
     </div>
   </div>
 
@@ -2549,15 +3186,26 @@
           </div>
           <div class="form-group" style="margin-bottom:16px">
             <label style="font-weight:600;margin-bottom:6px;display:block">Tavsif</label>
-            <textarea class="form-control" id="reportMessage" rows="5" placeholder="Batafsil yozib qoldiring..." required style="width:100%;border-radius:var(--radius-sm);padding:10px"></textarea>
+            <textarea class="form-control" id="reportMessage" rows="5" placeholder="Batafsil yozib qoldiring..."
+              required style="width:100%;border-radius:var(--radius-sm);padding:10px"></textarea>
           </div>
           <div class="form-group" style="margin-bottom:20px">
             <label style="font-weight:600;margin-bottom:6px;display:block">Aloqa ma'lumotlari (Ism/Telefon)</label>
-            <input type="text" class="form-control" id="reportContact" placeholder="Ismingiz yoki telefon raqamingiz" style="width:100%;height:40px;border-radius:var(--radius-sm)">
+            <input type="text" class="form-control" id="reportContact" placeholder="Ismingiz yoki telefon raqamingiz"
+              style="width:100%;height:40px;border-radius:var(--radius-sm)">
           </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;height:44px;font-weight:700"><i class="fas fa-paper-plane"></i> Yuborish</button>
+          <button type="submit" class="btn btn-primary" style="width:100%;height:44px;font-weight:700"><i
+              class="fas fa-paper-plane"></i> Yuborish</button>
         </form>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="productDetailModal">
+    <div class="modal product-detail-modal" role="dialog" aria-modal="true" aria-labelledby="productDetailName">
+      <button type="button" class="product-detail-close" onclick="closeProductDetail()" aria-label="Yopish"><i
+          class="fas fa-xmark"></i></button>
+      <div id="productDetailContent"></div>
     </div>
   </div>
 
@@ -2569,7 +3217,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js"></script>
+  <script src="scripts.js?v=1.0.9-light-market"></script>
 </body>
 
 </html>
