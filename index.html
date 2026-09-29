@@ -3,16 +3,18 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="color-scheme" content="light dark">
   <title>Texno Park N1 POS — Premium</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <meta name="theme-color" content="#1a0508">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=1.0.9-light-market">
+  <link rel="stylesheet" href="style.css?v=2.5-sticky-fix">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
@@ -3218,6 +3220,21 @@
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
   <script src="scripts.js?v=1.0.9-light-market"></script>
+  <script>
+    /* Header: surilganda ixchamlashadi */
+    (function () {
+      var ticking = false;
+      function upd() {
+        var app = document.getElementById('app');
+        if (app) app.classList.toggle('is-scrolled', (window.scrollY || document.documentElement.scrollTop) > 40);
+        ticking = false;
+      }
+      window.addEventListener('scroll', function () {
+        if (!ticking) { ticking = true; requestAnimationFrame(upd); }
+      }, { passive: true });
+      upd();
+    })();
+  </script>
 </body>
 
 </html>
