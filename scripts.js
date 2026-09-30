@@ -7613,7 +7613,24 @@ function decodeJwtResponse(token) {
 
 function toggleShopCatSidebar() {
     const sidebar = document.getElementById('shopCatSidebar');
-    if (sidebar) {
+    if (!sidebar) return;
+    const isMobile = window.matchMedia('(max-width: 900px)').matches;
+    if (isMobile) {
+        // Mobil: drawer / bottom-sheet rejimi (overlay bilan)
+        const overlay = document.getElementById('marketDrawerOverlay');
+        const trigger = document.getElementById('marketCatTrigger');
+        const open = sidebar.classList.toggle('drawer-open');
+        document.body.classList.toggle('drawer-open', open);
+        if (overlay) {
+            overlay.classList.toggle('visible', open);
+            overlay.setAttribute('aria-hidden', String(!open));
+        }
+        if (trigger) {
+            trigger.classList.toggle('open', open);
+            trigger.setAttribute('aria-expanded', String(open));
+        }
+    } else {
+        // Desktop: eski compact-collapse rejimi (o'zgarmagan)
         sidebar.classList.toggle('collapsed');
     }
 }
@@ -8573,4 +8590,89 @@ async function submitReport(event) {
         showNotif('warning', 'Oflayn saqlandi!', 'Murojaat lokal keshda saqlandi (tarmoq xatosi).');
     }
 }
+
+/* ============================================================
+   HERO PHONE — 3D tilt + premium UI effektlari (modular, IIFE)
+   Performance: faqat transform. Mobilda tilt o'chirilgan.
+   ============================================================ */
+(function () {
+    'use strict';
+    function initHeroPhone() {
+        const tilt = document.getElementById('heroPhoneTilt');
+        if (!tilt) return;
+        const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+        // --- 3D TILT: FAQAT phone o'zida pointer bo'lganda (desktop, hover qurilmalar).
+        // Window/document-level parallax YO'Q — mouse uzoqda bo'lsa phone MUTLAQO HARAKATSIZ.
+        // Transform bevosita pointermove'da yoziladi (brauzer allaqachon frame-rate
+        // bilan throttling qiladi) — rAF kechikishi/starvationiga yo'q.
+        if (finePointer.matches && !reduceMotion.matches) {
+            tilt.addEventListener('pointerenter', () => { tilt.classList.add('is-tilting'); });
+            tilt.addEventListener('pointermove', (e) => {
+                const r = tilt.getBoundingClientRect();
+                const px = (e.clientX - r.left) / r.width - 0.5;   // -0.5 … 0.5
+                const py = (e.clientY - r.top) / r.height - 0.5;
+                const ry = px * 8;    // rotateY ±4deg (demo) — chapga → chapga buriladi
+                const rx = -py * 4;   // rotateX ±2deg (demo) — yuqoriga → yengil X rotation
+                tilt.style.transform = 'perspective(900px) translate3d(0,0,0) rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg) scale(1.01)';
+            });
+            tilt.addEventListener('pointerleave', () => {
+                tilt.classList.remove('is-tilting');
+                tilt.style.transform = ''; // CSS identity'ga (.45s ease) smooth qaytadi
+            });
+        }
+
+        // --- Drawer ochiq bo'lganda body scroll qulfini boshqarish ---
+        const observer = new MutationObserver(() => {
+            document.body.classList.toggle('drawer-open', document.body.classList.contains('drawer-open') &&
+                !!document.querySelector('#shopCatSidebar.drawer-open'));
+        });
+        observer.observe(document.getElementById('shopCatSidebar') || document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initHeroPhone);
+    } else {
+        initHeroPhone();
+    }
+})();
+
+/* ============================================================
+   STORE LOCATION — Google Maps (yagona manba)
+   Manzilni o'zgartirish kerak bo'lsa faqat shu obyektni tahrirlang.
+   ============================================================ */
+const storeLocation = {
+    name: 'Texno Park N1',
+    plusCode: 'G3F9+Q38',
+    address: 'Quva, Farg\'ona Viloyati, Uzbekistan',
+    phone: '+998 71 200 30 40',
+    email: 'info@texnopark.uz',
+    hours: 'Har kuni 09:00–22:00',
+    mapsQuery: 'G3F9+Q38, Quva, Farg\'ona Viloyati, Uzbekistan',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=G3F9%2BQ38%2C%20Quva%2C%20Farg%27ona%20Viloyati%2C%20Uzbekistan'
+};
+
+(function initStoreMap() {
+    'use strict';
+    const enc = encodeURIComponent(storeLocation.mapsQuery);
+    const iframe = document.querySelector('.store-map-frame iframe');
+    const btn = document.getElementById('storeMapBtn');
+    if (iframe && !iframe.dataset.locBound) {
+        iframe.src = 'https://maps.google.com/maps?q=' + enc + '&z=15&output=embed';
+        iframe.dataset.locBound = '1';
+    }
+    if (btn && !btn.dataset.locBound) {
+        btn.href = storeLocation.mapsUrl;
+        btn.dataset.locBound = '1';
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            const f = document.querySelector('.store-map-frame iframe');
+            const b = document.getElementById('storeMapBtn');
+            if (f && !f.dataset.locBound) { f.src = 'https://maps.google.com/maps?q=' + enc + '&z=15&output=embed'; f.dataset.locBound = '1'; }
+            if (b && !b.dataset.locBound) { b.href = storeLocation.mapsUrl; b.dataset.locBound = '1'; }
+        });
+    }
+})();
 

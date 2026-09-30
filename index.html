@@ -14,7 +14,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=2.5-sticky-fix">
+  <link rel="stylesheet" href="style.css?v=5.9.1">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
@@ -510,33 +510,20 @@
                   <span>Texnologiya do'koni</span>
                 </div>
               </div>
-              <button type="button" class="market-catalog-button" onclick="toggleShopCatSidebar()">
-                <i class="fas fa-bars"></i><span>Katalog</span>
-              </button>
               <div class="market-search" style="position:relative">
                 <i class="fas fa-search"></i>
                 <input type="text" id="marketSearch" placeholder="Mahsulot, turkum yoki brend qidiring..."
                   oninput="syncShopSearch(this.value)" autocomplete="off">
                 <div id="searchSuggestions" class="search-suggestions-dropdown" style="display:none"></div>
               </div>
-              <div class="market-phone">
-                <i class="fas fa-headset"></i>
-                <span>
-                  <strong>+998 71 200 30 40</strong>
-                  <small>Har kuni 09:00 – 22:00</small>
-                </span>
-              </div>
-              <div class="market-location"><i class="fas fa-map-marker-alt"></i><span>Toshkent</span></div>
               <div class="market-top-actions">
-                <button type="button" class="market-icon-btn" title="Mening xohishlarim"
+                <button type="button" class="market-icon-btn market-wish-btn" title="Mening xohishlarim"
+                  aria-label="Mening xohishlarim"
                   onclick="showNotif('info', 'Xohishlar', 'Bu yerga xohgan mahsulotlarni saqlashingiz mumkin.')">
                   <i class="far fa-heart"></i>
                 </button>
-                <button type="button" class="market-cart-btn" onclick="showCartView()">
+                <button type="button" class="market-cart-btn" title="Savat" aria-label="Savat" onclick="showCartView()">
                   <i class="fas fa-shopping-cart"></i><span>Savat</span><b id="marketCartCount">0</b>
-                </button>
-                <button type="button" class="market-icon-btn" title="Murojaat" onclick="openReportModal()">
-                  <i class="fas fa-headset"></i>
                 </button>
                 <button type="button" class="market-theme-lock" id="marketThemeToggle" title="Tungi rejim"
                   aria-label="Tungi rejim" onclick="toggleTheme()">
@@ -547,32 +534,21 @@
                 </button>
               </div>
             </div>
-            <div class="market-category-bar" id="marketCategoryNav">
-              <button type="button" class="market-category-toggle" onclick="toggleShopCatSidebar()">
-                <i class="fas fa-th-list"></i><span>Barcha kategoriyalar</span><i class="fas fa-chevron-down"></i>
-              </button>
-              <button type="button" class="market-nav-category active" onclick="filterShopCat('Barchasi', this)"><i
-                  class="fas fa-th-large"></i><span>Barchasi</span></button>
-              <button type="button" class="market-nav-category" onclick="filterShopCat('Muzlatgichlar', this)"><i
-                  class="fas fa-snowflake"></i><span>Muzlatgichlar</span></button>
-              <button type="button" class="market-nav-category"
-                onclick="filterShopCat('Kir Yuvish Mashinalari', this)"><i class="fas fa-soap"></i><span>Kir yuvish
-                  mashinalari</span></button>
-              <button type="button" class="market-nav-category" onclick="filterShopCat('Konditsionerlar', this)"><i
-                  class="fas fa-wind"></i><span>Konditsionerlar</span></button>
-              <button type="button" class="market-nav-category" onclick="filterShopCat('Televizorlar', this)"><i
-                  class="fas fa-tv"></i><span>Televizorlar</span></button>
-              <button type="button" class="market-nav-category" onclick="filterShopCat('Changyutgichlar', this)"><i
-                  class="fas fa-broom"></i><span>Changyutgichlar</span></button>
-              <button type="button" class="market-nav-category" onclick="filterShopCat('Pechlar', this)"><i
-                  class="fas fa-fire"></i><span>Pechlar</span></button>
-              <button type="button" class="market-nav-category" onclick="filterShopCat('Aksessuarlar', this)"><i
-                  class="fas fa-plug"></i><span>Aksessuarlar</span></button>
-            </div>
+            <!-- Kategoriya navigatsiyasi header'dan olib tashlandi.
+                 Kategoriyalar chap paneldagi (#shopCatSidebarList) ro'yxatda qoladi;
+                 filterShopCat(), toggleShopCatSidebar() va boshqa funksiyalar o'zgarmagan. -->
           </div>
 
           <!-- CATALOG VIEW -->
           <div id="shopCatalogView">
+            <!-- MOBIL KATEGORIYA TRIGGER (drawer ochadi) -->
+            <button type="button" class="market-cat-trigger" id="marketCatTrigger" aria-label="Kategoriyalarni ochish"
+              aria-expanded="false" aria-controls="shopCatSidebar" onclick="toggleShopCatSidebar()">
+              <i class="fas fa-bars"></i><span>Kategoriyalar</span><i class="fas fa-chevron-down cat-trigger-arrow"></i>
+            </button>
+            <!-- MOBIL DRAWER OVERLAY -->
+            <div class="market-drawer-overlay" id="marketDrawerOverlay" onclick="toggleShopCatSidebar()"
+              aria-hidden="true"></div>
             <div class="market-hero-row">
               <section class="market-hero" aria-label="Texno Park N1 afzalliklari">
                 <div class="market-hero-copy">
@@ -586,8 +562,36 @@
                         class="fas fa-layer-group"></i> Katalog</button></div>
                 </div>
                 <div class="market-hero-art" aria-hidden="true">
-                  <div class="market-hero-orb"></div>
-                  <div class="market-hero-device"><i class="fas fa-mobile-screen-button"></i></div>
+                  <div class="market-hero-orb market-hero-glow"></div>
+                  <div class="market-hero-phone-tilt" id="heroPhoneTilt">
+                    <div class="market-hero-phone">
+                      <span class="mhp-notch"></span>
+                      <span class="mhp-highlight"></span>
+                      <div class="mhp-screen">
+                        <div class="mhp-statusbar"><span>9:41</span><span class="mhp-status-icons"><i class="fas fa-signal"></i><i class="fas fa-wifi"></i><i class="fas fa-battery-three-quarters"></i></span></div>
+                        <div class="mhp-header">
+                          <span class="mhp-logo"><i class="fas fa-bolt"></i></span>
+                          <span class="mhp-brand">Texno Park <b>N1</b></span>
+                          <span class="mhp-header-icons"><i class="far fa-heart"></i><i class="fas fa-shopping-cart"></i></span>
+                        </div>
+                        <div class="mhp-search"><i class="fas fa-search"></i><span>Kategoriyada qidirish…</span></div>
+                        <div class="mhp-hero">
+                          <small>YANGI AVLOD</small>
+                          <strong>Kuchli texnologiya</strong>
+                          <span class="mhp-hero-btn">Xarid qilish</span>
+                        </div>
+                        <div class="mhp-chips"><span>Kategoriyalar</span><span>Aksiya</span><span>Yangi</span></div>
+                        <div class="mhp-products">
+                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-tv"></i></span><span class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">2 490 000</b></div>
+                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-snowflake"></i></span><span class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">5 890 000</b></div>
+                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-mobile-screen"></i></span><span class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">1 190 000</b></div>
+                        </div>
+                        <div class="mhp-promo"><i class="fas fa-bolt"></i><span>Hafta aksiyasi · −30%</span></div>
+                        <div class="mhp-tabbar"><i class="fas fa-house"></i><i class="fas fa-grip"></i><i class="fas fa-magnifying-glass"></i><i class="fas fa-user"></i></div>
+                      </div>
+                    </div>
+                    <div class="market-hero-phone-shadow"></div>
+                  </div>
                   <div class="market-hero-float market-hero-float-one"><i class="fas fa-headset"></i><span>24/7
                       xizmat</span></div>
                   <div class="market-hero-float market-hero-float-two"><i class="fas fa-shield-halved"></i><span>100%
@@ -629,7 +633,10 @@
                 <button type="button" class="shop-cat-toggle-btn" onclick="toggleShopCatSidebar()">
                   <i class="fas fa-chevron-left"></i>
                 </button>
-                <div class="cat-sidebar-header"><i class="fas fa-th-list"></i><span>Kategoriyalar</span></div>
+                <div class="cat-sidebar-header"><i class="fas fa-th-list"></i><span>Kategoriyalar</span>
+                  <button type="button" class="cat-drawer-close" onclick="toggleShopCatSidebar()"
+                    aria-label="Kategoriyalarni yopish"><i class="fas fa-xmark"></i></button>
+                </div>
                 <div class="cat-sidebar-list" id="shopCatSidebarList"><!-- Dynamically populated categories go here -->
                 </div>
               </div>
@@ -2563,12 +2570,31 @@
           </ul>
         </div>
         <div>
-          <h4>Bog'lanish</h4>
-          <div class="market-footer-contact">
-            <span><i class="fas fa-location-dot"></i> Toshkent sh., Chilonzor tumani</span>
-            <span><i class="fas fa-phone"></i> +998 71 200 30 40</span>
-            <span><i class="fas fa-envelope"></i> info@texnopark.uz</span>
-            <span><i class="fas fa-clock"></i> Har kuni 09:00 – 22:00</span>
+          <div class="contact-map">
+            <div class="contact-side">
+              <h4>Bog'lanish</h4>
+              <div class="market-footer-contact">
+                <span><i class="fas fa-location-dot"></i> <span id="storeAddrText">Quva, Farg'ona Viloyati, Uzbekistan</span></span>
+                <span><i class="fas fa-phone"></i> +998 71 200 30 40</span>
+                <span><i class="fas fa-envelope"></i> info@texnopark.uz</span>
+                <span><i class="fas fa-clock"></i> Har kuni 09:00 – 22:00</span>
+              </div>
+            </div>
+
+            <!-- Bizning manzil: haqiqiy Google Maps (Plus Code G3F9+Q38, Quva) -->
+            <div class="store-map">
+              <div class="store-map-head">
+                <strong><i class="fas fa-location-dot"></i> Texno Park N1</strong>
+                <span id="storeMapAddress">G3F9+Q38, Quva, Farg'ona Viloyati, Uzbekistan</span>
+              </div>
+              <div class="store-map-frame">
+                <iframe title="Texno Park N1 — Google Maps" src="https://maps.google.com/maps?q=G3F9%2BQ38%2C%20Quva%2C%20Farg%27ona%20Viloyati%2C%20Uzbekistan&z=15&output=embed"
+                  loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+              </div>
+              <a class="store-map-btn" id="storeMapBtn"
+                href="https://www.google.com/maps/search/?api=1&query=G3F9%2BQ38%2C%20Quva%2C%20Farg%27ona%20Viloyati%2C%20Uzbekistan"
+                target="_blank" rel="noopener noreferrer">Google Maps <i class="fas fa-arrow-right"></i></a>
+            </div>
           </div>
         </div>
       </div>
@@ -3219,7 +3245,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.0.9-light-market"></script>
+  <script src="scripts.js?v=1.4.1-premium"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {
