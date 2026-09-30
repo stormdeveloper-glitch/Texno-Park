@@ -660,6 +660,22 @@ function requireRole(...roles) {
     return true;
 }
 
+/* ── Shartnoma huquqlari ─────────────────────────────────────────
+ * ASOSIY ADMIN — tizimning birinchi (egasi) administratori.
+ * Shartnomani FAQAT asosiy admin o'chira oladi.
+ * Boshqa adminlar va menejer shartnoma tuza oladi / tahrirlay oladi,
+ * lekin o'chira olmaydi (ular yaratgan shartnomani ham).
+ * Asosiy admin loginlarini shu ro'yxatdan o'zgartirish mumkin. */
+const MAIN_ADMIN_LOGINS = ['admin', 'admin@texnopark.uz'];
+function isMainAdmin() {
+    return Boolean(currentUser && currentUser.role === 'admin' &&
+        MAIN_ADMIN_LOGINS.includes(String(currentUser.login || '').trim().toLowerCase()));
+}
+/** Shartnoma tuzish/tahrirlash: asosiy admin, admin va menejer */
+function canManageContracts() {
+    return Boolean(currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager'));
+}
+
 function normalizeProduct(p) {
     return {
         id: Number(p?.id) || Date.now(),
@@ -6668,18 +6684,26 @@ function buildProviderUssd(providerId, amount) {
    SHARTNOMALAR MODULI — savdo/online buyurtma asosida AVTOMATIK
    shakllantiriladi, raqam va kafolat muddati o'zi hisoblanadi.
    ============================================================ */
-let contracts = safeJsonParse(localStorage.getItem('tp_contracts') || 'null', null);
-if (!Array.isArray(contracts)) contracts = [];
-contracts = contracts.map(normalizeContract).filter(c => c && c.customer);
-let contractsSyncTimer = null;
-let editingContractId = null;
-
+// MUHIM: CONTRACT_STATUS `contracts` dan OLDIN e'lon qilinishi shart —
+// aks holda saqlangan shartnoma bo'lganda butun skript yuklanmay qoladi
+// (Cannot access 'CONTRACT_STATUS' before initialization).
 const CONTRACT_STATUS = {
     active: { label: 'Faol', badge: 'badge-green' },
     expiring: { label: 'Muddati yaqin', badge: 'badge-yellow' },
     expired: { label: "Muddati o'tgan", badge: 'badge-red' },
     cancelled: { label: 'Bekor qilingan', badge: 'badge-gray' }
 };
+
+let contracts = safeJsonParse(localStorage.getItem('tp_contracts') || 'null', null);
+if (!Array.isArray(contracts)) contracts = [];
+try {
+    contracts = contracts.map(normalizeContract).filter(c => c && c.customer);
+} catch (e) {
+    console.warn('Saqlangan shartnomalarni o\'qib bo\'lmadi:', e);
+    contracts = [];
+}
+let contractsSyncTimer = null;
+let editingContractId = null;
 
 const CONTRACT_TYPES = [
     'Savdo shartnomasi',
@@ -7003,8 +7027,8 @@ const Contracts = {
         const tbody = document.getElementById('contractsTable');
         if (!tbody) { updateContractsBadge(); return; }
         // Shartnomalarni faqat administrator tahrirlaydi/o'chiradi
-        const canManage = currentUser?.role === 'admin';
-        const isAdmin = canManage;
+        const canManage = canManageContracts();   // admin + menejer: tuzadi/tahrirlaydi
+        const isAdmin = isMainAdmin();            // faqat asosiy admin: o'chiradi
         const list = this.getFiltered();
 
         tbody.innerHTML = list.map(c => {
@@ -7045,8 +7069,8 @@ const Contracts = {
     },
 
     openAddModal() {
-        // Shartnoma tuzish huquqi faqat administratorda
-        if (!requireRole('admin')) return;
+        // Shartnoma tuzish: asosiy admin, admin va menejer
+        if (!requireRole('admin', 'manager')) return;
         editingContractId = null;
         ensureContractInstallmentFields();
         const title = document.getElementById('contractModalTitle');
@@ -7063,20 +7087,19 @@ const Contracts = {
         set('ct-prepay', '0');
         set('ct-months', '0');
         set('ct-payday', '');
-        ensureContractPhotoField();
-        setContractPhoto('');
+        try { ensureContractPhotoField(); setContractPhoto(''); } catch (e) { console.warn('Shartnoma rasm maydoni:', e); }
         updateContractInstCalc();
         const typeSel = document.getElementById('ct-type');
         if (typeSel) {
             typeSel.innerHTML = CONTRACT_TYPES.map(t => `<option>${escapeHTML(t)}</option>`).join('');
             typeSel.value = 'Xizmat ko\'rsatish shartnomasi';
         }
-        populateContractEditSources();
+        try { populateContractEditSources(); } catch (e) { console.warn('Shartnoma ro\'yxatlari:', e); }
         openModal('contractModal');
     },
 
     edit(id) {
-        if (!requireRole('admin')) return;
+        if (!requireRole('admin', 'manager')) return;
         const c = contracts.find(x => Number(x.id) === Number(id));
         if (!c) return;
         editingContractId = c.id;
@@ -7100,14 +7123,13 @@ const Contracts = {
         set('ct-prepay', String(c.prepay || 0));
         set('ct-months', String(c.months || 0));
         set('ct-payday', c.months ? String(c.payDay || '') : '');
-        ensureContractPhotoField();
-        setContractPhoto(c.photo || '');
+        try { ensureContractPhotoField(); setContractPhoto(c.photo || ''); } catch (e) { console.warn('Shartnoma rasm maydoni:', e); }
         updateContractInstCalc();
         openModal('contractModal');
     },
     /** Qo'lda kiritilgan shartnomani saqlaydi (faqat administrator) */
     save() {
-        if (!requireRole('admin')) return;
+        if (!requireRole('admin', 'manager')) return;
         const customer = validateSafeInput('Mijoz F.I.Sh', document.getElementById('ct-customer')?.value, 120);
         if (customer === null) return;
         if (!customer.trim()) {
@@ -7174,8 +7196,8 @@ const Contracts = {
         const c = contracts.find(x => Number(x.id) === Number(id));
         if (!c) return;
         const st = CONTRACT_STATUS[c.status] || CONTRACT_STATUS.active;
-        const canManage = currentUser?.role === 'admin';
-        const isAdmin = canManage;
+        const canManage = canManageContracts();
+        const isAdmin = currentUser?.role === 'admin';   // bekor qilish: adminlar
         const itemsHtml = c.items.length
             ? `<table class="contract-items-table"><thead><tr><th>Mahsulot</th><th>Soni</th><th>Narxi</th><th>Jami</th></tr></thead>
          <tbody>${c.items.map(i => `<tr><td>${escapeHTML(i.name)}</td><td>${i.qty}</td>
@@ -7290,13 +7312,19 @@ const Contracts = {
 
     /** Shartnomani butunlay o'chiradi (faqat admin) */
     remove(id) {
-        if (!requireRole('admin')) return;
+        if (!isMainAdmin()) {
+            playError();
+            showNotif('error', 'Ruxsat yo\'q!', 'Shartnomani faqat asosiy admin o\'chira oladi');
+            securityLog('access-denied', 'medium',
+                `Shartnomani o'chirishga urinish: ${currentUser?.login || 'mehmon'} (${currentUser?.role || '-'})`);
+            return;
+        }
         const c = contracts.find(x => Number(x.id) === Number(id));
         if (!c) return;
         if (!confirm(`${c.number} shartnomasini butunlay o'chirmoqchimisiz?`)) return;
         contracts = contracts.filter(x => Number(x.id) !== Number(id));
         saveContracts();
-        addLog('Shartnoma', `${c.number} o'chirildi (${c.customer})`);
+        addLog('Shartnoma', `${c.number} o'chirildi (${c.customer}) — asosiy admin: ${currentUser?.name || ''}`);
         securityLog('contract-deleted', 'high', `${c.number} o'chirildi`);
         showNotif('info', 'O\'chirildi', `${c.number} o'chirildi`);
         this.render();
@@ -7317,6 +7345,21 @@ const Contracts = {
         showNotif('success', 'Eksport!', `${rows.length} ta shartnoma CSV faylga yuklandi`);
     }
 };
+// Himoya: shartnoma oynalari ichida kutilmagan xato bo'lsa ham oyna ochiladi,
+// xato sababi esa ekranda ko'rsatiladi (jim qolib ketmaydi).
+['openAddModal', 'edit', 'view'].forEach(name => {
+    const orig = Contracts[name];
+    Contracts[name] = function () {
+        try { return orig.apply(this, arguments); }
+        catch (e) {
+            console.error('Contracts.' + name + ':', e);
+            showNotif('error', 'Shartnoma oynasida xatolik', String(e && e.message || e).slice(0, 140));
+            const m = document.getElementById(name === 'view' ? 'contractViewModal' : 'contractModal');
+            if (m && !m.classList.contains('open')) openModal(m.id);
+        }
+    };
+});
+
 /* ============================================================
  * YAGONA SHARTNOMA SHABLONI — barcha shartnomalar shu hujjatda chiqadi.
  * Sotuvchi / ta'minotchi nomi faqat: TEXNO PARK №1
@@ -7451,7 +7494,7 @@ function setContractPhoto(src) {
 function removeContractPhoto() { setContractPhoto(''); }
 
 async function uploadContractPhoto(input) {
-    if (!requireRole('admin')) return;
+    if (!requireRole('admin', 'manager')) return;
     const file = input?.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { playError(); showNotif('error', 'Xato!', 'Faqat rasm fayl yuklang'); input.value = ''; return; }
@@ -8025,7 +8068,7 @@ function openProfileModal() {
     if (loginEl) loginEl.textContent = login;
 
     const roleLabelEl = document.getElementById('profileModalRoleLabel');
-    if (roleLabelEl) roleLabelEl.textContent = ROLE_LABELS[role] || 'Xaridor';
+    if (roleLabelEl) roleLabelEl.textContent = ROLES[role] || 'Xaridor';
 
     openModal('profileModal');
 }
@@ -8317,7 +8360,7 @@ const Branches = {
                 '<button class="btn btn-outline btn-sm" onclick="Branches.view(\'' + escapeHTML(b.id) + '\')" title="Batafsil"><i class="fas fa-eye"></i></button>' +
                 (requireRoleSilent('admin', 'manager')
                     ? '<button class="btn btn-outline btn-sm" onclick="Branches.edit(\'' + escapeHTML(b.id) + '\')" title="Tahrirlash"><i class="fas fa-pen"></i></button>' +
-                    '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'" + escapeHTML(b.id) + "\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
+                    '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'' + escapeHTML(b.id) + '\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
                     : '') +
                 '</div></td></tr>';
         }).join('');
