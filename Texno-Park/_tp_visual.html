@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Texno Park N1 — vizual tekshiruv (vaqtinchalik)</title>
+</head>
+
+<body>
+  <script>
+    // Vaqtinchalik tekshiruv sahifasi: katalog kartalarini ko'rish uchun
+    // localStorage'ga namuna mahsulotlar yozib, index.html ga o'tadi.
+    const demo = [
+      { id: 1, name: 'Samsung RB37A5200SA muzlatgich', cat: 'Muzlatgichlar', price: 8490000, stock: 6, img: '', barcode: '4780000001' },
+      { id: 2, name: 'Artel HD-420 kir yuvish mashinasi', cat: 'Kir Yuvish Mashinalari', price: 5490000, stock: 4, img: '', barcode: '4780000002' },
+      { id: 3, name: 'Gree Pular inverter konditsioner', cat: 'Konditsionerlar', price: 7890000, stock: 3, img: '', barcode: '4780000003' },
+      { id: 4, name: 'Samsung UE50AU7100 smart TV', cat: 'Televizorlar', price: 6290000, stock: 8, img: '', barcode: '4780000004' },
+      { id: 5, name: 'Dyson V12 changyutgich', cat: 'Changyutgichlar', price: 9990000, stock: 2, img: '', barcode: '4780000005' },
+      { id: 6, name: 'Bosch HBG7341 gaz plita', cat: 'Pechlar', price: 4790000, stock: 5, img: '', barcode: '4780000006' },
+      { id: 7, name: 'Samsung ME9114 mikroto\'lqinli pech', cat: 'Mikrotolqinli Pechlar', price: 1790000, stock: 9, img: '', barcode: '4780000007' },
+      { id: 8, name: 'Anker 65W tezkor adapter', cat: 'Aksessuarlar', price: 349000, stock: 24, img: '', barcode: '4780000008' },
+      { id: 9, name: 'LG GC-B459SMKV muzlatgich', cat: 'Muzlatgichlar', price: 12490000, stock: 3, img: '', barcode: '4780000009' },
+      { id: 10, name: 'Xiaomi Mi TV P1 43"', cat: 'Televizorlar', price: 4290000, stock: 7, img: '', barcode: '4780000010' },
+      { id: 11, name: 'Huion 6 kanal inverter konditsioner', cat: 'Konditsionerlar', price: 5690000, stock: 5, img: '', barcode: '4780000011' },
+      { id: 12, name: 'Philips Airfryer XL', cat: 'Aksessuarlar', price: 1290000, stock: 11, img: '', barcode: '4780000012' }
+    ];
+    try {
+      localStorage.setItem('tp_data_version', 'real-3');
+      localStorage.setItem('tp_products', JSON.stringify(demo));
+      localStorage.setItem('tp_categories', JSON.stringify(['Muzlatgichlar', 'Kir Yuvish Mashinalari', 'Konditsionerlar', 'Televizorlar', 'Changyutgichlar', 'Pechlar', 'Mikrotolqinli Pechlar', 'Aksessuarlar']));
+    } catch (e) { }
+    location.replace('index.html');
+  </script>
+</body>
+
+</html>

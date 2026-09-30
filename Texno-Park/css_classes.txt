@@ -1,0 +1,133 @@
+﻿.form-group {
+.form-group label {
+.form-group input {
+.form-group input:focus {
+.form-group .input-icon {
+.form-group input:focus+.input-icon,
+.form-group input:focus~.input-icon {
+.pos-layout {
+.pos-left {
+.pos-right {
+.product-grid {
+.cart-items {
+.pos-layout {
+.pos-left {
+.pos-right {
+.pos-search {
+.pos-search:focus-within {
+.pos-search input {
+.pos-search i {
+.barcode-indicator {
+.barcode-indicator.scanning {
+.shop-layout {
+.shop-main,
+.shop-cart {
+.shop-hero {
+.shop-hero h2 {
+.shop-hero p {
+.shop-search {
+.shop-search i {
+.shop-search input {
+.shop-cart {
+.pos-layout {
+.pos-left {
+.pos-right {
+.pos-search {
+.pos-search:focus-within {
+.pos-search input {
+.pos-search i {
+.barcode-indicator {
+.barcode-indicator.scanning {
+.shop-layout {
+.shop-main,
+.shop-cart {
+.shop-hero {
+.shop-hero h2 {
+.shop-hero p {
+.shop-search {
+.shop-search i {
+.shop-search input {
+.shop-cart {
+.shop-product-card .product-card-stock {
+.product-grid {
+.cart-item-new {
+.cart-header {
+.cart-header h3 {
+.cart-header p {
+.cart-items {
+.cart-empty {
+.cart-empty i {
+.cart-item {
+.cart-item:hover {
+.cart-item-img {
+.cart-item-info {
+.cart-item-name {
+.cart-item-price {
+.cart-qty {
+.cart-item-del {
+.cart-item-del:hover {
+.cart-item-total {
+.cart-footer {
+.cart-totals {
+.cart-row {
+.cart-row.total {
+.pay-types {
+.pay-type {
+.pay-type:hover {
+.pay-type:active {
+.pay-type.active {
+.pay-type i {
+.form-row {
+.form-col {
+.form-col label {
+.form-control {
+.payment-success {
+.payment-success .success-icon {
+.payment-success h2 {
+.payment-success p {
+.payment-amount {
+.img-upload {
+.img-upload:hover {
+.img-upload i {
+.img-upload input {
+.shop-layout {
+.shop-cat-sidebar {
+.shop-cat-sidebar.collapsed {
+.shop-cat-sidebar.collapsed .cat-sidebar-header span {
+.shop-cat-sidebar.collapsed .cat-sidebar-list .cat-tab span {
+.shop-cat-sidebar.collapsed .cat-sidebar-list .cat-tab {
+.shop-cat-toggle-btn {
+.shop-cat-sidebar.collapsed .shop-cat-toggle-btn {
+.shop-cat-sidebar {
+.shop-cart {
+.shop-product-card {
+.shop-product-card:hover {
+.shop-product-card::after {
+.shop-product-card:hover::after {
+.shop-product-card .product-card-img {
+.shop-product-card:hover .product-card-img {
+.uzum-cart-container {
+.uzum-delivery-banner {
+.uzum-delivery-banner .banner-icon {
+.uzum-delivery-banner .banner-text {
+.uzum-delivery-banner .banner-text strong {
+.uzum-delivery-banner .banner-text span {
+.uzum-cart-items-wrapper {
+.uzum-cart-item {
+.uzum-cart-item:hover {
+.uzum-item-left {
+.uzum-item-img {
+.uzum-item-info {
+.uzum-item-name {
+.uzum-item-cat {
+.uzum-item-right {
+.uzum-item-qty {
+.uzum-item-price-block {
+.uzum-item-price {
+.uzum-item-old-price {
+.uzum-item-del-btn {
+.uzum-item-del-btn:hover {
+.uzum-summary-card {
+.uzum-summary-card h3 {
+.uzum-summary-row {
+.uzum-summary-row.total {
