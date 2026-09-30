@@ -126,10 +126,6 @@
       </div>
       <nav class="sidebar-nav">
         <div class="nav-section"><span class="nav-section-label">Asosiy</span></div>
-        <div class="nav-item active" onclick="goTo('page-shop',this)" id="nav-shop" data-role="all">
-          <i class="fas fa-store"></i><span>Do'kon</span>
-          <span class="nav-badge green">Online</span>
-        </div>
         <div class="nav-item" onclick="goTo('page-dashboard',this)" data-role="admin,cashier,manager">
           <i class="fas fa-th-large"></i><span>Dashboard</span>
         </div>
@@ -208,6 +204,12 @@
         </div>
         <div class="nav-item" onclick="goTo('page-settings',this)" id="nav-settings" data-role="admin">
           <i class="fas fa-cog"></i><span>Sozlamalar</span>
+        </div>
+
+        <div class="nav-section" id="sec-shop" data-role="admin,cashier,manager"><span class="nav-section-label">Do'kon</span></div>
+        <div class="nav-item active" onclick="goTo('page-shop',this)" id="nav-shop" data-role="all">
+          <i class="fas fa-store"></i><span>Do'kon</span>
+          <span class="nav-badge green">Online</span>
         </div>
       </nav>
       <div class="sidebar-footer">
@@ -3266,7 +3268,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.0.13-contract-fix"></script>
+  <script src="scripts.js?v=1.0.14-nav-order"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {

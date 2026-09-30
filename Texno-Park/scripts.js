@@ -1841,6 +1841,13 @@ function finishLogin(user) {
     Security.startSession(user);
     addLog('Kirish', `${user.name} tizimga kirdi`);
     initApp();
+    // Xodim kirganda eng asosiy bo'lim ochiladi (do'kon yon panelning oxirida turadi)
+    if (user.role !== 'customer') {
+        const firstPage = user.role === 'cashier' ? 'page-pos' : 'page-dashboard';
+        const firstNav = Array.from(document.querySelectorAll('.nav-item')).find(n =>
+            (n.getAttribute('onclick') || '').includes(`'${firstPage}'`));
+        goTo(firstPage, firstNav);
+    }
     playSuccess();
     showNotif('success', 'Xush kelibsiz! 👋', user.name + ' — ' + ROLES[user.role]);
     // Aloqa uzilgan paytda chiqmay qolgan fiskal cheklar bo'lsa — qayta urinamiz
