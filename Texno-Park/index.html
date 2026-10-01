@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="color-scheme" content="light dark">
   <title>Texno Park N1 POS — Premium</title>
@@ -17,9 +17,184 @@
   <link rel="stylesheet" href="style.css?v=2.5-sticky-fix">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>@media print{.ct-photo-noprint,#ct-photo-block{display:none!important}}</style>
+  <style id="tp-patch-css">
+    /* ===== Kategoriya sarlavhasi ===== */
+    .cat-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+    .cat-actions{display:flex;gap:6px;flex-wrap:wrap}
+    /* ===== Dashboard tezkor tugmalar ===== */
+    .dash-quick{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+    .dash-quick button{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);
+      background:var(--card);color:var(--text);font:600 13px/1 inherit;cursor:pointer;transition:transform .15s,border-color .15s}
+    .dash-quick button:hover{transform:translateY(-1px);border-color:var(--primary)}
+    .dash-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+    .dash-row:last-child{border-bottom:none}
+    .dash-empty{text-align:center;padding:26px;color:var(--muted)}
+    /* ===== Rol bo'yicha ko'rinish: XODIM do'konda xaridor bo'lib ko'rinmaydi ===== */
+    body[data-role="admin"] #page-shop .market-cart-btn, body[data-role="cashier"] #page-shop .market-cart-btn, body[data-role="manager"] #page-shop .market-cart-btn,
+    body[data-role="admin"] #page-shop .market-login-btn, body[data-role="cashier"] #page-shop .market-login-btn, body[data-role="manager"] #page-shop .market-login-btn,
+    body[data-role="admin"] .market-bottom-nav, body[data-role="cashier"] .market-bottom-nav, body[data-role="manager"] .market-bottom-nav,
+    body[data-role="admin"] .market-footer, body[data-role="cashier"] .market-footer, body[data-role="manager"] .market-footer,
+    body[data-role="admin"] #page-shop .shop-add-btn, body[data-role="cashier"] #page-shop .shop-add-btn, body[data-role="manager"] #page-shop .shop-add-btn{display:none!important}
+    .staff-shop-note{display:none;margin:0 0 14px;padding:12px 14px;border-radius:12px;background:rgba(245,158,11,.12);color:var(--text);font-size:13px;align-items:center;gap:10px;flex-wrap:wrap}
+    body[data-role="admin"] .staff-shop-note, body[data-role="cashier"] .staff-shop-note, body[data-role="manager"] .staff-shop-note{display:flex}
+    /* Xaridorga xodim paneli ko'rinmaydi */
+    body[data-role="customer"] .sidebar, body[data-role="customer"] .topbar, body[data-role="customer"] .hotkeys-bar,
+    body[data-role="guest"] .sidebar, body[data-role="guest"] .topbar, body[data-role="guest"] .hotkeys-bar{display:none!important}
+    /* ===== LOGIN: telefonga qulay ===== */
+    #loginPage input{font-size:16px}               /* iOS yaqinlashtirishini oldini oladi */
+    #loginPage .btn-login,#loginPage .quick-section,#loginPage .pass-toggle{min-height:48px;touch-action:manipulation}
+    @media (max-width:900px){
+      #loginPage{display:flex!important;flex-direction:column;min-height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+      #loginPage:not(.active){display:none!important}
+      #loginPage .login-showcase{display:none}
+      #loginPage .login-box{width:100%;max-width:440px;margin:auto;padding:24px 18px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:none;border-radius:0}
+      #loginPage .quick-sections{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+      #loginPage .quick-section{padding:10px 6px}
+      #loginPage .quick-section .section-role{display:none}
+      #googleBtnContainer{width:100%!important}
+    }
+    /* ===== KASSA (POS) yaxshilanishlari ===== */
+    .pos-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
+    .pos-toolbar select{max-width:210px;min-height:38px}
+    .pos-toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none}
+    .pos-found{margin-left:auto;font-size:12px;color:var(--muted)}
+    .product-card{position:relative}
+    .product-card.out{opacity:.45;filter:grayscale(.6)}
+    .product-card .in-cart-badge{position:absolute;top:8px;right:8px;min-width:26px;height:26px;padding:0 7px;border-radius:13px;
+      background:var(--primary);color:#fff;font:700 12px/26px inherit;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.25);display:none;z-index:2}
+    .product-card.in .in-cart-badge{display:block}
+    .product-card.in{outline:2px solid var(--primary)}
+    .pos-chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+    .pos-chips button{padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text);
+      font:600 12px/1 inherit;cursor:pointer;min-height:34px;touch-action:manipulation}
+    .pos-chips button:hover{border-color:var(--primary)}
+    .pos-cash{margin:10px 0;padding:10px 12px;border:1px dashed var(--border);border-radius:12px;display:none}
+    .pos-cash.show{display:block}
+    .pos-cash-row{display:flex;align-items:center;gap:10px}
+    .pos-cash-row label{font-size:12px;color:var(--muted);white-space:nowrap}
+    .pos-cash-row input{flex:1;min-width:0;text-align:right;font-weight:700;font-size:16px}
+    #posChange.bad{color:var(--danger)} #posChange.ok{color:var(--success)}
+    .pos-held{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px}
+    .pos-held:empty{display:none}
+    .pos-held .held{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;background:rgba(245,158,11,.14);font-size:12px;font-weight:600}
+    .pos-held .held button{border:none;background:none;color:inherit;cursor:pointer;padding:2px 4px}
+    .cart-header{position:relative}
+    .pos-hold-btn{margin-top:8px}
+    #posCheckoutBtn:disabled{opacity:.5;cursor:not-allowed}
+    .pos-sheet-close,.pos-mobile-bar{display:none}
+    @media (max-width:900px){
+      #page-pos .pos-layout{display:block!important;height:auto!important}
+      #page-pos .pos-left{padding-bottom:84px}
+      #page-pos .product-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))!important;gap:10px}
+      #page-pos .pos-right{position:fixed!important;left:0;right:0;bottom:0;top:6vh;width:auto!important;max-width:none!important;z-index:950;
+        background:var(--card);border-radius:20px 20px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.35);overflow-y:auto;-webkit-overflow-scrolling:touch;
+        transform:translateY(105%);transition:transform .28s ease;padding-bottom:env(safe-area-inset-bottom,0px)}
+      #page-pos .pos-right.sheet-open{transform:translateY(0)}
+      .pos-sheet-close{display:flex;position:absolute;right:12px;top:10px;width:40px;height:40px;border-radius:50%;border:1px solid var(--border);
+        background:var(--card);color:var(--text);align-items:center;justify-content:center;cursor:pointer}
+      .pos-mobile-bar{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:900;
+        display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border:none;border-radius:16px;
+        background:var(--primary);color:#fff;font:700 15px/1 inherit;box-shadow:0 8px 28px rgba(0,0,0,.35);cursor:pointer;min-height:52px;touch-action:manipulation}
+      #page-pos:not(.active) .pos-mobile-bar{display:none}
+      .pos-mobile-go{opacity:.9;font-weight:600}
+      .qty-btn{min-width:38px;min-height:38px}
+      .pay-types{grid-template-columns:repeat(3,1fr)!important}
+      .pos-toolbar select{max-width:none;flex:1}
+    }
+    /* Mobil: jadval/kartalar sig'sin */
+    @media (max-width:640px){
+      .dash-quick button{flex:1 1 calc(50% - 10px);justify-content:center}
+      .cat-head .btn{width:100%}
+    }
+  </style>
+  <style id="tp-responsive-css">
+    /* ================= UMUMIY: telefon + planshet + kompyuter ================= */
+    html{-webkit-text-size-adjust:100%}
+    img,canvas,video{max-width:100%}
+    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .table-wrap table{min-width:520px}
+    .sidebar-backdrop{display:none}
+    .menu-toggle{display:none!important}
+    button,.btn,.nav-item,.icon-btn,select,input[type=checkbox]{touch-action:manipulation}
+
+    /* ================= KOMPYUTER (>900px): hamma narsa avvalgidek ================= */
+
+    /* ================= PLANSHET va TELEFON (<=900px) ================= */
+    @media (max-width:900px){
+      /* Yon panel — ochiladigan menyu */
+      .sidebar{position:fixed!important;top:0;left:0;bottom:0;height:100dvh;width:min(84vw,300px)!important;z-index:1200;
+        transform:translateX(-105%);transition:transform .25s ease;overflow-y:auto;-webkit-overflow-scrolling:touch;
+        padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:none}
+      .sidebar.open{transform:translateX(0)!important;box-shadow:12px 0 40px rgba(0,0,0,.45)}
+      .sidebar.open + .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:1150;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)}
+      body:has(.sidebar.open){overflow:hidden}
+      .sidebar .nav-item{min-height:46px}
+      .sidebar .user-card{min-height:56px}
+
+      /* Menyu tugmasi faqat xodimga, tepa chapda */
+      .menu-toggle{display:flex!important;position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:10px;z-index:1100;
+        width:44px;height:44px;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--border);
+        background:var(--card);color:var(--text);font-size:18px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+      body[data-role="guest"] .menu-toggle,body[data-role="customer"] .menu-toggle{display:none!important}
+
+      /* Asosiy maydon va yuqori panel butun kenglikda */
+      .main{margin-left:0!important;width:100%!important;max-width:100%!important;padding:12px!important;
+        padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))!important}
+      body[data-role="customer"] .main,body[data-role="guest"] .main{padding:0!important}
+      .topbar{left:0!important;margin-left:0!important;width:100%!important;padding:8px 10px 8px 62px!important;gap:8px;flex-wrap:nowrap;min-height:60px}
+      .topbar .page-title{min-width:0;flex:1}
+      .topbar .page-title #pageTitle{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+      .topbar .page-title small{display:none}
+      .topbar-search{display:none}
+      .topbar-clock,#topbarTourBtn,.hotkeys-bar{display:none!important}
+      .topbar-actions{gap:6px;flex-shrink:0}
+      .topbar-actions .icon-btn{width:40px;height:40px}
+      #topbarEmployeeName{max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+      .branch-switcher{max-width:140px}
+      .branch-switcher select{max-width:110px;font-size:14px}
+      #topbarEmployeeDropdown{right:0;min-width:200px!important}
+
+      /* Kartalar, jadvallar, formalar */
+      .grid-2,.grid-3{grid-template-columns:1fr!important}
+      .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px}
+      .stat-card{padding:14px}
+      .stat-num{font-size:20px!important;word-break:break-word}
+      .form-row{flex-direction:column!important;gap:10px}
+      .form-row .form-col{width:100%}
+      .page > div[style*="justify-content:space-between"]{flex-wrap:wrap;gap:10px}
+      .panel-header{flex-wrap:wrap;gap:8px}
+      .chart-wrap{min-height:220px}
+
+      /* Oynalar telefonda deyarli to'liq ekran */
+      .modal-overlay{padding:8px!important;align-items:flex-end}
+      .modal{width:100%!important;max-width:100%!important;max-height:94dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:18px 18px 12px 12px}
+      .modal-close{width:40px;height:40px}
+
+      /* Bosish uchun qulay o'lchamlar; input 16px — iPhone yaqinlashtirmaydi */
+      input,select,textarea,.form-control{font-size:16px!important;min-height:44px}
+      .btn{min-height:42px}
+      .btn-sm{min-height:38px;padding-left:12px;padding-right:12px}
+    }
+
+    /* ================= FAQAT TELEFON (<=520px) ================= */
+    @media (max-width:520px){
+      .stat-grid{grid-template-columns:1fr 1fr!important}
+      .stat-label{font-size:11px}
+      .stat-change{font-size:11px}
+      .branch-switcher{display:none}
+      .topbar-actions .icon-btn[onclick^="printReceipt"]{display:none}
+      .main{padding:10px!important}
+      .dash-quick button{font-size:12px;padding:10px}
+      .table-wrap table{min-width:460px}
+      th,td{padding-left:8px!important;padding-right:8px!important}
+    }
+
+    /* Sensorli qurilmada klaviatura yorliqlari kerak emas */
+    @media (hover:none){ .hotkeys-bar{display:none!important} }
+  </style>
 </head>
 
-<body>
+<body data-role="guest">
 
   <!-- PRINT AREA (hidden, shown only during print) -->
   <div id="printArea" style="display:none;"></div>
@@ -47,8 +222,9 @@
       </div>
       <div class="form-group">
         <label>Foydalanuvchi</label>
-        <input type="text" id="loginUser" placeholder="admin / cashier / manager / customer" autocomplete="username"
-          readonly>
+        <input type="text" id="loginUser" placeholder="admin / cashier / manager" autocomplete="username"
+          autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('loginPass').focus();}">
         <i class="fas fa-user input-icon"></i>
       </div>
       <div class="quick-login">
@@ -69,16 +245,12 @@
             <div class="section-title">Manager</div>
             <div class="section-role">Menejer</div>
           </button>
-          <button type="button" class="quick-section customer-section" onclick="selectUser('customer')">
-            <div class="section-icon"><i class="fas fa-shopping-bag"></i></div>
-            <div class="section-title">Xaridor</div>
-            <div class="section-role">Oddiy foydalanuvchi</div>
-          </button>
         </div>
       </div>
       <div class="form-group">
         <label>Parol</label>
-        <input type="password" id="loginPass" placeholder="••••••" autocomplete="current-password">
+        <input type="password" id="loginPass" placeholder="••••••" autocomplete="current-password"
+          enterkeyhint="go" onkeydown="if(event.key==='Enter'){event.preventDefault();doLogin();}">
         <i class="fas fa-lock input-icon"></i>
         <button type="button" class="pass-toggle" onclick="togglePassword()"><i class="fas fa-eye"></i></button>
       </div>
@@ -100,7 +272,7 @@
 
         <!-- Official Google Sign-In container (rendered programmatically) -->
         <div id="googleBtnContainer"
-          style="width: 320px; min-height: 40px; display: flex; justify-content: center; align-items: center;"></div>
+          style="width: 100%; max-width: 320px; min-height: 40px; display: flex; justify-content: center; align-items: center;"></div>
 
       </div>
     </div>
@@ -206,7 +378,7 @@
           <i class="fas fa-cog"></i><span>Sozlamalar</span>
         </div>
 
-        <div class="nav-section" id="sec-shop" data-role="admin,cashier,manager"><span class="nav-section-label">Do'kon</span></div>
+        <div class="nav-section" id="sec-shop" data-role="admin,cashier,manager"><span class="nav-section-label">Do'kon (ko'rish)</span></div>
         <div class="nav-item active" onclick="goTo('page-shop',this)" id="nav-shop" data-role="all">
           <i class="fas fa-store"></i><span>Do'kon</span>
           <span class="nav-badge green">Online</span>
@@ -223,6 +395,8 @@
         </div>
       </div>
     </div>
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
 
     <!-- TOPBAR -->
     <div class="topbar">
@@ -340,6 +514,39 @@
               </div>
             </div>
           </div>
+          <div class="dash-quick">
+            <button type="button" onclick="goTo('page-pos',document.getElementById('navPos'))"><i class="fas fa-cash-register"></i> Yangi savdo</button>
+            <button type="button" onclick="goTo('page-products',document.getElementById('nav-products'))"><i class="fas fa-tv"></i> Mahsulotlar</button>
+            <button type="button" onclick="goTo('page-categories',document.getElementById('nav-categories'))"><i class="fas fa-folder-open"></i> Kategoriyalar</button>
+            <button type="button" onclick="goTo('page-warehouse',document.getElementById('nav-warehouse'))"><i class="fas fa-warehouse"></i> Ombor</button>
+            <button type="button" onclick="goTo('page-reports',document.getElementById('nav-reports'))"><i class="fas fa-chart-line"></i> Hisobotlar</button>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i class="fas fa-calendar-alt"></i></div>
+              <div class="stat-num" id="d-month-sales">0</div><div class="stat-label">Oylik Savdo</div>
+              <div class="stat-change up" id="d-month-note"><i class="fas fa-receipt"></i> 0 ta chek</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i class="fas fa-folder-open"></i></div>
+              <div class="stat-num" id="d-categories">0</div><div class="stat-label">Kategoriyalar</div>
+              <div class="stat-change up" id="d-categories-note"><i class="fas fa-box"></i> Bo'sh: 0 ta</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i class="fas fa-warehouse"></i></div>
+              <div class="stat-num" id="d-stock-value">0</div><div class="stat-label">Ombor qiymati</div>
+              <div class="stat-change up" id="d-stock-note"><i class="fas fa-cubes"></i> 0 dona</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i class="fas fa-file-signature"></i></div>
+              <div class="stat-num" id="d-contracts">0</div><div class="stat-label">Shartnomalar</div>
+              <div class="stat-change up" id="d-contracts-note"><i class="fas fa-file-contract"></i> Faol shartnomalar</div></div>
+          </div>
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel-header"><h3><i class="fas fa-triangle-exclamation" style="color:var(--danger)"></i> Kam qolgan mahsulotlar</h3>
+                <button class="btn btn-outline btn-sm" onclick="goTo('page-warehouse',document.getElementById('nav-warehouse'))">Ombor</button></div>
+              <div class="panel-body" id="d-lowstock"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><h3><i class="fas fa-layer-group" style="color:var(--accent)"></i> Kategoriyalar bo'yicha</h3>
+                <button class="btn btn-outline btn-sm" onclick="goTo('page-categories',document.getElementById('nav-categories'))">Boshqarish</button></div>
+              <div class="panel-body" id="d-catbreak"></div>
+            </div>
+          </div>
           <div class="grid-2">
             <div class="panel">
               <div class="panel-header">
@@ -397,6 +604,11 @@
           <div style="margin-bottom:20px">
             <h2 style="color:var(--primary);margin-bottom:10px">💳 Kassir Dashboard</h2>
             <p style="color:var(--muted)">Bugungi savdo ko'rsatkichlaringiz</p>
+          </div>
+          <div class="dash-quick">
+            <button type="button" onclick="goTo('page-pos',document.getElementById('navPos'))"><i class="fas fa-cash-register"></i> Yangi savdo</button>
+            <button type="button" onclick="goTo('page-customers',document.getElementById('nav-customers'))"><i class="fas fa-users"></i> Mijozlar</button>
+            <button type="button" onclick="goTo('page-contracts',document.getElementById('nav-contracts'))"><i class="fas fa-file-signature"></i> Shartnomalar</button>
           </div>
           <div class="stat-grid">
             <div class="stat-card" style="--card-accent:rgba(255,107,53,.12)">
@@ -477,6 +689,22 @@
               <div class="stat-change up" id="m-top-cashier-change"><i class="fas fa-trophy"></i> Hali savdo yo'q</div>
             </div>
           </div>
+          <div class="dash-quick">
+            <button type="button" onclick="goTo('page-reports',document.getElementById('nav-reports'))"><i class="fas fa-chart-line"></i> Hisobotlar</button>
+            <button type="button" onclick="goTo('page-warehouse',document.getElementById('nav-warehouse'))"><i class="fas fa-warehouse"></i> Ombor</button>
+            <button type="button" onclick="goTo('page-cashflow',document.getElementById('nav-cashflow'))"><i class="fas fa-money-bill-trend-up"></i> Kirim / Chiqim</button>
+            <button type="button" onclick="goTo('page-discounts',document.getElementById('nav-discounts'))"><i class="fas fa-gift"></i> Chegirmalar</button>
+          </div>
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel-header"><h3><i class="fas fa-triangle-exclamation" style="color:var(--danger)"></i> Kam qolgan mahsulotlar</h3></div>
+              <div class="panel-body" id="m-lowstock"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><h3><i class="fas fa-fire" style="color:var(--warning)"></i> Top mahsulotlar</h3></div>
+              <div class="panel-body" id="m-topproducts"></div>
+            </div>
+          </div>
           <div class="panel">
             <div class="panel-header">
               <h3><i class="fas fa-users" style="color:var(--accent)"></i> Xodimlar Reytingi</h3>
@@ -503,6 +731,9 @@
 
       <!-- ===== CUSTOMER SHOP ===== -->
       <div class="page active" id="page-shop">
+        <div class="staff-shop-note"><i class="fas fa-eye"></i>
+          <span>Bu — xaridorlar ko'radigan do'konning <b>ko'rish rejimi</b>. Xodim sifatida buyurtma bera olmaysiz, sotuv uchun Kassa (POS) dan foydalaning.</span>
+          <button type="button" class="btn btn-primary btn-sm" onclick="goTo('page-pos',document.getElementById('navPos'))">Kassaga o'tish</button></div>
         <div class="market-shell">
           <div class="market-top">
             <div class="market-top-main">
@@ -920,6 +1151,17 @@
               <input type="text" id="posSearch" placeholder="Mahsulot nomi yoki barkod... (F3)"
                 oninput="debouncedSearch(this.value)" autocomplete="off">
             </div>
+            <div class="pos-toolbar">
+              <label class="pos-toggle"><input type="checkbox" id="posOnlyInStock" onchange="renderProductGrid()"> Faqat mavjud</label>
+              <select id="posSort" class="form-control" onchange="renderProductGrid()" aria-label="Saralash">
+                <option value="">Saralash: standart</option>
+                <option value="name">Nomi (A–Z)</option>
+                <option value="price-asc">Narx: arzondan</option>
+                <option value="price-desc">Narx: qimmatdan</option>
+                <option value="stock">Qoldiq: kamidan</option>
+              </select>
+              <span class="pos-found" id="posFound"></span>
+            </div>
             <div class="barcode-indicator" id="barcodeIndicator">
               <i class="fas fa-barcode"></i> <span id="barcodeStatus">Barkod skaner tayyor — USB/Bluetooth ulang</span>
             </div>
@@ -930,9 +1172,12 @@
           <!-- RIGHT: savat va to'lov -->
           <div class="pos-right">
             <div class="cart-header">
+              <button type="button" class="pos-sheet-close" onclick="posToggleSheet(false)" aria-label="Yopish"><i class="fas fa-chevron-down"></i></button>
               <h3><i class="fas fa-shopping-cart"></i> Savat</h3>
               <p id="cartCount">0 ta mahsulot</p>
+              <button type="button" class="btn btn-outline btn-sm pos-hold-btn" onclick="posHoldCart()" title="Savatni kutishga qo'yish"><i class="fas fa-pause"></i> Kutish</button>
             </div>
+            <div class="pos-held" id="posHeldList"></div>
             <div class="cart-items" id="cartItems"></div>
             <div class="cart-footer">
               <div class="cart-totals">
@@ -954,6 +1199,12 @@
                   oninput="updateCart()">
                 <button class="btn btn-outline btn-sm" onclick="clearCart()" title="Savatni tozalash"><i
                     class="fas fa-trash"></i></button>
+              </div>
+              <div class="pos-chips" aria-label="Tezkor chegirma">
+                <button type="button" onclick="posSetDiscount(0)">0%</button>
+                <button type="button" onclick="posSetDiscount(5)">5%</button>
+                <button type="button" onclick="posSetDiscount(10)">10%</button>
+                <button type="button" onclick="posSetDiscount(15)">15%</button>
               </div>
               <div class="form-col" style="margin-bottom:10px">
                 <label>To'lov tizimi</label>
@@ -990,6 +1241,22 @@
               </div>
               <div id="payProviderStatus" class="pay-provider-status"></div>
 
+              <!-- Naqd: olingan summa va qaytim -->
+              <div id="posCashPanel" class="pos-cash">
+                <div class="pos-cash-row">
+                  <label for="posReceived">Olingan summa</label>
+                  <input type="number" id="posReceived" class="form-control" inputmode="numeric" min="0" placeholder="0"
+                    oninput="posUpdateChange()">
+                </div>
+                <div class="pos-chips">
+                  <button type="button" onclick="posQuickCash('exact')">Aniq</button>
+                  <button type="button" onclick="posQuickCash(50000)">50 ming</button>
+                  <button type="button" onclick="posQuickCash(100000)">100 ming</button>
+                  <button type="button" onclick="posQuickCash(200000)">200 ming</button>
+                </div>
+                <div class="cart-row"><span id="posChangeLabel">Qaytim</span><strong id="posChange">0 so'm</strong></div>
+              </div>
+
               <!-- Kredit (muddatli to'lov) paneli -->
               <div id="creditPanel" class="credit-panel" style="display:none">
                 <div class="form-row" style="margin-bottom:10px">
@@ -1012,12 +1279,17 @@
                 <div class="cart-row"><span>Oylik to'lov:</span><span id="creditMonthly">0 so'm</span></div>
               </div>
 
-              <button class="btn btn-primary btn-lg" style="width:100%;margin-top:12px" onclick="checkout()">
-                <i class="fas fa-money-check-alt"></i> To'lov qabul qilish (F2)
+              <button class="btn btn-primary btn-lg" id="posCheckoutBtn" style="width:100%;margin-top:12px" onclick="checkout()">
+                <i class="fas fa-money-check-alt"></i> <span id="posCheckoutLabel">To'lov qabul qilish (F2)</span>
               </button>
             </div>
           </div>
         </div>
+        <button type="button" class="pos-mobile-bar" id="posMobileBar" onclick="posToggleSheet(true)">
+          <span><i class="fas fa-shopping-cart"></i> <b id="posMobileCount">0</b> ta</span>
+          <span id="posMobileTotal">0 so'm</span>
+          <span class="pos-mobile-go">Savat <i class="fas fa-chevron-up"></i></span>
+        </button>
       </div>
 
       <!-- ===== PRODUCTS ===== -->
@@ -1903,9 +2175,12 @@
 
       <!-- ===== KATEGORIYALAR ===== -->
       <div class="page" id="page-categories">
-        <div style="margin-bottom:20px">
-          <h2 style="font-size:20px;font-weight:700">📂 Kategoriyalar</h2>
-          <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulotlar kategoriyalari ro'yxati</p>
+        <div class="cat-head">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">📂 Kategoriyalar</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulotlar kategoriyalarini yarating, tahrirlang va o'chiring</p>
+          </div>
+          <button type="button" class="btn btn-primary" onclick="openCategoryModal()"><i class="fas fa-plus"></i> Yangi kategoriya</button>
         </div>
         <div class="panel">
           <div class="panel-header">
@@ -3213,6 +3488,27 @@
         <div style="text-align:left;font-size:14px;color:var(--text-secondary)">
           <div style="margin-bottom:8px"><strong>Login/Email:</strong> <span id="profileModalLogin"></span></div>
           <div><strong>Tizim roli:</strong> <span id="profileModalRoleLabel"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== KATEGORIYA MODAL ===== -->
+  <div class="modal-overlay" id="categoryModal">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h3 id="categoryModalTitle"><i class="fas fa-folder-plus"></i> Yangi kategoriya</h3>
+        <button class="modal-close" onclick="closeModal('categoryModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Kategoriya nomi</label>
+          <input type="text" id="categoryNameInput" maxlength="60" placeholder="Masalan: Smartfonlar" autocomplete="off"
+            enterkeyhint="done" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCategoryFromModal();}">
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline" onclick="closeModal('categoryModal')">Bekor qilish</button>
+          <button type="button" class="btn btn-primary" onclick="saveCategoryFromModal()"><i class="fas fa-check"></i> Saqlash</button>
         </div>
       </div>
     </div>

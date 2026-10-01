@@ -1581,12 +1581,9 @@ function selectUser(role) {
     const loginUser = document.getElementById('loginUser');
     const loginPass = document.getElementById('loginPass');
     if (!loginUser || !loginPass) return;
+    // Xodim kirishida xaridor yo'q — faqat admin / cashier / manager
+    if (!['admin', 'cashier', 'manager'].includes(role)) return;
     loginUser.value = role;
-    if (role === 'customer') {
-        loginPass.value = '123456';
-        doLogin();
-        return;
-    }
     loginPass.focus();
 }
 
@@ -1619,37 +1616,21 @@ document.addEventListener('click', function (e) {
 function renderEmployeeDropdown() {
     const dp = document.getElementById('topbarEmployeeDropdown');
     if (!dp) return;
-
-    const isLoggedIn = currentUser && currentUser.role !== 'customer';
-
-    let html = `
-        <div class="employee-dropdown-item" onclick="showEmployeeProfile()">
-            <i class="fas fa-user-circle" style="width:16px; margin-right:8px;"></i>
-            <span>Profil</span>
-        </div>
-        <div class="employee-dropdown-item" onclick="goTo('page-settings', document.getElementById('nav-settings')); document.getElementById('topbarEmployeeDropdown').style.display='none';">
-            <i class="fas fa-cog" style="width:16px; margin-right:8px;"></i>
-            <span>Sozlamalar</span>
-        </div>
-        <div class="employee-dropdown-item" onclick="openEmployeeLogin(); document.getElementById('topbarEmployeeDropdown').style.display='none';">
-            <i class="fas fa-sign-in-alt" style="width:16px; margin-right:8px;"></i>
-            <span>Kirish</span>
-        </div>
-        <div class="employee-dropdown-item" onclick="triggerEmployeeRegistration()">
-            <i class="fas fa-user-plus" style="width:16px; margin-right:8px;"></i>
-            <span>Ro'yxatdan o'tish</span>
-        </div>
-    `;
-
-    if (isLoggedIn) {
-        html += `
-            <div class="employee-dropdown-item logout" onclick="doLogout(); document.getElementById('topbarEmployeeDropdown').style.display='none';">
-                <i class="fas fa-sign-out-alt" style="width:16px; margin-right:8px;"></i>
-                <span>Tizimdan chiqish</span>
-            </div>
-        `;
+    const role = currentUser?.role || 'guest';
+    const isStaff = ['admin', 'cashier', 'manager'].includes(role);
+    const item = (icon, label, action, cls) => `
+        <div class="employee-dropdown-item ${cls || ''}" onclick="${action}; document.getElementById('topbarEmployeeDropdown').style.display='none';">
+            <i class="fas ${icon}" style="width:16px; margin-right:8px;"></i><span>${label}</span>
+        </div>`;
+    let html = '';
+    if (isStaff) {
+        html += item('fa-user-circle', 'Profil', 'showEmployeeProfile()');
+        if (role === 'admin') html += item('fa-cog', 'Sozlamalar', "goTo('page-settings', document.getElementById('nav-settings'))");
+        if (role === 'admin' || role === 'manager') html += item('fa-user-plus', "Xodim qo'shish", 'triggerEmployeeRegistration()');
+        html += item('fa-sign-out-alt', 'Tizimdan chiqish', 'doLogout()', 'logout');
+    } else {
+        html += item('fa-sign-in-alt', 'Xodim kirishi', 'openEmployeeLogin()');
     }
-
     dp.innerHTML = html;
 }
 
@@ -1971,6 +1952,7 @@ function showLoginScreen() {
 // ============================================================
 function setupRoleBasedNav() {
     const role = currentUser?.role || 'guest';
+    document.body.setAttribute('data-role', role);
     document.querySelectorAll('.nav-item, .nav-section').forEach(el => {
         const raw = el.getAttribute('data-role') || 'admin,cashier,manager';
         const roles = raw.split(',').map(r => r.trim()).filter(Boolean);
@@ -2119,7 +2101,7 @@ function goTo(pageId, el) {
     if (key === 'pos') document.getElementById('posSearch')?.focus();
 
     // 8) mobil qurilmalarda sidebarni yopish
-    if (window.innerWidth < 900) document.getElementById('sidebar')?.classList.remove('open');
+    if (window.innerWidth <= 900) toggleSidebar(false);
 }
 
 function canAccessPage(pageId) {
@@ -2133,10 +2115,17 @@ function canAccessPage(pageId) {
     return roles.includes(currentUser.role) || roles.includes('all');
 }
 
-function toggleSidebar() {
+function toggleSidebar(force) {
     const sb = document.getElementById('sidebar');
-    if (sb) sb.classList.toggle('open');
+    if (!sb) return;
+    const open = typeof force === 'boolean' ? force : !sb.classList.contains('open');
+    sb.classList.toggle('open', open);
+    const t = document.querySelector('.menu-toggle i');
+    if (t) t.className = open ? 'fas fa-times' : 'fas fa-bars';
 }
+// Ekran kattalashsa yoki Esc bosilsa — telefon menyusi yopiladi
+window.addEventListener('resize', () => { if (window.innerWidth > 900) toggleSidebar(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleSidebar(false); });
 
 // ============================================================
 // SCROLL REVEAL HELPERS
@@ -2184,7 +2173,7 @@ function toggleTheme() {
 function loadDashboard() {
     ['admin-dashboard', 'cashier-dashboard', 'manager-dashboard'].forEach(id => document.getElementById(id).style.display = 'none');
     const role = currentUser?.role || 'cashier';
-    if (role === 'admin') { document.getElementById('admin-dashboard').style.display = 'block'; loadAdminDashboard(); }
+    if (role === 'admin') { document.getElementById('admin-dashboard').style.display = 'block'; loadAdminDashboard(); loadAdminDashboardExtras(); }
     else if (role === 'cashier') { document.getElementById('cashier-dashboard').style.display = 'block'; loadCashierDashboard(); }
     else if (role === 'manager') { document.getElementById('manager-dashboard').style.display = 'block'; loadManagerDashboard(); }
     else if (role === 'customer') { goTo('page-shop', document.getElementById('nav-shop')); }
@@ -2280,6 +2269,58 @@ function loadAdminDashboard() {
     setTimeout(() => { initSalesChart(); initPayChart(); }, 100);
 }
 
+/** Admin dashboard uchun qo'shimcha ko'rsatkichlar. */
+function loadAdminDashboardExtras() {
+    const now = new Date();
+    const monthSales = salesHistory.filter(s => isSameMonth(s.date, now));
+    const monthTotal = monthSales.reduce((a, s) => a + (Number(s.total) || 0), 0);
+    uiSetText('d-month-sales', fmt(monthTotal) + " so'm");
+    uiSetHtml('d-month-note', `<i class="fas fa-receipt"></i> ${monthSales.length} ta chek`);
+
+    const emptyCats = CATEGORIES.filter(c => !products.some(p => p.cat === c)).length;
+    uiSetText('d-categories', String(CATEGORIES.length));
+    uiSetHtml('d-categories-note', `<i class="fas fa-box"></i> Bo'sh: ${emptyCats} ta`);
+
+    const stockValue = products.reduce((a, p) => a + (Number(p.price) || 0) * (Number(p.stock) || 0), 0);
+    const stockQty = products.reduce((a, p) => a + (Number(p.stock) || 0), 0);
+    uiSetText('d-stock-value', fmt(stockValue) + " so'm");
+    uiSetHtml('d-stock-note', `<i class="fas fa-cubes"></i> ${fmt(stockQty)} dona`);
+
+    try {
+        uiSetText('d-contracts', String(Array.isArray(contracts) ? contracts.length : 0));
+    } catch (e) { }
+
+    renderLowStockBlock('d-lowstock');
+    const box = document.getElementById('d-catbreak');
+    if (box) {
+        const rows = CATEGORIES.map(c => ({
+            name: c,
+            count: products.filter(p => p.cat === c).length,
+            stock: products.filter(p => p.cat === c).reduce((a, p) => a + (Number(p.stock) || 0), 0)
+        })).sort((a, b) => b.count - a.count);
+        const max = Math.max(1, ...rows.map(r => r.count));
+        box.innerHTML = rows.map(r => `<div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+                <span style="font-weight:600">${categoryEmoji(r.name)} ${escapeHTML(r.name)}</span>
+                <span style="color:var(--muted)">${r.count} ta · ${r.stock} dona</span></div>
+            <div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden">
+                <div style="height:100%;width:${Math.round((r.count / max) * 100)}%;background:linear-gradient(90deg,var(--primary),var(--warning))"></div></div>
+        </div>`).join('') || '<div class="dash-empty">Kategoriyalar yo\'q</div>';
+    }
+}
+
+/** Kam qolgan mahsulotlar ro'yxati (admin va menejer uchun). */
+function renderLowStockBlock(id) {
+    const box = document.getElementById(id);
+    if (!box) return;
+    const low = products.filter(p => (Number(p.stock) || 0) < 5)
+        .sort((a, b) => a.stock - b.stock).slice(0, 8);
+    box.innerHTML = low.map(p => `<div class="dash-row">
+        <span><strong>${escapeHTML(p.name)}</strong><br><small style="color:var(--muted)">${escapeHTML(p.cat || '')}</small></span>
+        <span class="badge ${p.stock <= 0 ? 'badge-red' : 'badge-blue'}">${p.stock <= 0 ? 'Tugagan' : p.stock + ' ta'}</span>
+    </div>`).join('') || '<div class="dash-empty"><i class="fas fa-check-circle" style="font-size:24px;color:var(--success);display:block;margin-bottom:8px"></i>Hamma mahsulot yetarli</div>';
+}
+
 function loadCashierDashboard() {
     const ts = salesHistory.filter(s => isSameDay(s.date, new Date()) && s.cashier === currentUser?.name);
     const total = ts.reduce((a, b) => a + (Number(b.total) || 0), 0);
@@ -2315,6 +2356,15 @@ function loadManagerDashboard() {
     uiSetText('m-top-cashier', top && top.total > 0 ? top.name : '—');
     uiSetText('m-top-cashier-change', top && top.total > 0 ? top.sales + ' ta sotuv · ' + fmt(top.total) + " so'm" : 'Hali savdo yo\'q');
 
+    renderLowStockBlock('m-lowstock');
+    const mtop = document.getElementById('m-topproducts');
+    if (mtop) {
+        const sold = {};
+        salesHistory.forEach(s => (s.items || []).forEach(it => { sold[it.name] = (sold[it.name] || 0) + (Number(it.qty) || 0); }));
+        const top = Object.entries(sold).sort((a, b) => b[1] - a[1]).slice(0, 6);
+        mtop.innerHTML = top.map(([n, q]) => `<div class="dash-row"><span><strong>${escapeHTML(n)}</strong></span><span class="badge badge-blue">${q} ta</span></div>`).join('')
+            || '<div class="dash-empty">Hali sotuvlar yo\'q</div>';
+    }
     const tbody = document.getElementById('manager-employees');
     if (!tbody) return;
     tbody.innerHTML = ranked.map((e, i) => `<tr>
@@ -2606,6 +2656,7 @@ function loadPOS() {
         renderCatTabs();
         renderProductGrid();
     }
+    if (typeof renderPosHeld === 'function') renderPosHeld();
 }
 
 // POS kategoriya tugmalari — doimiy CATEGORIES ro'yxatidan quriladi,
@@ -2726,6 +2777,7 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+        posToggleSheet(false);
         hideSearchSuggestions();
     }
 });
@@ -2952,6 +3004,11 @@ function addProductDetailsToCart(id) {
 }
 
 function addToShopCart(id) {
+    if (['admin', 'cashier', 'manager'].includes(currentUser?.role)) {
+        playError();
+        showNotif('info', 'Ko\'rish rejimi', 'Xodim sifatida sotuv uchun Kassa (POS) dan foydalaning');
+        return;
+    }
     const p = products.find(x => x.id === id);
     if (!p || p.stock <= 0) { playError(); showNotif('error', 'Xato!', 'Mahsulot qolmadi'); return; }
     const ex = shopCart.find(x => x.id === id);
@@ -2983,6 +3040,7 @@ function clearShopCart() {
 }
 
 function showCartView() {
+    if (['admin', 'cashier', 'manager'].includes(currentUser?.role)) return;
     const catalog = document.getElementById('shopCatalogView');
     const layout = document.querySelector('#page-shop .market-layout');
     const cart = document.getElementById('shopCartView');
@@ -3234,15 +3292,25 @@ function renderProductGrid() {
     if (!el) return;
     const q = cleanText(posFilter, 80).toLowerCase();
     const branch = selectedBranch();
+    const onlyStock = !!document.getElementById('posOnlyInStock')?.checked;
     const list = visibleProducts().filter(p =>
         (!posCat || p.cat === posCat) &&
+        (!onlyStock || p.stock > 0) &&
         (!q || p.name.toLowerCase().includes(q) || (p.barcode || '').includes(q))
     );
+    const sortVal = document.getElementById('posSort')?.value || '';
+    if (sortVal === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sortVal === 'price-asc') list.sort((a, b) => a.price - b.price);
+    else if (sortVal === 'price-desc') list.sort((a, b) => b.price - a.price);
+    else if (sortVal === 'stock') list.sort((a, b) => a.stock - b.stock);
+    const foundEl = document.getElementById('posFound');
+    if (foundEl) foundEl.textContent = list.length + ' ta mahsulot';
     const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🫧', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
     el.innerHTML = list.map(p => {
         const imgSrc = productImageSrc(p.img);
         return `
-    <div class="product-card" onclick="addToCart(${p.id})">
+    <div class="product-card${p.stock <= 0 ? ' out' : ''}" data-pid="${p.id}" onclick="addToCart(${p.id})">
+      <span class="in-cart-badge"></span>
       ${imgSrc
                 ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">`
                 : ''}
@@ -3262,6 +3330,7 @@ function renderProductGrid() {
     </div>
   `;
     }).join('') || '<div style="text-align:center;padding:60px;color:var(--muted);grid-column:1/-1"><div style="font-size:48px;margin-bottom:16px;opacity:.3">🔍</div><p>Mahsulot topilmadi</p></div>';
+    if (typeof posAfterCartUpdate === 'function') posAfterCartUpdate();
 }
 
 function updateCustomerDropdown() {
@@ -3315,6 +3384,11 @@ function changeQty(id, delta) {
 }
 
 function updateCart() {
+    updateCartCore();
+    posAfterCartUpdate();
+}
+
+function updateCartCore() {
     const disc = Math.min(100, Math.max(0, parseFloat(document.getElementById('discountInput')?.value) || 0));
     const TAX_RATE = parseFloat(document.getElementById('taxRate')?.value || 12) / 100;
     const subtotal = cart.reduce((s, x) => s + x.price * x.qty, 0);
@@ -3404,6 +3478,115 @@ function updateCreditCalculations() {
     monthlyEl.textContent = fmt(monthly) + " so'm / oy";
 }
 
+// ============================================================
+// KASSA YORDAMCHILARI: qaytim, kutish, mobil savat, tezkor chegirma
+// ============================================================
+function posCurrentTotal() {
+    const disc = Math.min(100, Math.max(0, parseFloat(document.getElementById('discountInput')?.value) || 0));
+    const subtotal = cart.reduce((s, x) => s + x.price * x.qty, 0);
+    return Math.max(0, subtotal - subtotal * disc / 100);
+}
+
+function posSetDiscount(pct) {
+    const di = document.getElementById('discountInput');
+    if (di) di.value = pct ? String(pct) : '';
+    updateCart();
+}
+
+function posQuickCash(v) {
+    const input = document.getElementById('posReceived');
+    if (!input) return;
+    input.value = v === 'exact' ? String(Math.round(posCurrentTotal())) : String(v);
+    posUpdateChange();
+}
+
+function posUpdateChange() {
+    const total = posCurrentTotal();
+    const recv = Math.max(0, Number(document.getElementById('posReceived')?.value) || 0);
+    const label = document.getElementById('posChangeLabel');
+    const out = document.getElementById('posChange');
+    if (!out) return;
+    if (!recv) { out.textContent = '0 so\'m'; out.className = ''; if (label) label.textContent = 'Qaytim'; return; }
+    const diff = recv - total;
+    if (diff >= 0) { out.textContent = fmt(Math.round(diff)) + ' so\'m'; out.className = 'ok'; if (label) label.textContent = 'Qaytim'; }
+    else { out.textContent = fmt(Math.round(-diff)) + ' so\'m'; out.className = 'bad'; if (label) label.textContent = 'Yetishmaydi'; }
+}
+
+function posToggleSheet(open) {
+    const el = document.querySelector('#page-pos .pos-right');
+    if (el) el.classList.toggle('sheet-open', !!open);
+}
+
+/** Har bir savat o'zgarishidan keyin: badge, tugma, mobil panel, qaytim. */
+function posAfterCartUpdate() {
+    const total = posCurrentTotal();
+    const count = cart.reduce((s, x) => s + x.qty, 0);
+    const qtyById = {};
+    cart.forEach(x => { qtyById[x.id] = x.qty; });
+    document.querySelectorAll('#productGrid .product-card[data-pid]').forEach(card => {
+        const q = qtyById[card.getAttribute('data-pid')] || 0;
+        card.classList.toggle('in', q > 0);
+        const b = card.querySelector('.in-cart-badge');
+        if (b) b.textContent = q ? '×' + q : '';
+    });
+    uiSetText('posMobileCount', String(count));
+    uiSetText('posMobileTotal', fmt(total) + ' so\'m');
+    const btn = document.getElementById('posCheckoutBtn');
+    if (btn) btn.disabled = cart.length === 0;
+    uiSetText('posCheckoutLabel', cart.length ? 'To\'lov: ' + fmt(total) + ' so\'m (F2)' : 'To\'lov qabul qilish (F2)');
+    const cash = document.getElementById('posCashPanel');
+    if (cash) cash.classList.toggle('show', payType === 'cash' && cart.length > 0);
+    if (!cart.length) { const r = document.getElementById('posReceived'); if (r) r.value = ''; posToggleSheet(false); }
+    posUpdateChange();
+}
+
+// ---- Savatni kutishga qo'yish ----
+let posHeld = (function () {
+    try { const v = JSON.parse(localStorage.getItem('tp_pos_held') || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+})();
+function posSaveHeld() { try { localStorage.setItem('tp_pos_held', JSON.stringify(posHeld)); } catch (e) { } renderPosHeld(); }
+
+function posHoldCart() {
+    if (!cart.length) { playError(); showNotif('warning', 'Savat bo\'sh', 'Kutishga qo\'yadigan mahsulot yo\'q'); return; }
+    posHeld.push({
+        id: Date.now(),
+        items: JSON.parse(JSON.stringify(cart)),
+        disc: document.getElementById('discountInput')?.value || '',
+        customer: document.getElementById('cartCustomer')?.value || '',
+        time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })
+    });
+    cart = [];
+    const di = document.getElementById('discountInput'); if (di) di.value = '';
+    posSaveHeld(); updateCart();
+    showNotif('info', 'Kutishga qo\'yildi', 'Savat saqlandi — keyin davom ettirishingiz mumkin');
+}
+
+function posResumeHeld(id) {
+    const i = posHeld.findIndex(h => h.id === id);
+    if (i < 0) return;
+    if (cart.length) { playError(); showNotif('warning', 'Savat band', 'Avval joriy savatni kutishga qo\'ying yoki tozalang'); return; }
+    const h = posHeld[i];
+    // faqat hozir mavjud mahsulotlar qaytariladi
+    cart = h.items.filter(it => products.some(p => p.id === it.id));
+    const di = document.getElementById('discountInput'); if (di) di.value = h.disc;
+    const cs = document.getElementById('cartCustomer'); if (cs) cs.value = h.customer;
+    posHeld.splice(i, 1);
+    posSaveHeld(); updateCart();
+}
+
+function posDropHeld(id) {
+    posHeld = posHeld.filter(h => h.id !== id);
+    posSaveHeld();
+}
+
+function renderPosHeld() {
+    const box = document.getElementById('posHeldList');
+    if (!box) return;
+    box.innerHTML = posHeld.map((h, i) => `<span class="held">
+        <button type="button" onclick="posResumeHeld(${h.id})" title="Davom ettirish"><i class="fas fa-play"></i> #${i + 1} · ${h.items.reduce((s, x) => s + x.qty, 0)} ta · ${escapeHTML(h.time)}</button>
+        <button type="button" onclick="posDropHeld(${h.id})" title="O'chirish"><i class="fas fa-times"></i></button></span>`).join('');
+}
+
 function clearCart() {
     cart = [];
     const di = document.getElementById('discountInput');
@@ -3432,6 +3615,7 @@ function setPayType(t, el) {
         else { panel.style.display = 'none'; panel.classList.remove('open'); }
     }
     renderProviderStatus();
+    posAfterCartUpdate();
     // Recalculate credit values when switching
     try { updateCreditCalculations(); } catch (e) { }
 }
@@ -7692,6 +7876,8 @@ if (document.readyState === 'loading') {
 // ============================================================
 // DYNAMIC RENDER FUNCTIONS FOR NEW PAGES
 // ============================================================
+let editingCategory = null;
+
 function renderCategoriesPage() {
     const counts = {};
     CATEGORIES.forEach(c => { counts[c] = 0; });
@@ -7701,17 +7887,85 @@ function renderCategoriesPage() {
     });
     const tbody = document.getElementById('categoriesTableBody');
     if (!tbody) return;
-    const list = Object.keys(counts).map((cat, i) => `
+    const list = Object.keys(counts).map((cat, i) => {
+        const arg = escapeHTML(JSON.stringify(cat));
+        return `
         <tr>
             <td>${i + 1}</td>
             <td><strong>${categoryEmoji(cat)} ${escapeHTML(cat)}</strong></td>
             <td>${counts[cat]} ta mahsulot</td>
-            <td>
-                <button class="btn btn-outline btn-sm" onclick="viewCategoryProducts('${escapeHTML(cat)}')"><i class="fas fa-eye"></i> Ko'rish</button>
-            </td>
-        </tr>
-    `).join('');
-    tbody.innerHTML = list || '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Kategoriyalar yo\'q</td></tr>';
+            <td><div class="cat-actions">
+                <button class="btn btn-outline btn-sm" onclick="viewCategoryProducts(${arg})"><i class="fas fa-eye"></i> Ko'rish</button>
+                <button class="btn btn-outline btn-sm" onclick="openCategoryModal(${arg})"><i class="fas fa-pen"></i> Tahrirlash</button>
+                <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteCategory(${arg})"><i class="fas fa-trash"></i></button>
+            </div></td>
+        </tr>`;
+    }).join('');
+    tbody.innerHTML = list || '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Kategoriyalar yo\'q — "Yangi kategoriya" tugmasini bosing</td></tr>';
+}
+
+/** Kategoriya yaratish / tahrirlash oynasini ochadi. */
+function openCategoryModal(name) {
+    if (!requireRoleSilent('admin', 'manager')) {
+        playError(); showNotif('error', 'Ruxsat yo\'q!', 'Kategoriyalarni faqat Admin yoki Menejer boshqaradi'); return;
+    }
+    editingCategory = typeof name === 'string' ? name : null;
+    const input = document.getElementById('categoryNameInput');
+    const title = document.getElementById('categoryModalTitle');
+    if (input) input.value = editingCategory || '';
+    if (title) title.innerHTML = editingCategory
+        ? '<i class="fas fa-pen"></i> Kategoriyani tahrirlash'
+        : '<i class="fas fa-folder-plus"></i> Yangi kategoriya';
+    openModal('categoryModal');
+}
+
+function refreshCategoryViews() {
+    saveCategories();
+    if (typeof saveToStorage === 'function') saveToStorage();
+    renderCategoriesPage();
+    if (typeof renderCatTabs === 'function') renderCatTabs();
+    if (typeof renderShop === 'function') renderShop();
+    if (typeof renderProducts === 'function') renderProducts();
+    if (document.getElementById('admin-dashboard')?.style.display === 'block') loadAdminDashboard();
+}
+
+function saveCategoryFromModal() {
+    const name = cleanText(document.getElementById('categoryNameInput')?.value || '', 60);
+    if (!name) { playError(); showNotif('error', 'Xato!', 'Kategoriya nomini kiriting'); return; }
+    const exists = CATEGORIES.some(c => c.toLowerCase() === name.toLowerCase() && c !== editingCategory);
+    if (exists) { playError(); showNotif('error', 'Xato!', 'Bunday kategoriya allaqachon bor'); return; }
+
+    if (editingCategory) {
+        const i = CATEGORIES.indexOf(editingCategory);
+        if (i >= 0) CATEGORIES[i] = name;
+        products.forEach(p => { if (p.cat === editingCategory) p.cat = name; });
+        addLog('Kategoriya', `"${editingCategory}" → "${name}" nomi o'zgartirildi`);
+    } else {
+        CATEGORIES.push(name);
+        addLog('Kategoriya', `Yangi kategoriya yaratildi: ${name}`);
+    }
+    closeModal('categoryModal');
+    refreshCategoryViews();
+    playSuccess();
+    showNotif('success', 'Saqlandi', editingCategory ? 'Kategoriya yangilandi' : 'Yangi kategoriya qo\'shildi');
+    editingCategory = null;
+}
+
+function deleteCategory(name) {
+    if (!requireRoleSilent('admin', 'manager')) {
+        playError(); showNotif('error', 'Ruxsat yo\'q!', 'Kategoriyalarni faqat Admin yoki Menejer boshqaradi'); return;
+    }
+    const used = products.filter(p => p.cat === name).length;
+    if (used > 0) {
+        playError();
+        showNotif('error', 'O\'chirib bo\'lmaydi', `Bu kategoriyada ${used} ta mahsulot bor. Avval ularni boshqa kategoriyaga o'tkazing`);
+        return;
+    }
+    if (!confirm(`"${name}" kategoriyasini o'chirmoqchimisiz?`)) return;
+    CATEGORIES = CATEGORIES.filter(c => c !== name);
+    addLog('Kategoriya', `Kategoriya o'chirildi: ${name}`);
+    refreshCategoryViews();
+    showNotif('success', 'O\'chirildi', name);
 }
 
 /** Kategoriyadagi mahsulotlarni do'konda ko'rsatadi. */
