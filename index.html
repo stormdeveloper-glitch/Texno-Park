@@ -14,7 +14,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.9.1">
+  <link rel="stylesheet" href="style.css?v=5.9.4">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
@@ -26,7 +26,7 @@
   <!-- ============================================================
      LOGIN PAGE
      ============================================================ -->
-  <div id="loginPage">
+  <div id="loginPage" class="active">
     <section class="login-showcase" aria-label="Texno Park N1 xizmatlari">
       <div class="login-showcase-brand"><span id="loginShowcaseLogo"><i class="fas fa-bolt"></i></span><strong
           id="loginShowcaseName">Texno Park N1</strong></div>
@@ -46,7 +46,7 @@
       </div>
       <div class="form-group">
         <label>Foydalanuvchi</label>
-        <input type="text" id="loginUser" placeholder="admin / cashier / manager / customer" autocomplete="username"
+        <input type="text" id="loginUser" placeholder="admin / cashier / manager" autocomplete="username"
           readonly>
         <i class="fas fa-user input-icon"></i>
       </div>
@@ -67,11 +67,6 @@
             <div class="section-icon"><i class="fas fa-user-cog"></i></div>
             <div class="section-title">Manager</div>
             <div class="section-role">Menejer</div>
-          </button>
-          <button type="button" class="quick-section customer-section" onclick="selectUser('customer')">
-            <div class="section-icon"><i class="fas fa-shopping-bag"></i></div>
-            <div class="section-title">Xaridor</div>
-            <div class="section-role">Oddiy foydalanuvchi</div>
           </button>
         </div>
       </div>
@@ -108,14 +103,14 @@
   <!-- ============================================================
      MAIN APP
      ============================================================ -->
-  <div id="app" class="market-mode">
+  <div id="app" class="market-mode" style="display:none">
 
     <!-- OFFLINE BAR -->
     <div id="offlineBar"><i class="fas fa-wifi" style="text-decoration:line-through"></i> Internet aloqasi yo'q — Oflayn
       rejim</div>
 
-    <!-- SIDEBAR -->
-    <div class="sidebar" id="sidebar">
+    <!-- SIDEBAR (standart holat — yig'ilgan: faqat ikonlar; ☰ tugma ochadi) -->
+    <div class="sidebar collapsed" id="sidebar">
       <div class="sidebar-logo">
         <div class="logo-sq" id="sideLogoBox"><i class="fas fa-plug"></i></div>
         <div>
@@ -125,10 +120,6 @@
       </div>
       <nav class="sidebar-nav">
         <div class="nav-section"><span class="nav-section-label">Asosiy</span></div>
-        <div class="nav-item active" onclick="goTo('page-shop',this)" id="nav-shop" data-role="all">
-          <i class="fas fa-store"></i><span>Do'kon</span>
-          <span class="nav-badge green">Online</span>
-        </div>
         <div class="nav-item" onclick="goTo('page-dashboard',this)" data-role="admin,cashier,manager">
           <i class="fas fa-th-large"></i><span>Dashboard</span>
         </div>
@@ -221,6 +212,9 @@
       </div>
     </div>
 
+    <!-- SIDEBAR DRAWER OVERLAY (faqat mobil — tashqariga bosilganda drawer yopiladi) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true" onclick="toggleSidebar()"></div>
+
     <!-- TOPBAR -->
     <div class="topbar">
       <div class="page-title">
@@ -283,7 +277,7 @@
     <div class="main">
 
       <!-- ===== DASHBOARD ===== -->
-      <div class="page" id="page-dashboard">
+      <div class="page active" id="page-dashboard">
         <!-- ADMIN DASHBOARD -->
         <div id="admin-dashboard" style="display:none">
           <div style="margin-bottom:20px">
@@ -499,7 +493,7 @@
       </div>
 
       <!-- ===== CUSTOMER SHOP ===== -->
-      <div class="page active" id="page-shop">
+      <div class="page" id="page-shop">
         <div class="market-shell">
           <div class="market-top">
             <div class="market-top-main">
@@ -3239,13 +3233,14 @@
 
   <!-- Notifications container -->
   <div id="notifContainer"></div>
-  <!-- Mobile menu toggle -->
-  <button class="menu-toggle" onclick="toggleSidebar()" title="Menyu">
+  <!-- Sidebar menyu tugmasi (☰ / ✕) — desktopda yig'adi/ochadi, mobilda drawer -->
+  <button class="menu-toggle" id="sidebarToggleBtn" type="button" onclick="toggleSidebar()"
+    aria-controls="sidebar" aria-expanded="false" aria-label="Menyuni ochish" title="Menyuni ochish">
     <i class="fas fa-bars"></i>
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.1-premium"></script>
+  <script src="scripts.js?v=1.4.4-premium"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {

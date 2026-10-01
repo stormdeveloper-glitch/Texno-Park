@@ -1566,6 +1566,11 @@ function selectUser(role) {
     const loginPass = document.getElementById('loginPass');
     if (!loginUser || !loginPass) return;
     loginUser.value = role;
+    if (role === 'customer') {
+        loginPass.value = '123456';
+        doLogin();
+        return;
+    }
     loginPass.focus();
 }
 
@@ -1844,8 +1849,16 @@ function doLogout(force = false) {
     const topName = document.getElementById('topbarEmployeeName');
     if (topName) topName.textContent = 'Xodim';
 
-    // Do'kon bo'limi olib tashlangan — tizimdan chiqqach login sahifasi ko'rsatiladi
-    showLoginScreen();
+    const loginPage = document.getElementById('loginPage');
+    const app = document.getElementById('app');
+    if (loginPage) {
+        loginPage.classList.remove('active');
+        loginPage.style.display = 'none';
+    }
+    if (app) {
+        app.style.display = 'block';
+        app.classList.add('market-mode');
+    }
 
     const loginUser = document.getElementById('loginUser');
     const loginPass = document.getElementById('loginPass');
@@ -1857,6 +1870,7 @@ function doLogout(force = false) {
     const toggleIcon = document.querySelector('#loginPage .pass-toggle i');
     if (toggleIcon) toggleIcon.className = 'fas fa-eye';
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    goTo('page-shop', document.getElementById('nav-shop'));
     setupRoleBasedNav();
 }
 
@@ -2081,12 +2095,8 @@ function goTo(pageId, el) {
     // 7) maxsus element fokuslari
     if (key === 'pos') document.getElementById('posSearch')?.focus();
 
-    // 8) mobil qurilmalarda sidebarni yopish (drawer chegarasi — 768px)
-    if (window.innerWidth <= 768) {
-        document.getElementById('sidebar')?.classList.remove('open');
-        syncSidebarOverlay();
-        syncSidebarToggleIcon();
-    }
+    // 8) mobil qurilmalarda sidebarni yopish
+    if (window.innerWidth < 900) document.getElementById('sidebar')?.classList.remove('open');
 }
 
 function canAccessPage(pageId) {
@@ -2102,85 +2112,7 @@ function canAccessPage(pageId) {
 
 function toggleSidebar() {
     const sb = document.getElementById('sidebar');
-    if (!sb) return;
-    if (sidebarIsMobile()) {
-        // Mobil: chapdan drawer (+ overlay)
-        sb.classList.toggle('open');
-    } else {
-        // Desktop: yig'ilgan / ochilgan holat (faqat ikonlar ↔ ikon + nom)
-        sb.classList.toggle('collapsed');
-    }
-    syncSidebarToggleIcon();
-    syncSidebarOverlay();
-}
-
-/** Mobil drawer chegarasi — CSS'dagi 768px media query bilan bir xil. */
-function sidebarIsMobile() {
-    return window.matchMedia('(max-width: 768px)').matches;
-}
-
-/** ☰ / ✕ tugma holatini joriy sidebar holatiga moslashtiradi. */
-function syncSidebarToggleIcon() {
-    const btn = document.getElementById('sidebarToggleBtn');
-    const sb = document.getElementById('sidebar');
-    if (!btn || !sb) return;
-    const expanded = sidebarIsMobile()
-        ? sb.classList.contains('open')
-        : !sb.classList.contains('collapsed');
-    const icon = btn.querySelector('i');
-    if (icon) icon.className = expanded ? 'fas fa-xmark' : 'fas fa-bars';
-    const label = expanded ? 'Menyuni yopish' : 'Menyuni ochish';
-    btn.setAttribute('title', label);
-    btn.setAttribute('aria-label', label);
-    btn.setAttribute('aria-expanded', String(expanded));
-}
-
-/** Mobil drawer ochiq bo'lganda qoramtir overlay'ni ko'rsatadi/yashiradi. */
-function syncSidebarOverlay() {
-    const overlay = document.getElementById('sidebarOverlay');
-    const sb = document.getElementById('sidebar');
-    if (!overlay || !sb) return;
-    const show = sidebarIsMobile() && sb.classList.contains('open');
-    overlay.classList.toggle('visible', show);
-    overlay.setAttribute('aria-hidden', String(!show));
-}
-
-/** Sidebar tizimini ishga tayyorlaydi (bir marta chaqiriladi). */
-function initSidebar() {
-    if (window.__sidebarInit) return;
-    window.__sidebarInit = true;
-
-    // Oyna o'lchami o'zgarganda holatlarni tozalash (drawer ↔ desktop)
-    let resizeTimer = null;
-    window.addEventListener('resize', () => {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-            const sb = document.getElementById('sidebar');
-            if (!sb) return;
-            if (!sidebarIsMobile()) sb.classList.remove('open'); // desktopda drawer holati kerak emas
-            syncSidebarToggleIcon();
-            syncSidebarOverlay();
-        }, 150);
-    });
-
-    // Yig'ilgan holatda "Xodimlar" bosilsa — submenu ko'rinishi uchun sidebarni ochamiz
-    document.addEventListener('click', (e) => {
-        const trigger = e.target.closest('#nav-employees');
-        const sb = document.getElementById('sidebar');
-        if (trigger && sb && !sidebarIsMobile() && sb.classList.contains('collapsed')) {
-            sb.classList.remove('collapsed');
-            syncSidebarToggleIcon();
-        }
-        // Mobil: menyu elementi bosilganda drawer avtomatik yopiladi
-        if (e.target.closest('.sidebar .nav-item') && sidebarIsMobile() && sb && sb.classList.contains('open')) {
-            sb.classList.remove('open');
-            syncSidebarToggleIcon();
-            syncSidebarOverlay();
-        }
-    });
-
-    syncSidebarToggleIcon();
-    syncSidebarOverlay();
+    if (sb) sb.classList.toggle('open');
 }
 
 // ============================================================
@@ -7361,15 +7293,8 @@ function buildContractPrintHTML(c) {
 
 applySavedTheme();
 function bootstrapApp() {
-    initSidebar();
     initApp();
-    // Do'kon bo'limi olib tashlangan — sayt ochilganda avtomatik ochilmaydi:
-    // tizimga kirilmagan bo'lsa login sahifasi, kirilgan bo'lsa Dashboard ko'rsatiladi.
-    if (!currentUser) {
-        showLoginScreen();
-        return;
-    }
-    goTo('page-dashboard', document.querySelector('.nav-item[onclick*="page-dashboard"]'));
+    goTo('page-shop', document.getElementById('nav-shop'));
     renderShop();
 }
 if (document.readyState === 'loading') {
