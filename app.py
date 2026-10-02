@@ -697,6 +697,33 @@ def make_salt(prefix='tp'):
     return f'{prefix}-{secrets.token_hex(6)}'
 
 
+# ── Telefon raqami (O'zbekiston): YAGONA normalizatsiya ──
+# Kanonik (backend ichki) format: +998XXXXXXXXX.
+# Qabul qilinadigan kirishlar bir xil ko'rinishga keltiriladi:
+#   "+998 90 848 09 21" → +998908480921
+#   "998908480921"      → +998908480921
+#   "908480921"         → +998908480921
+# Yaroqsiz bo'lsa — bo'sh satr qaytaradi.
+def normalize_phone(value):
+    digits = re.sub(r'\D', '', str(value or ''))
+    if not digits:
+        return ''
+    if len(digits) == 12 and digits.startswith('998'):
+        local = digits[3:]
+    elif len(digits) == 9:
+        local = digits
+    else:
+        return ''
+    if local[0] == '0':
+        return ''
+    return f'+998{local}'
+
+
+def phones_match(a, b):
+    na, nb = normalize_phone(a), normalize_phone(b)
+    return bool(na) and na == nb
+
+
 def auth_secret():
     """Token imzosi uchun maxfiy kalit. .env'da bo'lmasa — bazada saqlanadi."""
     global _AUTH_SECRET
@@ -726,15 +753,70 @@ def auth_secret():
 # Productionda STAFF_DEFAULT_PASSWORD orqali almashtiring yoki
 # /api/auth/change-password orqali parolni yangilang.
 _DEFAULT_STAFF = [
-    {'login': 'admin', 'salt': 'tp-adm-9x2', 'name': 'Abdullayev Admin', 'role': 'admin'},
-    {'login': 'cashier', 'salt': 'tp-csh-4k7', 'name': 'Karimov Kassir', 'role': 'cashier'},
-    {'login': 'manager', 'salt': 'tp-mng-3z8', 'name': 'Toshmatov Menejer', 'role': 'manager'},
-    {'login': 'customer', 'salt': 'tp-usr-6q1', 'name': 'Online Xaridor', 'role': 'customer'},
-    {'login': 'admin@texnopark.uz', 'salt': 'tp-adm-9x2', 'name': 'Abdullayev Admin', 'role': 'admin'},
-    {'login': 'cashier@texnopark.uz', 'salt': 'tp-csh-4k7', 'name': 'Karimov Kassir', 'role': 'cashier'},
-    {'login': 'manager@texnopark.uz', 'salt': 'tp-mng-3z8', 'name': 'Toshmatov Menejer', 'role': 'manager'},
+    # Telefon raqami — login identifikatori (kanonik: +998XXXXXXXXX).
+    {'login': 'admin', 'phone': '+998908480921', 'salt': 'tp-adm-9x2', 'name': 'Abdullayev Admin', 'role': 'admin'},
+    {'login': 'cashier', 'phone': '+998905450921', 'salt': 'tp-csh-4k7', 'name': 'Karimov Kassir', 'role': 'cashier'},
+    {'login': 'manager', 'phone': '+998902750921', 'salt': 'tp-mng-3z8', 'name': 'Toshmatov Menejer', 'role': 'manager'},
+    {'login': 'customer', 'phone': '', 'salt': 'tp-usr-6q1', 'name': 'Online Xaridor', 'role': 'customer'},
+    # Eski (username/email) login bilan moslik uchun taxalluslar. Telefon
+    # berilmaydi — shu bilan har bir telefon raqami yagona (unique) qoladi.
+    {'login': 'admin@texnopark.uz', 'phone': '', 'salt': 'tp-adm-9x2', 'name': 'Abdullayev Admin', 'role': 'admin'},
+    {'login': 'cashier@texnopark.uz', 'phone': '', 'salt': 'tp-csh-4k7', 'name': 'Karimov Kassir', 'role': 'cashier'},
+    {'login': 'manager@texnopark.uz', 'phone': '', 'salt': 'tp-mng-3z8', 'name': 'Toshmatov Menejer', 'role': 'manager'},
 ]
 _DEFAULT_PASSWORD = '123456'
+
+# Kanonik login → telefon raqami. Mavjud bazadagi yozuvlarga bir marta
+# (migratsiya sifatida) telefon qo'shish uchun ishlatiladi.
+_PHONE_BY_LOGIN = {
+    'admin': '+998908480921',
+    'cashier': '+998905450921',
+    'manager': '+998902750921',
+}
+
+
+def _ensure_staff_fields(staff):
+    """Mavjud xodim yozuvlarini yangi sxema bilan to'ldiradi (ma'lumot yo'qolmaydi).
+
+    - `id` va `status` maydonlari yo'q bo'lsa qo'shiladi;
+    - kanonik loginlar (admin/cashier/manager) uchun telefon raqami yo'q
+      bo'lsa beriladi — ammo raqam allaqachon boshqa yozuvda ishlatilgan
+      bo'lsa qo'shilmaydi (telefon yagona/unique bo'lib qoladi).
+
+    Qaytaradi: (staff, changed) — changed=True bo'lsa bazaga qayta yozish kerak.
+    """
+    changed = False
+    used_phones = set()
+    for item in staff:
+        if not isinstance(item, dict):
+            continue
+        phone = normalize_phone(item.get('phone'))
+        if phone:
+            used_phones.add(phone)
+
+    next_id = 1
+    for item in staff:
+        if not isinstance(item, dict):
+            continue
+        try:
+            current_id = int(item.get('id') or 0)
+        except (TypeError, ValueError):
+            current_id = 0
+        if current_id <= 0:
+            item['id'] = next_id
+            changed = True
+        else:
+            next_id = max(next_id, current_id + 1)
+        if not item.get('status'):
+            item['status'] = 'active'
+            changed = True
+        login_key = str(item.get('login', '')).strip().lower()
+        default_phone = _PHONE_BY_LOGIN.get(login_key)
+        if default_phone and not normalize_phone(item.get('phone')) and default_phone not in used_phones:
+            item['phone'] = default_phone
+            used_phones.add(default_phone)
+            changed = True
+    return staff, changed
 
 
 def load_staff():
@@ -745,18 +827,28 @@ def load_staff():
     except Exception:
         staff = None
     if isinstance(staff, list) and staff:
+        # Mavjud (eski) yozuvlarga telefon/status/id qo'shamiz — data yo'qolmaydi.
+        staff, changed = _ensure_staff_fields(staff)
+        if changed:
+            try:
+                db_manager.save_keys({'staff_users': staff})
+            except Exception as e:
+                print(f'[SECURITY] Xodim yozuvlarini yangilab bo\'lmadi: {e}')
         return staff
 
     password = (os.getenv('STAFF_DEFAULT_PASSWORD') or '').strip() or _DEFAULT_PASSWORD
     seeded = []
-    for item in _DEFAULT_STAFF:
+    for idx, item in enumerate(_DEFAULT_STAFF, start=1):
         salt = item['salt'] if password == _DEFAULT_PASSWORD else make_salt('tp-' + item['role'][:3] + '-')
         seeded.append({
+            'id': idx,
             'login': item['login'],
+            'phone': item.get('phone', ''),
             'salt': salt,
             'passHash': hash_password(password, salt),
             'name': item['name'],
             'role': item['role'],
+            'status': 'active',
             'mustChange': password == _DEFAULT_PASSWORD,
         })
     try:
@@ -773,6 +865,17 @@ def find_staff(login):
     key = str(login or '').strip().lower()
     for user in load_staff():
         if str(user.get('login', '')).lower() == key:
+            return user
+    return None
+
+
+def find_staff_by_phone(phone):
+    """Telefon raqami bo'yicha xodimni topadi (normalizatsiya qilingan)."""
+    key = normalize_phone(phone)
+    if not key:
+        return None
+    for user in load_staff():
+        if phones_match(user.get('phone'), key):
             return user
     return None
 
@@ -1026,7 +1129,9 @@ def auth_login():
                         'message': 'Juda ko\'p urinish. Bir necha daqiqadan so\'ng qayta urinib ko\'ring'}), 429
 
     payload = request.get_json(silent=True) or {}
-    login = str(payload.get('login') or '').strip()[:120]
+    # Frontend telefon raqamini `login` maydonida yuboradi; `phone` ham qabul qilinadi.
+    # Eski username loginlari ham ishlashda davom etadi (backward-compatible).
+    login = str(payload.get('login') or payload.get('phone') or '').strip()[:120]
     password = str(payload.get('password') or '')[:200]
     if not login or not password:
         return jsonify({'status': 'error', 'message': 'Login va parol kiritilishi shart'}), 400
@@ -1047,9 +1152,15 @@ def auth_login():
             server_security_log('captcha-missing', 'medium',
                                 'CAPTCHA tokenisiz login urinishi (mobil yoki eski mijoz?)', login)
 
-    user = find_staff(login)
+    user = find_staff(login) or find_staff_by_phone(login)
     ok = bool(user) and hmac.compare_digest(
         hash_password(password, user.get('salt', '')), str(user.get('passHash', '')))
+    if ok and str(user.get('status', 'active')).strip().lower() not in ('active', ''):
+        # Parol to'g'ri, lekin hisob bloklangan/inactive — kirishga ruxsat berilmaydi.
+        server_security_log('login-blocked', 'medium',
+                            f'Bloklangan hisobga kirish urinishi: {user.get("role")}', user.get('name'))
+        return jsonify({'status': 'error', 'code': 'account_blocked',
+                        'message': 'Hisob bloklangan — administratorga murojaat qiling'}), 403
     if not ok:
         register_login_attempt(ip)
         server_security_log('login-failed', 'medium', f'Muvaffaqiyatsiz login: {login}', login)

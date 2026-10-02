@@ -709,16 +709,83 @@ function normalizeCustomer(c) {
 // USERS
 // ============================================================
 const USERS = [
-    { id: 1, login: 'admin', salt: 'tp-adm-9x2', passHash: '847987bfe33b7e4354666fd0a6084ec34e6f09b60f673065a10735f8aa2b7057', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 2, login: 'cashier', salt: 'tp-csh-4k7', passHash: 'e3da606a986c263b7018487dfdbc9e8316898f0a1b68792106619ef867c97f41', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 3, login: 'manager', salt: 'tp-mng-3z8', passHash: '91416abaaa7af1470c242189d1cfe0d6658d1b2eee31a1fdcbd001426dfcc895', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 7, login: 'customer', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 1, login: 'admin', phone: '+998908480921', salt: 'tp-adm-9x2', passHash: '847987bfe33b7e4354666fd0a6084ec34e6f09b60f673065a10735f8aa2b7057', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 2, login: 'cashier', phone: '+998905450921', salt: 'tp-csh-4k7', passHash: 'e3da606a986c263b7018487dfdbc9e8316898f0a1b68792106619ef867c97f41', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 3, login: 'manager', phone: '+998902750921', salt: 'tp-mng-3z8', passHash: '91416abaaa7af1470c242189d1cfe0d6658d1b2eee31a1fdcbd001426dfcc895', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 7, login: 'customer', phone: '', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
     { id: 4, login: 'admin@texnopark.uz', salt: 'tp-adm-9x2', passHash: '847987bfe33b7e4354666fd0a6084ec34e6f09b60f673065a10735f8aa2b7057', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
     { id: 5, login: 'cashier@texnopark.uz', salt: 'tp-csh-4k7', passHash: 'e3da606a986c263b7018487dfdbc9e8316898f0a1b68792106619ef867c97f41', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
     { id: 6, login: 'manager@texnopark.uz', salt: 'tp-mng-3z8', passHash: '91416abaaa7af1470c242189d1cfe0d6658d1b2eee31a1fdcbd001426dfcc895', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
     { id: 8, login: 'customer@texnopark.uz', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
 ];
 const ROLES = { admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
+
+// ============================================================
+// TELEFON RAQAMI (O'zbekiston) — yagona normalizatsiya + maska
+// Backendga yuboriladigan yagona format: +998XXXXXXXXX (masalan +998908480921).
+// Input ko'rinishi: "90 848 09 21" — +998 prefiksi alohida ko'rsatiladi.
+// ============================================================
+function phoneDigitsUz(value) {
+    let digits = String(value || '').replace(/\D/g, '');
+    // "+998908480921" yoki "998908480921" paste qilinganda prefiksni olib tashlaymiz
+    if (digits.length >= 12 && digits.startsWith('998')) digits = digits.slice(3);
+    return digits.slice(0, 9);
+}
+
+/** Ko'rinish uchun maska: "908480921" → "90 848 09 21". */
+function formatPhoneMaskUz(value) {
+    const d = phoneDigitsUz(value);
+    const parts = [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean);
+    return parts.join(' ');
+}
+
+/** Yagona normalizatsiya: yaroqli bo'lsa +998XXXXXXXXX, aks holda ''. */
+function normalizePhoneUz(value) {
+    const d = phoneDigitsUz(value);
+    if (d.length !== 9 || d[0] === '0') return '';
+    return '+998' + d;
+}
+
+/** Login telefon maydoniga maskani bog'laydi (bir marta). */
+function initLoginPhoneMask() {
+    const inp = document.getElementById('loginPhone');
+    if (!inp || inp.dataset.maskBound === '1') return;
+    inp.dataset.maskBound = '1';
+    inp.addEventListener('input', () => {
+        const masked = formatPhoneMaskUz(inp.value);
+        if (inp.value !== masked) {
+            inp.value = masked;
+            // Kursor doim matn oxirida qoladi
+            try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
+        }
+    });
+}
+
+function showLoginFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.toggle('show', !!message);
+}
+
+function clearLoginFieldErrors() {
+    ['loginPhoneError', 'loginPassError'].forEach(id => showLoginFieldError(id, ''));
+}
+
+/** Kirish tugmasining yuklanish holati (duplicate bosishning oldini oladi). */
+function setLoginLoading(on) {
+    const btn = document.getElementById('loginBtn');
+    if (!btn) return;
+    btn.classList.toggle('is-loading', !!on);
+    btn.disabled = !!on;
+    const ico = btn.querySelector('i');
+    const label = btn.querySelector('.btn-login-label');
+    if (ico) ico.className = on ? 'fas fa-spinner fa-spin' : 'fas fa-sign-in-alt';
+    if (label) label.textContent = on ? 'Kirish...' : 'Kirish';
+}
+
+// Login sahifasi ochilishda maska tayyor (skript body oxirida yuklanadi)
+initLoginPhoneMask();
 
 // ============================================================
 // KATEGORIYALAR — yagona manba (POS, do'kon, mahsulot formasi, hisobot)
@@ -752,17 +819,6 @@ function saveCategories() {
     scheduleSyncWithBackend();
 }
 
-const CATEGORY_EMOJI = {
-    'Muzlatgichlar': '❄️',
-    'Kir Yuvish Mashinalari': '🧺',
-    'Konditsionerlar': '💨',
-    'Televizorlar': '📺',
-    'Changyutgichlar': '🌀',
-    'Pechlar': '🔥',
-    'Mikrotolqinli Pechlar': '📡',
-    'Aksessuarlar': '🔌'
-};
-
 const CATEGORY_FA_ICON = {
     'Barchasi': 'fa-th-large',
     'Muzlatgichlar': 'fa-snowflake',
@@ -775,8 +831,10 @@ const CATEGORY_FA_ICON = {
     'Aksessuarlar': 'fa-plug'
 };
 
-function categoryEmoji(name) { return CATEGORY_EMOJI[name] || '📦'; }
 function categoryFaIcon(name) { return CATEGORY_FA_ICON[name] || 'fa-box'; }
+function categoryIcon(name, className = '') {
+    return `<i class="fas ${categoryFaIcon(name)}${className ? ' ' + className : ''}" aria-hidden="true"></i>`;
+}
 
 // ============================================================
 // REAL MA'LUMOT REJIMI
@@ -801,7 +859,14 @@ function secureUserOverrides() {
 
 function findBaseUser(loginKey) {
     const key = String(loginKey || '').toLowerCase();
-    return USERS.find(u => u.login.toLowerCase() === key) || null;
+    const byLogin = USERS.find(u => u.login.toLowerCase() === key);
+    if (byLogin) return byLogin;
+    // Telefon raqami bilan ham topamiz (oflayn rejimda telefon orqali kirish)
+    const phone = normalizePhoneUz(loginKey);
+    if (phone) {
+        return USERS.find(u => u.phone && normalizePhoneUz(u.phone) === phone) || null;
+    }
+    return null;
 }
 
 /**
@@ -1134,6 +1199,8 @@ async function serverLogin(login, password) {
         if (data?.code === 'captcha_failed') {
             return { ok: false, captcha: true, message: data?.message || 'CAPTCHA tasdiqlanmadi' };
         }
+        // 403: bloklangan hisob (captcha_failed yuqorida alohida ushlanadi)
+        if (res.status === 403) return { ok: false, blocked: true, message: data?.message };
         if (!res.ok || !data?.token) return { ok: false, offline: true, message: data?.message };
         return { ok: true, user: data.user, token: data.token, mustChange: !!data.mustChangePassword };
     } catch (e) {
@@ -1561,19 +1628,6 @@ function togglePassword() {
     else { inp.type = 'password'; ico.className = 'fas fa-eye'; }
 }
 
-function selectUser(role) {
-    const loginUser = document.getElementById('loginUser');
-    const loginPass = document.getElementById('loginPass');
-    if (!loginUser || !loginPass) return;
-    loginUser.value = role;
-    if (role === 'customer') {
-        loginPass.value = '123456';
-        doLogin();
-        return;
-    }
-    loginPass.focus();
-}
-
 function toggleEmployeeDropdown(e) {
     if (e) e.stopPropagation();
     const dp = document.getElementById('topbarEmployeeDropdown');
@@ -1667,39 +1721,63 @@ function openEmployeeLogin() {
         loginPage.style.display = 'grid';
     }
     if (app) app.style.display = 'none';
-    document.getElementById('loginUser')?.focus();
+    document.getElementById('loginPhone')?.focus();
 }
 
 // ============================================================
 // LOGIN
 // ============================================================
 async function doLogin() {
-    const u = cleanText(document.getElementById('loginUser')?.value, 80).toLowerCase();
+    const phoneInp = document.getElementById('loginPhone');
+    const phoneRaw = phoneInp?.value || '';
     const p = document.getElementById('loginPass')?.value || '';
 
-    if (hasSqlInjectionPattern(u) || hasSqlInjectionPattern(p) || hasXssPattern(u) || hasXssPattern(p)) {
+    clearLoginFieldErrors();
+
+    // ── Validatsiya (telefon + parol) ──
+    const phone = normalizePhoneUz(phoneRaw);
+    if (!phoneRaw.replace(/\D/g, '')) {
+        showLoginFieldError('loginPhoneError', 'Telefon raqamini kiriting');
+        phoneInp?.focus();
         playError();
-        showNotif('error', 'Xavfsizlik!', 'Login ma\'lumotlarida shubhali belgilar topildi');
-        securityLog('login-injection-block', 'high', `Login maydonida shubhali belgilar: "${u.slice(0, 40)}"`);
+        return;
+    }
+    if (!phone) {
+        showLoginFieldError('loginPhoneError', 'Telefon raqami noto\u2018g\u2018ri');
+        phoneInp?.focus();
+        playError();
+        return;
+    }
+    if (!p) {
+        showLoginFieldError('loginPassError', 'Parolni kiriting');
+        document.getElementById('loginPass')?.focus();
+        playError();
         return;
     }
 
-    // ── Brute-force himoyasi ──
-    const guard = loginGuardStatus(u);
+    if (hasSqlInjectionPattern(p) || hasXssPattern(p)) {
+        playError();
+        showNotif('error', 'Xavfsizlik!', 'Kirish ma\'lumotlarida shubhali belgilar topildi');
+        securityLog('login-injection-block', 'high', 'Kirish maydonida shubhali belgilar aniqlandi');
+        return;
+    }
+
+    // ── Brute-force himoyasi (telefon raqami bo'yicha) ──
+    const guard = loginGuardStatus(phone);
     if (guard.locked) {
         playError();
         showNotif('error', 'Kirish bloklangan!',
             `Juda ko'p noto'g'ri urinish. ${guard.minutes} daqiqadan keyin qayta urinib ko'ring.`);
-        securityLog('lockout', 'high', `Bloklangan hisobga kirish urinishi: ${u}`);
+        securityLog('lockout', 'high', 'Bloklangan telefon raqamiga kirish urinishi');
         return;
     }
 
-    const loginBtn = document.querySelector('#loginPage button[onclick*="doLogin"]');
-    if (loginBtn) loginBtn.disabled = true;
+    // Yuklanish holati: tugma o'chadi — ikki marta bosish duplicate request yubormaydi
+    setLoginLoading(true);
     try {
-        await attemptLogin(u, p);
+        await attemptLogin(phone, p);
     } finally {
-        if (loginBtn) loginBtn.disabled = false;
+        setLoginLoading(false);
         // Turnstile tokeni bir martalik — muvaffaqiyatsiz urinishdan keyin
         // yangisini olish uchun widget'ni tozalaymiz.
         if (typeof TurnstileGate !== 'undefined' && !currentUser) TurnstileGate.reset();
@@ -1769,7 +1847,7 @@ async function attemptLogin(u, p) {
             showNotif('error', 'Hisob bloklandi!',
                 `${systemSettings.lockMinutes} daqiqa davomida kirish bloklandi`);
         } else {
-            showNotif('error', 'Xato!', `Login yoki parol noto'g'ri (${info.left} urinish qoldi)`);
+            showNotif('error', 'Xato!', `Telefon raqami yoki parol noto'g'ri (${info.left} urinish qoldi)`);
         }
         return;
     }
@@ -1784,7 +1862,7 @@ async function attemptLogin(u, p) {
             showNotif('error', 'Hisob bloklandi!',
                 `${systemSettings.lockMinutes} daqiqa davomida kirish bloklandi`);
         } else {
-            showNotif('error', 'Xato!', `Login yoki parol noto'g'ri (${info.left} urinish qoldi)`);
+            showNotif('error', 'Xato!', `Telefon raqami yoki parol noto'g'ri (${info.left} urinish qoldi)`);
         }
         return;
     }
@@ -1849,28 +1927,20 @@ function doLogout(force = false) {
     const topName = document.getElementById('topbarEmployeeName');
     if (topName) topName.textContent = 'Xodim';
 
-    const loginPage = document.getElementById('loginPage');
-    const app = document.getElementById('app');
-    if (loginPage) {
-        loginPage.classList.remove('active');
-        loginPage.style.display = 'none';
-    }
-    if (app) {
-        app.style.display = 'block';
-        app.classList.add('market-mode');
-    }
+    // Do'kon bo'limi olib tashlangan — tizimdan chiqqach login sahifasi ko'rsatiladi
+    showLoginScreen();
 
-    const loginUser = document.getElementById('loginUser');
+    const loginPhone = document.getElementById('loginPhone');
     const loginPass = document.getElementById('loginPass');
-    if (loginUser) loginUser.value = '';
+    if (loginPhone) loginPhone.value = '';
     if (loginPass) {
         loginPass.value = '';
         loginPass.type = 'password';
     }
+    clearLoginFieldErrors();
     const toggleIcon = document.querySelector('#loginPage .pass-toggle i');
     if (toggleIcon) toggleIcon.className = 'fas fa-eye';
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    goTo('page-shop', document.getElementById('nav-shop'));
     setupRoleBasedNav();
 }
 
@@ -2095,8 +2165,12 @@ function goTo(pageId, el) {
     // 7) maxsus element fokuslari
     if (key === 'pos') document.getElementById('posSearch')?.focus();
 
-    // 8) mobil qurilmalarda sidebarni yopish
-    if (window.innerWidth < 900) document.getElementById('sidebar')?.classList.remove('open');
+    // 8) mobil qurilmalarda sidebarni yopish (drawer chegarasi — 768px)
+    if (window.innerWidth <= 768) {
+        document.getElementById('sidebar')?.classList.remove('open');
+        syncSidebarOverlay();
+        syncSidebarToggleIcon();
+    }
 }
 
 function canAccessPage(pageId) {
@@ -2112,7 +2186,85 @@ function canAccessPage(pageId) {
 
 function toggleSidebar() {
     const sb = document.getElementById('sidebar');
-    if (sb) sb.classList.toggle('open');
+    if (!sb) return;
+    if (sidebarIsMobile()) {
+        // Mobil: chapdan drawer (+ overlay)
+        sb.classList.toggle('open');
+    } else {
+        // Desktop: yig'ilgan / ochilgan holat (faqat ikonlar ↔ ikon + nom)
+        sb.classList.toggle('collapsed');
+    }
+    syncSidebarToggleIcon();
+    syncSidebarOverlay();
+}
+
+/** Mobil drawer chegarasi — CSS'dagi 768px media query bilan bir xil. */
+function sidebarIsMobile() {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
+/** ☰ / ✕ tugma holatini joriy sidebar holatiga moslashtiradi. */
+function syncSidebarToggleIcon() {
+    const btn = document.getElementById('sidebarToggleBtn');
+    const sb = document.getElementById('sidebar');
+    if (!btn || !sb) return;
+    const expanded = sidebarIsMobile()
+        ? sb.classList.contains('open')
+        : !sb.classList.contains('collapsed');
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = expanded ? 'fas fa-xmark' : 'fas fa-bars';
+    const label = expanded ? 'Menyuni yopish' : 'Menyuni ochish';
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-expanded', String(expanded));
+}
+
+/** Mobil drawer ochiq bo'lganda qoramtir overlay'ni ko'rsatadi/yashiradi. */
+function syncSidebarOverlay() {
+    const overlay = document.getElementById('sidebarOverlay');
+    const sb = document.getElementById('sidebar');
+    if (!overlay || !sb) return;
+    const show = sidebarIsMobile() && sb.classList.contains('open');
+    overlay.classList.toggle('visible', show);
+    overlay.setAttribute('aria-hidden', String(!show));
+}
+
+/** Sidebar tizimini ishga tayyorlaydi (bir marta chaqiriladi). */
+function initSidebar() {
+    if (window.__sidebarInit) return;
+    window.__sidebarInit = true;
+
+    // Oyna o'lchami o'zgarganda holatlarni tozalash (drawer ↔ desktop)
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            const sb = document.getElementById('sidebar');
+            if (!sb) return;
+            if (!sidebarIsMobile()) sb.classList.remove('open'); // desktopda drawer holati kerak emas
+            syncSidebarToggleIcon();
+            syncSidebarOverlay();
+        }, 150);
+    });
+
+    // Yig'ilgan holatda "Xodimlar" bosilsa — submenu ko'rinishi uchun sidebarni ochamiz
+    document.addEventListener('click', (e) => {
+        const trigger = e.target.closest('#nav-employees');
+        const sb = document.getElementById('sidebar');
+        if (trigger && sb && !sidebarIsMobile() && sb.classList.contains('collapsed')) {
+            sb.classList.remove('collapsed');
+            syncSidebarToggleIcon();
+        }
+        // Mobil: menyu elementi bosilganda drawer avtomatik yopiladi
+        if (e.target.closest('.sidebar .nav-item') && sidebarIsMobile() && sb && sb.classList.contains('open')) {
+            sb.classList.remove('open');
+            syncSidebarToggleIcon();
+            syncSidebarOverlay();
+        }
+    });
+
+    syncSidebarToggleIcon();
+    syncSidebarOverlay();
 }
 
 // ============================================================
@@ -2641,14 +2793,12 @@ function renderSearchSuggestions(value) {
         return;
     }
 
-    const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
-
     suggestionsDiv.innerHTML = matched.map(p => {
         const imgSrc = productImageSrc(p.img);
         const imgHTML = imgSrc
             ? `<img src="${escapeHTML(imgSrc)}" class="suggestion-img" onerror="this.style.display='none';this.parentNode.querySelector('.suggestion-placeholder').style.display='flex'">`
             : '';
-        const placeholderHTML = `<div class="suggestion-img suggestion-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'}">${icons[p.cat] || '📦'}</div>`;
+        const placeholderHTML = `<div class="suggestion-img suggestion-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'}">${categoryIcon(p.cat, 'category-placeholder-icon')}</div>`;
 
         return `
             <div class="suggestion-item" onclick="selectSuggestion(${p.id})">
@@ -2779,7 +2929,7 @@ function shopProductCardHTML(p) {
         <button type="button" class="pc-wish${wished ? ' on' : ''}" data-wish="${p.id}" title="Xohishlar ro'yxati" onclick="toggleWishlist(event, ${p.id})"><i class="fa${wished ? 's' : 'r'} fa-heart"></i></button>
         <img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">
         <div class="product-card-img-placeholder" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
-          ${CATEGORY_EMOJI[p.cat] || '📦'}
+          ${categoryIcon(p.cat, 'category-placeholder-icon')}
         </div>
       </div>
       <div class="product-card-body">
@@ -3032,7 +3182,6 @@ function updateShopCart() {
         return;
     }
 
-    const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
     box.innerHTML = shopCart.map(item => {
         const p = products.find(x => x.id === item.id) || item;
         const originalPrice = Math.round(item.price * 1.25);
@@ -3041,7 +3190,7 @@ function updateShopCart() {
         const imgHTML = imgSrc
             ? `<img src="${escapeHTML(imgSrc)}" class="uzum-item-img" onerror="this.style.display='none';this.parentNode.querySelector('.uzum-placeholder').style.display='flex'" alt="">`
             : '';
-        const placeholderHTML = `<div class="uzum-item-img uzum-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'}; align-items:center; justify-content:center; font-size:30px; background:var(--border)">${icons[item.cat] || '📦'}</div>`;
+        const placeholderHTML = `<div class="uzum-item-img uzum-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'}; align-items:center; justify-content:center; font-size:30px; background:var(--border)">${categoryIcon(item.cat, 'category-placeholder-icon')}</div>`;
 
         return `
             <div class="uzum-cart-item">
@@ -3095,8 +3244,6 @@ function renderUzumRecommendations() {
     }
 
     list = list.slice(0, 4);
-    const icons = { 'Muzlatgichlar': '❄️', 'Kir Yuvish Mashinalari': '🧺', 'Konditsionerlar': '💨', 'Televizorlar': '📺', 'Changyutgichlar': '🌀', 'Pechlar': '🔥', 'Mikrotolqinli Pechlar': '📡', 'Aksessuarlar': '🔌' };
-
     if (list.length === 0) {
         grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-secondary)">Tavsiyalar mavjud emas</p>';
         return;
@@ -3112,7 +3259,7 @@ function renderUzumRecommendations() {
                 ? `<img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">`
                 : ''}
                     <div class="product-card-img-placeholder" style="${imgSrc ? 'display:none' : 'display:flex'};width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
-                        ${icons[p.cat] || '📦'}
+                        ${categoryIcon(p.cat, 'category-placeholder-icon')}
                     </div>
                 </div>
                 <div class="product-card-body" style="padding:14px;position:relative">
@@ -3749,7 +3896,6 @@ function renderProducts() {
         (!productFilter2 || p.name.toLowerCase().includes(productFilter2.toLowerCase()))
     );
     if (cnt) cnt.textContent = list.length;
-    const icons = CATEGORY_EMOJI;
     document.getElementById('productsTable').innerHTML = list.map(p => {
         const imgSrc = productImageSrc(p.img);
         const branch = getBranchById(p.branchId);
@@ -3757,7 +3903,7 @@ function renderProducts() {
     <td>
       ${imgSrc
                 ? `<img src="${escapeHTML(imgSrc)}" style="width:46px;height:36px;border-radius:8px;object-fit:cover;background:var(--border)" onerror="this.style.display='none'">`
-                : `<div style="width:46px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px">${icons[p.cat] || '📦'}</div>`}
+                : `<div style="width:46px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px">${categoryIcon(p.cat, 'category-placeholder-icon')}</div>`}
     </td>
     <td><strong>${escapeHTML(p.name)}</strong>${p.ikpu ? '' : ' <span class="badge badge-red" title="Fiskal chek chiqmaydi">IKPU yo\'q</span>'}<br><small style="color:var(--muted)">${escapeHTML(p.desc || '')}</small></td>
     <td><span class="badge badge-blue">${escapeHTML(p.cat)}</span></td>
@@ -4318,21 +4464,49 @@ function importData(input) {
 // ============================================================
 // MODAL
 // ============================================================
+const modalReturnFocus = new Map();
+
+function modalFocusable(dialog) {
+    return Array.from(dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.disabled && el.getClientRects().length > 0);
+}
+
 function openModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    const dialog = modal.querySelector('.modal') || modal;
+    if (!modal.classList.contains('open')) modalReturnFocus.set(id, document.activeElement);
+    if (!dialog.hasAttribute('tabindex')) dialog.tabIndex = -1;
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    const heading = dialog.querySelector('.modal-header h1, .modal-header h2, .modal-header h3');
+    if (heading?.id) dialog.setAttribute('aria-labelledby', heading.id);
+    else dialog.setAttribute('aria-label', (heading?.textContent || 'Dialog oynasi').trim());
+    dialog.querySelectorAll('.modal-close, .product-detail-close').forEach(btn => {
+        if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'Yopish');
+    });
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
-    const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    document.body.classList.add('modal-open');
+    const focusable = modalFocusable(dialog)[0];
     if (focusable) setTimeout(() => focusable.focus(), 0);
 }
 
 function closeModal(id) {
     const modal = document.getElementById(id);
+    const wasOpen = modal?.classList.contains('open');
     if (modal) {
         modal.classList.remove('open');
         modal.setAttribute('aria-hidden', 'true');
     }
+    if (!document.querySelector('.modal-overlay.open')) {
+        document.body.classList.remove('modal-open');
+        const trigger = modalReturnFocus.get(id);
+        if (wasOpen && trigger instanceof HTMLElement && document.contains(trigger)) {
+            setTimeout(() => trigger.focus(), 0);
+        }
+    }
+    modalReturnFocus.delete(id);
     if (id === 'checkoutModal' && clickPollingInterval) {
         clearInterval(clickPollingInterval);
         clickPollingInterval = null;
@@ -4340,6 +4514,18 @@ function closeModal(id) {
 }
 document.addEventListener('click', e => {
     if (e.target.classList.contains('modal-overlay')) closeModal(e.target.id);
+});
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const topModal = Array.from(document.querySelectorAll('.modal-overlay.open')).at(-1);
+    const dialog = topModal?.querySelector('.modal') || topModal;
+    if (!dialog) return;
+    const focusable = modalFocusable(dialog);
+    if (!focusable.length) { e.preventDefault(); dialog.focus(); return; }
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 });
 
 // ============================================================
@@ -4353,10 +4539,14 @@ function showNotif(type, title, msg, options = {}) {
     const safeMsg = allowHTML ? String(msg ?? '') : escapeHTML(String(msg ?? ''));
     const el = document.createElement('div');
     el.className = 'notif';
+    el.setAttribute('role', 'status');
     el.innerHTML = `<div class="notif-icon ${safeType}"><i class="fas ${icons[safeType]}"></i></div>
     <div style="flex:1"><div class="notif-title">${safeTitle}</div><div class="notif-msg">${safeMsg}</div></div>
-    <button onclick="this.parentNode.remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px">×</button>`;
+    <button type="button" aria-label="Bildirishnomani yopish" onclick="this.parentNode.remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px">×</button>`;
     const container = document.getElementById('notifContainer');
+    if (!container) return;
+    container.setAttribute('aria-live', 'polite');
+    container.setAttribute('aria-atomic', 'false');
     container.appendChild(el);
     setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 300); }, 4000);
 }
@@ -5203,6 +5393,7 @@ function sessionRemainingText() {
 }
 let securityInitLogged = false;
 let lastTouchTs = 0;
+let securityActivityListenersBound = false;
 
 function touchSessionThrottled() {
     const now = Date.now();
@@ -5238,9 +5429,15 @@ const Security = {
         if (sessionWatchTimer) clearInterval(sessionWatchTimer);
         this.restoreSession();
         sessionWatchTimer = setInterval(() => this.checkSession(), 15000);
-        ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(evt => {
-            document.addEventListener(evt, touchSessionThrottled, { passive: true });
-        });
+        // initApp har bir kirishda qayta ishlaydi. Faollik kuzatuvchilarini
+        // faqat bir marta ulash aks holda login/logoutdan keyin bir event
+        // bir necha marta bajarilib, keraksiz hisoblashlar ko'payadi.
+        if (!securityActivityListenersBound) {
+            ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(evt => {
+                document.addEventListener(evt, touchSessionThrottled, { passive: true });
+            });
+            securityActivityListenersBound = true;
+        }
         this.renderSettings();
         renderSecurityPanel();
         updateSessionIndicators();
@@ -7293,8 +7490,15 @@ function buildContractPrintHTML(c) {
 
 applySavedTheme();
 function bootstrapApp() {
+    initSidebar();
     initApp();
-    goTo('page-shop', document.getElementById('nav-shop'));
+    // Do'kon bo'limi olib tashlangan — sayt ochilganda avtomatik ochilmaydi:
+    // tizimga kirilmagan bo'lsa login sahifasi, kirilgan bo'lsa Dashboard ko'rsatiladi.
+    if (!currentUser) {
+        showLoginScreen();
+        return;
+    }
+    goTo('page-dashboard', document.querySelector('.nav-item[onclick*="page-dashboard"]'));
     renderShop();
 }
 if (document.readyState === 'loading') {
@@ -7318,7 +7522,7 @@ function renderCategoriesPage() {
     const list = Object.keys(counts).map((cat, i) => `
         <tr>
             <td>${i + 1}</td>
-            <td><strong>${categoryEmoji(cat)} ${escapeHTML(cat)}</strong></td>
+            <td><strong>${categoryIcon(cat, 'category-icon')} ${escapeHTML(cat)}</strong></td>
             <td>${counts[cat]} ta mahsulot</td>
             <td>
                 <button class="btn btn-outline btn-sm" onclick="viewCategoryProducts('${escapeHTML(cat)}')"><i class="fas fa-eye"></i> Ko'rish</button>
@@ -7706,7 +7910,7 @@ function openProfileModal() {
     if (loginEl) loginEl.textContent = login;
 
     const roleLabelEl = document.getElementById('profileModalRoleLabel');
-    if (roleLabelEl) roleLabelEl.textContent = ROLE_LABELS[role] || 'Xaridor';
+    if (roleLabelEl) roleLabelEl.textContent = ROLES[role] || 'Xaridor';
 
     openModal('profileModal');
 }
@@ -7741,11 +7945,14 @@ function startSlideShow() {
 
 // Start slideshow and load data on load
 document.addEventListener('DOMContentLoaded', () => {
+    // Saqlangan sessiya bo'lsa — login holatini tiklaymiz (refresh'da yo'qolmaydi).
+    try { if (!currentUser) Security.restoreSession(); } catch (e) { }
     startSlideShow();
     window.setTimeout(loadFromBackend, 0);
 });
 // Fallback if DOMContentLoaded already fired
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    try { if (!currentUser) Security.restoreSession(); } catch (e) { }
     startSlideShow();
     window.setTimeout(loadFromBackend, 0);
 }
@@ -8676,3 +8883,296 @@ const storeLocation = {
     }
 })();
 
+/* ============================================================
+   MOBILE REBUILD — JS QO'SHIMCHALARI
+   Table→card data-label injector, Bottom nav, mobile-mode,
+   keyboard safe scroll, ESC drawer close, goTo sync
+   ============================================================ */
+(function () {
+    'use strict';
+
+    /* ── 1. TABLE → CARD: thead th matnlarini tbody td'ga data-label inject ── */
+    function injectTableDataLabels(root) {
+        const scope = root || document;
+        scope.querySelectorAll('table').forEach(function (tbl) {
+            const thead = tbl.querySelector('thead');
+            const tbody = tbl.querySelector('tbody');
+            if (!thead || !tbody) return;
+
+            const headerCells = thead.querySelectorAll('tr th, tr td');
+            if (!headerCells.length) return;
+
+            const labels = Array.from(headerCells).map(function (th) {
+                return (th.textContent || '').replace(/\s+/g, ' ').trim();
+            });
+
+            tbody.querySelectorAll('tr').forEach(function (tr) {
+                const cells = tr.querySelectorAll('th, td');
+                cells.forEach(function (cell, idx) {
+                    if (cell.hasAttribute('data-label')) return;
+                    const lbl = labels[idx] || '';
+                    if (lbl) cell.setAttribute('data-label', lbl);
+                });
+            });
+        });
+    }
+
+    /* Har safar yangi render bo'lganda (goTo da chaqirilgan funksiyalar) inject */
+    window.__injectTableDataLabels = injectTableDataLabels;
+
+    /* ── 2. ADMIN BOTTOM NAVIGATION — DOMga inject ── */
+    function injectBottomNav() {
+        if (document.getElementById('adminBottomNav')) return;
+        const nav = document.createElement('nav');
+        nav.id = 'adminBottomNav';
+        nav.className = 'admin-bottom-nav';
+        nav.setAttribute('role', 'navigation');
+        nav.setAttribute('aria-label', 'Pastki navigatsiya');
+
+        const items = [
+            { id: 'bn-dashboard', page: 'page-dashboard', icon: 'fas fa-gauge-high', label: 'Bosh' },
+            { id: 'bn-pos',       page: 'page-pos',       icon: 'fas fa-cash-register', label: 'Kassa' },
+            { id: 'bn-products',  page: 'page-products',  icon: 'fas fa-boxes-stacked', label: 'Mahsulotlar' },
+            { id: 'bn-reports',   page: 'page-reports',   icon: 'fas fa-chart-column',  label: 'Hisobot' },
+            { id: 'bn-menu',      page: '',               icon: 'fas fa-bars',          label: 'Menyu', action: 'menu' }
+        ];
+
+        nav.innerHTML = items.map(function (it) {
+            const menuAttrs = it.action === 'menu'
+                ? 'aria-label="Menyuni ochish" aria-expanded="false" onclick="window.__bnToggleMenu(this);return false;"'
+                : 'onclick="window.__bnGoTo(\'' + it.page + '\', this);return false;"';
+            return (
+                '<button type="button" id="' + it.id + '" class="bn-item" data-page="' + it.page + '" ' + menuAttrs + ' ' +
+                'style="min-height:56px;touch-action:manipulation;">' +
+                '<i class="' + it.icon + '"></i><span>' + it.label + '</span></button>'
+            );
+        }).join('');
+
+        const app = document.getElementById('app');
+        if (app) app.appendChild(nav);
+        else document.body.appendChild(nav);
+    }
+
+    window.__bnGoTo = function (pageId, el) {
+        document.querySelectorAll('.bn-item').forEach(function (i) { i.classList.remove('active'); });
+        if (el) el.classList.add('active');
+        goTo(pageId, document.querySelector('.nav-item[onclick*="\'' + pageId + '\'"]'));
+    };
+
+    function syncBottomMenuState() {
+        const menu = document.getElementById('bn-menu');
+        const sidebar = document.getElementById('sidebar');
+        if (!menu || !sidebar) return;
+        const expanded = sidebarIsMobile() && sidebar.classList.contains('open');
+        menu.classList.toggle('active', expanded);
+        menu.setAttribute('aria-expanded', String(expanded));
+        menu.setAttribute('aria-label', expanded ? 'Menyuni yopish' : 'Menyuni ochish');
+    }
+
+    window.__bnToggleMenu = function () {
+        toggleSidebar();
+        syncBottomMenuState();
+    };
+
+    /* ── 3. BODYGA mobile-mode CLASS — media query (sidebarIsMobile bilan sinxron) ── */
+    function syncMobileMode() {
+        const body = document.body;
+        if (!body) return;
+        const mobile = window.matchMedia('(max-width: 768px)').matches;
+        body.classList.toggle('mobile-mode', mobile);
+        const htmlEl = document.documentElement;
+        if (mobile) {
+            htmlEl.style.setProperty('--safe-bottom', 'env(safe-area-inset-bottom, 0px)');
+            htmlEl.style.setProperty('--safe-top', 'env(safe-area-inset-top, 0px)');
+        }
+    }
+
+    /* ── 4. BOTTOM NAV → goTo bilan active SINK (nav sidebar bilan bir xil) ── */
+    function syncBottomNavActive(pageId) {
+        const bn = document.querySelectorAll('.admin-bottom-nav .bn-item');
+        if (!bn.length) return;
+        bn.forEach(function (i) {
+            i.classList.toggle('active', i.getAttribute('data-page') === pageId);
+        });
+    }
+
+    /* Asl goTo'ni override qilmasdan, wrapper orqali sink qilamiz */
+    const origGoTo = window.goTo;
+    window.goTo = function (pageId, el) {
+        const res = origGoTo.call(this, pageId, el);
+        try {
+            syncBottomNavActive(pageId);
+            syncBottomMenuState();
+            injectTableDataLabels(document.getElementById(pageId));
+            setTimeout(function () { injectTableDataLabels(document.getElementById(pageId)); }, 220);
+        } catch (e) { /* ignore */ }
+        return res;
+    };
+
+    /* ── 5. KEYBOARD SAFE SCROLL — input/textarea focus → scroll into view ── */
+    function initKeyboardSafeScroll() {
+        const handler = function (e) {
+            const t = e.target;
+            if (!t) return;
+            if (!t.matches && !t.tagName) return;
+            const tag = (t.tagName || '').toLowerCase();
+            const isField = tag === 'input' || tag === 'textarea' || tag === 'select' ||
+                t.getAttribute && (t.getAttribute('contenteditable') === 'true');
+            if (!isField) return;
+
+            setTimeout(function () {
+                try {
+                    t.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                } catch (err) {
+                    try { t.scrollIntoView(true); } catch (_) { /* ignore */ }
+                }
+            }, 250);
+
+            setTimeout(function () {
+                try { t.scrollIntoView({ block: 'center' }); } catch (_) { /* ignore */ }
+            }, 700);
+        };
+        document.addEventListener('focusin', handler, true);
+
+        /* Klaviatura ochilganda layout shiftni minimallashtirish uchun
+           viewport-height'ni dinamik hisoblaymiz */
+        const recalcVh = function () {
+            const vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', vh + 'px');
+        };
+        recalcVh();
+        window.addEventListener('resize', recalcVh);
+        window.addEventListener('orientationchange', function () {
+            setTimeout(recalcVh, 150);
+        });
+    }
+
+    /* ── 6. DRAWER — ESC yopish + overlay click + body scroll lock ── */
+    function initDrawerEnhance() {
+        const overlay = document.getElementById('sidebarOverlay');
+        const sb = document.getElementById('sidebar');
+
+        /* Overlay click → close drawer */
+        if (overlay) {
+            overlay.addEventListener('click', function () {
+                if (sidebarIsMobile()) {
+                    sb && sb.classList.remove('open');
+                    syncSidebarToggleIcon();
+                    syncSidebarOverlay();
+                    syncBottomMenuState();
+                }
+            });
+        }
+
+        /* ESC → close drawer / modal */
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') return;
+            if (sidebarIsMobile() && sb && sb.classList.contains('open')) {
+                sb.classList.remove('open');
+                syncSidebarToggleIcon();
+                syncSidebarOverlay();
+                syncBottomMenuState();
+                return;
+            }
+            const modalOpen = document.querySelector('.modal.open, .modal.show, [class*="modal"].open');
+            if (modalOpen) {
+                const closeBtn = modalOpen.querySelector('.btn-close, [onclick*="closeModal"], [data-dismiss], .close');
+                if (closeBtn) closeBtn.click();
+            }
+        });
+
+        /* Body scroll lock — drawer open bo'lganda */
+        const origSyncOverlay = window.syncSidebarOverlay || function () {};
+        window.syncSidebarOverlay = function () {
+            origSyncOverlay.call(this);
+            if (!sb) return;
+            const open = sidebarIsMobile() && sb.classList.contains('open');
+            document.body.classList.toggle('drawer-open', open);
+            try {
+                document.body.style.overflow = open ? 'hidden' : '';
+                document.body.style.touchAction = open ? 'none' : '';
+            } catch (e) { /* ignore */ }
+        };
+
+        /* Sidebar toggle'ni ham sink qil */
+        const origToggleSidebar = window.toggleSidebar;
+        window.toggleSidebar = function () {
+            origToggleSidebar.call(this);
+            syncMobileMode();
+            syncBottomMenuState();
+        };
+    }
+
+    /* ── 8. RENDER LARNI KEYINGI INJECT (dynamic content uchun MutationObserver) ── */
+    function initMutationObserver() {
+        if (!('MutationObserver' in window)) return;
+        const mo = new MutationObserver(function (mutations) {
+            let needsInject = false;
+            for (let i = 0; i < mutations.length; i++) {
+                const m = mutations[i];
+                if (m.addedNodes && m.addedNodes.length) {
+                    for (let j = 0; j < m.addedNodes.length; j++) {
+                        const n = m.addedNodes[j];
+                        if (n && n.nodeType === 1) {
+                            const tag = (n.tagName || '').toLowerCase();
+                            if (tag === 'table' || (n.querySelectorAll && n.querySelectorAll('table').length)) {
+                                needsInject = true; break;
+                            }
+                        }
+                    }
+                }
+                if (needsInject) break;
+            }
+            if (needsInject) {
+                try { injectTableDataLabels(); } catch (e) { /* ignore */ }
+            }
+        });
+        mo.observe(document.body, { childList: true, subtree: true });
+    }
+
+    /* ── 9. BARCHASINI BOSHLASH ── */
+    function bootMobile() {
+        try {
+            syncMobileMode();
+            injectBottomNav();
+            injectTableDataLabels();
+            initKeyboardSafeScroll();
+            initDrawerEnhance();
+            initMutationObserver();
+
+            if (typeof syncSidebarOverlay === 'function') syncSidebarOverlay();
+        } catch (err) {
+            console.warn('[mobile-rebuild] boot warning:', err);
+        }
+    }
+
+    /* goTo → table inject qo'shimchasi */
+    const _origLoadFromBackend = window.loadFromBackend;
+    if (_origLoadFromBackend) {
+        window.loadFromBackend = function () {
+            const r = _origLoadFromBackend.apply(this, arguments);
+            setTimeout(function () { injectTableDataLabels(); }, 500);
+            setTimeout(function () { injectTableDataLabels(); }, 1500);
+            return r;
+        };
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootMobile);
+    } else {
+        bootMobile();
+    }
+
+    /* resize → sync mobile-mode */
+    let _mmTimer = null;
+    window.addEventListener('resize', function () {
+        clearTimeout(_mmTimer);
+        _mmTimer = setTimeout(syncMobileMode, 120);
+    });
+    try {
+        const mm = window.matchMedia('(max-width: 768px)');
+        const apply = function () { syncMobileMode(); };
+        try { mm.addEventListener('change', apply); } catch (e) { try { mm.addListener(apply); } catch (_) {} }
+    } catch (e) { /* ignore */ }
+
+})();

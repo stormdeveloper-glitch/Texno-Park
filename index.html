@@ -14,7 +14,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.9.4">
+  <link rel="stylesheet" href="style.css?v=5.10.0">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
@@ -45,51 +45,41 @@
         <p>Xodimlar uchun kirish</p>
       </div>
       <div class="form-group">
-        <label>Foydalanuvchi</label>
-        <input type="text" id="loginUser" placeholder="admin / cashier / manager" autocomplete="username"
-          readonly>
-        <i class="fas fa-user input-icon"></i>
-      </div>
-      <div class="quick-login">
-        <p>Foydalanuvchi tanlang</p>
-        <div class="quick-sections">
-          <button type="button" class="quick-section admin-section" onclick="selectUser('admin')">
-            <div class="section-icon"><i class="fas fa-user-shield"></i></div>
-            <div class="section-title">Admin</div>
-            <div class="section-role">Administrator</div>
-          </button>
-          <button type="button" class="quick-section cashier-section" onclick="selectUser('cashier')">
-            <div class="section-icon"><i class="fas fa-user-tie"></i></div>
-            <div class="section-title">Cashier</div>
-            <div class="section-role">Kassa xodimi</div>
-          </button>
-          <button type="button" class="quick-section manager-section" onclick="selectUser('manager')">
-            <div class="section-icon"><i class="fas fa-user-cog"></i></div>
-            <div class="section-title">Manager</div>
-            <div class="section-role">Menejer</div>
-          </button>
+        <label for="loginPhone">Foydalanuvchi</label>
+        <div class="phone-field">
+          <input type="tel" id="loginPhone" inputmode="numeric" placeholder="90 123 45 67"
+            autocomplete="tel-national" spellcheck="false" aria-describedby="loginPhoneError">
+          <span class="phone-prefix" aria-hidden="true">+998</span>
+          <i class="fas fa-mobile-screen input-icon"></i>
         </div>
+        <p class="login-error" id="loginPhoneError" role="alert" aria-live="polite"></p>
       </div>
       <div class="form-group">
-        <label>Parol</label>
-        <input type="password" id="loginPass" placeholder="••••••" autocomplete="current-password">
+        <label for="loginPass">Parol</label>
+        <input type="password" id="loginPass" placeholder="••••••" autocomplete="current-password"
+          aria-describedby="loginPassError">
         <i class="fas fa-lock input-icon"></i>
-        <button type="button" class="pass-toggle" onclick="togglePassword()"><i class="fas fa-eye"></i></button>
+        <button type="button" class="pass-toggle" onclick="togglePassword()" aria-label="Parolni ko'rsatish"><i
+            class="fas fa-eye"></i></button>
+        <p class="login-error" id="loginPassError" role="alert" aria-live="polite"></p>
       </div>
-      <!-- Cloudflare Turnstile (CAPTCHA) — faqat sozlangan bo'lsa ko'rinadi -->
-      <div id="turnstileWrap" style="display:none;width:100%;margin:4px 0 6px">
+      <!-- Cloudflare Turnstile (CAPTCHA) — faqat sozlangan bo'lsa ko'rinadi.
+           Balandlik/joy CSS'da qat'iy (#turnstileWrap) — panel qimirlamaydi. -->
+      <div id="turnstileWrap" style="display:none;width:100%">
         <div id="turnstileWidget" style="display:flex;justify-content:center"></div>
-        <div id="turnstileStatus" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:left"></div>
+        <div id="turnstileStatus" style="font-size:11px;color:#c2a9a4;margin-top:6px;text-align:left"></div>
       </div>
 
-      <button class="btn-login" onclick="doLogin()"><i class="fas fa-sign-in-alt"></i> Kirish</button>
+      <button class="btn-login" id="loginBtn" onclick="doLogin()"><i class="fas fa-sign-in-alt"></i> <span
+          class="btn-login-label">Kirish</span></button>
 
-      <!-- Google Sign-In -->
-      <div style="margin-top:20px;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%">
+      <!-- Google Sign-In (margin/balandlik CSS'da: .login-google-block) -->
+      <div class="login-google-block"
+        style="display:flex;flex-direction:column;align-items:center;gap:10px;width:100%">
         <div style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:5px">
-          <hr style="flex:1;border:none;border-top:1px solid var(--border);opacity:0.3">
-          <span style="font-size:12px;color:var(--muted)">yoki Google orqali kirish</span>
-          <hr style="flex:1;border:none;border-top:1px solid var(--border);opacity:0.3">
+          <hr style="flex:1;border:none;border-top:1px solid rgba(255,255,255,0.16)">
+          <span style="font-size:12px;color:#c2a9a4">yoki Google orqali kirish</span>
+          <hr style="flex:1;border:none;border-top:1px solid rgba(255,255,255,0.16)">
         </div>
 
         <!-- Official Google Sign-In container (rendered programmatically) -->
@@ -156,7 +146,7 @@
           </div>
           <div class="nav-submenu" id="employees-submenu">
             <div class="nav-item submenu-item"
-              onclick="goTo('page-employees',this); setTimeout(() => EmployeeModule.openAddModal(), 150);">
+              onclick="goTo('page-employees',this); setTimeout(openEmployeeModal, 150);">
               <i class="fas fa-user-plus"></i><span>Ro'yxatdan o'tish</span>
             </div>
             <div class="nav-item submenu-item" onclick="doLogout()">
@@ -213,7 +203,7 @@
     </div>
 
     <!-- SIDEBAR DRAWER OVERLAY (faqat mobil — tashqariga bosilganda drawer yopiladi) -->
-    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true" onclick="toggleSidebar()"></div>
+    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
 
     <!-- TOPBAR -->
     <div class="topbar">
@@ -3233,14 +3223,14 @@
 
   <!-- Notifications container -->
   <div id="notifContainer"></div>
-  <!-- Sidebar menyu tugmasi (☰ / ✕) — desktopda yig'adi/ochadi, mobilda drawer -->
+  <!-- Desktop sidebar toggle; mobil drawer pastki navigatsiyadagi Menyu orqali ochiladi -->
   <button class="menu-toggle" id="sidebarToggleBtn" type="button" onclick="toggleSidebar()"
     aria-controls="sidebar" aria-expanded="false" aria-label="Menyuni ochish" title="Menyuni ochish">
     <i class="fas fa-bars"></i>
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.4-premium"></script>
+  <script src="scripts.js?v=1.4.5-premium"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {

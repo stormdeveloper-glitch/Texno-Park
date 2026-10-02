@@ -51,8 +51,8 @@
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 
     /* Layout */
-    --sidebar-w: 256px;
-    --topbar-h: 68px;
+    --sidebar-w: 276px;
+    --sidebar-collapsed-w: 84px;
     --radius-sm: 8px;
     --radius-md: 12px;
     --radius-lg: 16px;
@@ -60,6 +60,32 @@
     --radius-2xl: 24px;
     --transition-spring: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     --primary-gradient: linear-gradient(135deg, #ff6a1f, #c1121f);
+
+    /* ===== HEADER SYSTEM (yagona manba) =====
+       Admin topbar va market header shu tokenlardan foydalanadi:
+       balandlik, boshqaruv o'lchami, radius, bo'shliq va ranglar bir xil. */
+    --hdr-h: 74px;
+    --hdr-ctrl: 46px;
+    --hdr-radius: 14px;
+    --hdr-gap: 16px;
+    --hdr-btn-gap: 8px;
+    --hdr-pad-x: 28px;
+    --hdr-toggle: max(var(--hdr-ctrl), 44px);
+    --hdr-fg: #ffffff;
+    --hdr-fg-muted: rgba(255, 255, 255, .72);
+    --hdr-ctl-bg: rgba(255, 255, 255, .07);
+    --hdr-ctl-border: rgba(255, 130, 90, .30);
+    --hdr-ctl-border-hover: #ff5a3c;
+    --hdr-border: rgba(255, 90, 60, .22);
+    --hdr-shadow: 0 6px 20px rgba(40, 0, 6, .20);
+    --hdr-bg:
+        radial-gradient(ellipse 42% 190% at 8% 50%, rgba(225, 29, 46, .30), transparent 70%),
+        radial-gradient(ellipse 34% 190% at 94% 0%, rgba(255, 122, 26, .20), transparent 72%),
+        linear-gradient(96deg, rgba(48, 8, 13, .74), rgba(28, 5, 9, .62));
+    --hdr-bg-scrolled:
+        radial-gradient(ellipse 42% 190% at 8% 50%, rgba(225, 29, 46, .26), transparent 70%),
+        radial-gradient(ellipse 34% 190% at 94% 0%, rgba(255, 122, 26, .16), transparent 72%),
+        linear-gradient(96deg, rgba(40, 7, 11, .86), rgba(24, 4, 8, .78));
 }
 
 [data-theme="light"] {
@@ -125,7 +151,9 @@
     --glass-bg: rgba(22, 27, 34, 0.8);
 }
 
-* {
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -163,32 +191,71 @@ body {
 }
 
 /* ============================================================
-   LOGIN PAGE
+   LOGIN PAGE — STABLE VIEWPORT LAYOUT (qimirlash tuzatilgan)
+   ------------------------------------------------------------
+   ROOT CAUSE (o'lchov bilan tasdiqlangan): login kartochka balandligi
+   ~795px edi. 768/720 balandlikdagi ekranlarda karta ko'rinmay qolib,
+   sahifa 55…161px ga cho'zilardi → document vertikal scroll paydo
+   bo'lardi. Har qanday scroll ham, JS'dagi loginPass.focus() ham
+   brauzerning "scroll into view" mexanizmi orqali panelni yuqoriga/
+   pastga siljitardi.
+   YECHIM: (1) sahifa viewport balandligiga qotiriladi (height: 100dvh),
+   (2) karta qisqa ekranlarda sig'adigan zich rejimga o'tadi
+   (pastdagi max-height bloklar), (3) panelning TEPA CHETI kontent
+   balandligidan mustaqil qotiriladi (.login-box margin-block-start) —
+   async yuklanish (Google/CAPTCHA/font) ham uni qimirlatmaydi.
    ============================================================ */
 #loginPage {
+    --login-pad: clamp(12px, 1.4vw, 24px);
+    /* Panelning haqiqiy balandligi — "markazga yaqin" Y shundan hisoblanadi
+       (pastdagi zich rejim bloklarida qayta belgilanadi).
+       O'lchangan: to'liq rejimda 817px, zich rejimda 634px. */
+    --login-card-h: 817px;
     display: none;
+    /* FULL-BLEED: sahifa butun viewport enini egallaydi — tashqi
+       margin / max-width / margin:auto bilan markazlash YO'Q. */
+    width: 100%;
+    max-width: none;
     min-height: 100vh;
-    align-items: center;
+    min-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    box-sizing: border-box;
+    margin: 0;
+    padding: var(--login-pad);
+    /* Panel Y o'rni kontent balandligiga bog'liq emas (start + margin) */
+    align-items: start;
     justify-content: center;
     position: relative;
     overflow: hidden;
-    background: radial-gradient(ellipse 80% 80% at 50% -20%, rgba(249, 115, 22, 0.1) 0%, transparent 60%),
-        var(--bg);
+    overscroll-behavior: none;
+    scroll-behavior: auto;
+    /* Fon rasmi (showroom) — yagona manba: pastdagi "Login sahifa" bloki. */
 }
 
 #loginPage.active {
-    display: flex;
+    display: grid;
 }
 
-/* Decorative grid */
+/* Showroom rasmi ustidagi overlay: chap tomonda do'kon ko'rinadi,
+   o'ng tomonda login panel uchun tinchroq qoramtir hudud hosil bo'ladi.
+   Pseudo-element kartochkalardan PASTDA turadi — faqat rasmni qoraytiradi. */
 #loginPage::before {
     content: '';
     position: absolute;
     inset: 0;
-    background-image:
-        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-    background-size: 60px 60px;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 52% 44% at 14% 12%, rgba(255, 96, 40, 0.16), transparent 64%),
+        linear-gradient(100deg,
+            rgba(6, 3, 4, 0.14) 0%,
+            rgba(6, 3, 4, 0.30) 36%,
+            rgba(8, 3, 5, 0.60) 58%,
+            rgba(9, 3, 5, 0.84) 78%,
+            rgba(8, 2, 4, 0.92) 100%),
+        linear-gradient(180deg, rgba(5, 2, 3, 0.42) 0%, rgba(5, 2, 3, 0) 20%, rgba(5, 2, 3, 0) 72%, rgba(5, 2, 3, 0.50) 100%);
 }
 
 .login-box {
@@ -203,19 +270,17 @@ body {
     position: relative;
     z-index: 10;
     box-shadow: var(--glass-shadow), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-    animation: cardSlideIn .7s cubic-bezier(.34, 1.56, .64, 1) both;
-    will-change: transform, opacity;
+    /* Faqat yengil fade-in (opacity). Transform/parallax yo'q — panel 100% harakatsiz. */
+    animation: loginFadeIn .4s ease-out both;
 }
 
-@keyframes cardSlideIn {
+@keyframes loginFadeIn {
     from {
         opacity: 0;
-        transform: translateY(32px) scale(0.96);
     }
 
     to {
         opacity: 1;
-        transform: translateY(0) scale(1);
     }
 }
 
@@ -236,19 +301,6 @@ body {
     color: white;
     margin-bottom: 16px;
     box-shadow: 0 12px 28px rgba(249, 115, 22, .45), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-    animation: iconFloat 3s ease-in-out infinite;
-}
-
-@keyframes iconFloat {
-
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-
-    50% {
-        transform: translateY(-6px);
-    }
 }
 
 .login-logo h1 {
@@ -286,7 +338,7 @@ body {
     color: var(--text);
     font-size: 14px;
     font-family: Inter, sans-serif;
-    transition: all .2s cubic-bezier(.4, 0, .2, 1);
+    transition: border-color .2s cubic-bezier(.4, 0, .2, 1), background-color .2s cubic-bezier(.4, 0, .2, 1), box-shadow .2s cubic-bezier(.4, 0, .2, 1);
     outline: none;
 }
 
@@ -344,150 +396,67 @@ body {
     letter-spacing: .5px;
     position: relative;
     overflow: hidden;
-    transition: all .2s cubic-bezier(.4, 0, .2, 1);
+    transition: background-color .2s cubic-bezier(.4, 0, .2, 1), box-shadow .2s cubic-bezier(.4, 0, .2, 1), filter .2s cubic-bezier(.4, 0, .2, 1);
     box-shadow: 0 6px 20px rgba(249, 115, 22, .4);
     margin-top: 4px;
 }
 
-.btn-login::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transform: translateX(-100%);
-    animation: shimmer 2.5s infinite;
-}
-
-@keyframes shimmer {
-    to {
-        transform: translateX(100%);
-    }
-}
-
 .btn-login:hover {
-    transform: translateY(-2px);
     box-shadow: 0 10px 28px rgba(249, 115, 22, .5);
 }
 
 .btn-login:active {
-    transform: scale(0.97) translateY(0);
+    filter: brightness(.94);
 }
 
-.quick-login {
-    margin-top: 24px;
-}
-
-.quick-login p {
-    text-align: center;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .8px;
-    color: var(--text-muted);
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.quick-login p::before,
-.quick-login p::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-}
-
-.quick-sections {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-}
-
-.quick-section {
-    padding: 12px 8px;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    text-align: center;
-    font-family: Inter, sans-serif;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    border: 1px solid;
+/* ── Telefon maydoni (+998 prefiks) va xato xabarlari ── */
+.phone-field {
     position: relative;
-    overflow: hidden;
 }
 
-.quick-section:hover {
-    transform: translateY(-6px) scale(1.05);
+.phone-field .phone-prefix {
+    position: absolute;
+    left: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
 }
 
-.quick-section:active {
-    transform: scale(0.92);
-}
-
-.section-icon {
-    font-size: 22px;
-    margin-bottom: 6px;
-}
-
-.section-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
+.phone-field input {
     letter-spacing: .4px;
 }
 
-.section-role {
-    font-size: 10px;
-    opacity: .7;
-    margin-top: 2px;
+/* ID selektorlardan kuchli bo'lishi shart — aks holda bazaviy 42-44px
+   padding g'alaba qozonib, matn +998 prefiksi ustiga tushadi. */
+#loginPage .form-group .phone-field input {
+    padding-left: 92px;
 }
 
-.admin-section {
-    background: rgba(255, 106, 31, .08);
-    border-color: rgba(255, 106, 31, .25);
-    color: #ff9a4d;
+/* Xato xabari uchun joy har doim ajratib qo'yilgan — xato chiqsa ham
+   panel/qatorlar qimirlamaydi (layout shift yo'q). */
+.login-error {
+    margin: 5px 2px 0;
+    font-size: 11.5px;
+    line-height: 1.35;
+    min-height: 16px;
+    font-weight: 600;
+    color: #ff9384;
+    visibility: hidden;
 }
 
-.admin-section:hover {
-    background: rgba(255, 106, 31, .15);
-    border-color: rgba(255, 106, 31, .5);
-    box-shadow: 0 8px 20px rgba(255, 106, 31, .2);
+.login-error.show {
+    visibility: visible;
 }
 
-.cashier-section {
-    background: rgba(34, 197, 94, .08);
-    border-color: rgba(34, 197, 94, .25);
-    color: #4ade80;
-}
-
-.cashier-section:hover {
-    background: rgba(34, 197, 94, .15);
-    border-color: rgba(34, 197, 94, .5);
-    box-shadow: 0 8px 20px rgba(34, 197, 94, .2);
-}
-
-.manager-section {
-    background: rgba(249, 115, 22, .08);
-    border-color: rgba(249, 115, 22, .25);
-    color: #fb923c;
-}
-
-.manager-section:hover {
-    background: rgba(249, 115, 22, .15);
-    border-color: rgba(249, 115, 22, .5);
-    box-shadow: 0 8px 20px rgba(249, 115, 22, .2);
-}
-
-.customer-section {
-    background: rgba(230, 59, 31, .08);
-    border-color: rgba(230, 59, 31, .25);
-    color: #ff9a4d;
-}
-
-.customer-section:hover {
-    background: rgba(230, 59, 31, .15);
-    border-color: rgba(230, 59, 31, .5);
-    box-shadow: 0 8px 20px rgba(230, 59, 31, .2);
+.btn-login.is-loading {
+    opacity: .85;
+    pointer-events: none;
 }
 
 /* ============================================================
@@ -512,7 +481,7 @@ body {
     display: flex;
     flex-direction: column;
     z-index: 100;
-    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1), width .3s cubic-bezier(.4, 0, .2, 1);
     box-shadow: 4px 0 24px rgba(0, 0, 0, .3);
 }
 
@@ -632,10 +601,6 @@ body {
     border-radius: 12px;
 }
 
-.nav-badge.green {
-    background: var(--accent);
-}
-
 .nav-item[data-role],
 .nav-section[data-role] {
     display: none;
@@ -704,90 +669,146 @@ body {
     color: var(--muted);
 }
 
-/* ===== GLASSMORPHISM TOPBAR ===== */
+/* ===== HEADER SYSTEM (yagona manba) =====
+   Barcha header ko'rinishlari — admin .topbar va market .market-top —
+   bir xil balandlik, tekislash, rang, bo'shliq va radiusdan foydalanadi.
+   Qiymatlar :root dagi --hdr-* tokenlarida (media ladder ham bir xil). */
+.topbar,
+#app.market-mode .market-top {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--hdr-gap);
+    height: calc(var(--hdr-h) + env(safe-area-inset-top, 0px));
+    color: var(--hdr-fg);
+    background: var(--hdr-bg);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+    border-bottom: 1px solid var(--hdr-border);
+    box-shadow: var(--hdr-shadow);
+    transition: height .24s ease, background .24s ease,
+        box-shadow .24s ease, border-color .24s ease;
+}
+
+/* Admin topbar: sidebar'dan keyin boshlanadi, kontent ustidan suzadi */
 .topbar {
     position: fixed;
     top: 0;
     left: var(--sidebar-w);
     right: 0;
-    height: 72px;
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-bottom: 1px solid var(--glass-border);
-    display: flex;
-    align-items: center;
-    padding: 0 28px;
-    gap: 20px;
     z-index: 90;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, .15);
+    padding: env(safe-area-inset-top, 0px) var(--hdr-pad-x) 0;
+    transition: left .3s cubic-bezier(.4, 0, .2, 1),
+        padding-left .3s cubic-bezier(.4, 0, .2, 1),
+        height .24s ease, background .24s ease,
+        box-shadow .24s ease, border-color .24s ease;
+}
+
+/* Responsive ladder — ikkala header bir xil qadamlar bilan kichrayadi,
+   shuning uchun balandlik/o'lcham hech qachon bir-biridan farq qilmaydi */
+@media (max-width: 1100px) {
+    :root {
+        --hdr-h: 68px;
+        --hdr-ctrl: 44px;
+        --hdr-gap: 12px;
+        --hdr-pad-x: 20px;
+    }
+}
+
+@media (max-width: 780px) {
+    :root {
+        --hdr-h: 60px;
+        --hdr-ctrl: 40px;
+        --hdr-radius: 12px;
+        --hdr-gap: 8px;
+        --hdr-btn-gap: 6px;
+        --hdr-pad-x: 14px;
+    }
 }
 
 .page-title {
     font-size: 20px;
     font-weight: 700;
     flex: 1;
+    min-width: 0;
+}
+
+/* Sarlavha rangi ikkala temada ham header foniga mos (oq) */
+.topbar .page-title {
+    color: var(--hdr-fg);
 }
 
 .page-title small {
     display: block;
     font-size: 12px;
-    color: var(--muted);
+    color: var(--hdr-fg-muted);
     font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .topbar-search {
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: rgba(255, 255, 255, .05);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 10px 16px;
-    width: 240px;
-    transition: all .2s;
+    gap: 9px;
+    height: var(--hdr-ctrl);
+    background: var(--hdr-ctl-bg);
+    border: 1px solid var(--hdr-ctl-border);
+    border-radius: var(--hdr-radius);
+    padding: 0 14px;
+    width: 260px;
+    flex: 0 1 260px;
+    transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
 
 .topbar-search:focus-within {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 4px var(--primary-glow);
-    background: rgba(255, 255, 255, .08);
+    border-color: var(--hdr-ctl-border-hover);
+    box-shadow: 0 0 0 3px rgba(255, 70, 50, .26);
+    background: rgba(255, 255, 255, .14);
 }
 
 .topbar-search input {
     background: none;
     border: none;
     outline: none;
-    color: var(--text);
-    font-size: 13px;
+    color: var(--hdr-fg);
+    font-size: 13.5px;
     width: 100%;
+    min-width: 0;
+}
+
+.topbar-search input::placeholder {
+    color: rgba(255, 255, 255, .58);
 }
 
 .topbar-search i {
-    color: var(--muted);
+    color: #ff8a5c;
     font-size: 14px;
 }
 
 .topbar-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--hdr-btn-gap);
 }
 
 .icon-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    background: rgba(255, 255, 255, .04);
+    width: var(--hdr-ctrl);
+    height: var(--hdr-ctrl);
+    flex-shrink: 0;
+    border-radius: var(--hdr-radius);
+    border: 1px solid var(--hdr-ctl-border);
+    background: var(--hdr-ctl-bg);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    color: var(--muted);
+    color: var(--hdr-fg);
     position: relative;
     font-size: 16px;
+    transition: background .2s ease, border-color .2s ease, color .2s ease,
+        transform .16s ease, box-shadow .2s ease;
     will-change: transform;
 }
 
@@ -796,25 +817,26 @@ body {
 }
 
 .icon-btn:hover {
-    background: rgba(255, 255, 255, .08);
-    color: var(--text);
-    border-color: var(--primary);
-    transform: scale(1.12) rotate(3deg);
+    background: rgba(255, 70, 50, .26);
+    color: var(--hdr-fg);
+    border-color: var(--hdr-ctl-border-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(225, 29, 46, .30);
 }
 
 .icon-btn:active {
-    transform: scale(.88);
+    transform: translateY(0) scale(.96);
 }
 
 .icon-btn .notif-dot {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 7px;
+    right: 7px;
     width: 8px;
     height: 8px;
     background: var(--danger);
     border-radius: 50%;
-    border: 2px solid var(--surface);
+    border: 2px solid #1a0809;
     animation: pulse 2s ease-in-out infinite;
 }
 
@@ -848,23 +870,58 @@ body {
 
 .topbar-clock {
     font-size: 13px;
-    color: var(--muted);
+    color: var(--hdr-fg-muted);
     min-width: 80px;
     text-align: right;
-    font-weight: 500;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+}
+
+/* Xodim (profil) tugmasi — market header "Kirish" tugmasi bilan bir uslub */
+.topbar .employee-login-btn {
+    height: var(--hdr-ctrl);
+    min-height: var(--hdr-ctrl);
+    padding: 0 16px;
+    border-radius: var(--hdr-radius);
+    border: 1px solid rgba(255, 130, 90, .45);
+    background: var(--hdr-ctl-bg);
+    color: var(--hdr-fg);
+    font-size: 13px;
+    font-weight: 800;
+    flex-shrink: 0;
+    transition: background .2s ease, border-color .2s ease, color .2s ease,
+        transform .16s ease, box-shadow .2s ease;
+}
+
+.topbar .employee-login-btn:hover {
+    border-color: transparent;
+    color: #fff;
+    background: var(--primary-gradient);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(225, 29, 46, .34);
+}
+
+.topbar .employee-login-btn:active {
+    transform: translateY(0) scale(.98);
 }
 
 /* ===== HOTKEYS INDICATOR ===== */
 .hotkeys-bar {
     position: fixed;
-    bottom: 24px;
+    bottom: 18px;
     left: calc(var(--sidebar-w) + 24px);
     z-index: 50;
     display: flex;
     gap: 8px;
     opacity: .6;
-    transition: opacity .2s;
+    transition: opacity .2s, left .3s cubic-bezier(.4, 0, .2, 1);
+    pointer-events: none;
+}
+
+@media (max-width: 1024px) {
+    .hotkeys-bar {
+        display: none !important;
+    }
 }
 
 .hotkeys-bar:hover {
@@ -872,6 +929,7 @@ body {
 }
 
 .hk {
+    pointer-events: auto;
     background: rgba(255, 255, 255, .08);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -966,6 +1024,7 @@ body {
     padding-top: 96px;
     min-height: 100vh;
     box-sizing: border-box;
+    transition: margin-left .3s cubic-bezier(.4, 0, .2, 1), width .3s cubic-bezier(.4, 0, .2, 1);
 }
 
 .main {
@@ -975,72 +1034,536 @@ body {
 /* Sahifa (tab) ko'rinishi: faqat .active ko'rsatiladi */
 .page {
     display: none;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 24px 28px 60px;
 }
 
 .page.active {
     display: block;
 }
 
-/* Sahifadagi ichki konteynerlar uchun standart o'lcham va joylashuv */
-.page {
-    padding: 36px;
-    margin: 24px auto;
-    max-width: 1200px;
-    box-sizing: border-box;
+/* Bo'limlar orasidagi bo'shliq */
+.page > .panel,
+.page > .grid-2,
+.page > .grid-3,
+.page > .stat-grid,
+.page > .card {
+    margin-bottom: 24px;
 }
 
-/* Kassa (POS) uchun grid va cart moslashuvini ta'minlash */
-.pos-layout {
-    display: flex;
-    gap: 18px;
-    align-items: flex-start;
+/* ------------------------------------------------------------
+   1. DASHBOARD (#page-dashboard)
+   ------------------------------------------------------------ */
+#page-dashboard {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
 }
 
-.pos-left {
-    flex: 1 1 65%;
-}
-
-.pos-right {
-    flex: 0 0 320px;
-}
-
-.product-grid {
+#admin-dashboard .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+    width: 100%;
 }
 
-.cart-items {
-    max-height: 60vh;
+#cashier-dashboard .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#manager-dashboard .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#page-dashboard .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   2. OMBOR / WAREHOUSE (#page-warehouse)
+   ------------------------------------------------------------ */
+#page-warehouse {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-warehouse .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#page-warehouse .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-warehouse .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-warehouse table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   3. KASSA / POS (#page-pos)
+   ------------------------------------------------------------ */
+#page-pos {
+    width: 100%;
+    max-width: 100%;
+    padding: 20px 24px 60px;
+}
+
+#page-pos .pos-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 370px;
+    gap: 20px;
+    align-items: start;
+    width: 100%;
+}
+
+#page-pos .pos-left {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
+#page-pos .pos-search {
+    width: 100%;
+}
+
+#page-pos .cat-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    width: 100%;
+}
+
+#page-pos .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+
+#page-pos .pos-right {
+    position: sticky;
+    top: calc(var(--hdr-h) + 16px);
+    max-height: calc(100vh - var(--hdr-h) - 36px);
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+#page-pos .cart-items {
+    flex: 1 1 auto;
+    max-height: calc(100vh - var(--hdr-h) - 340px);
+    min-height: 160px;
     overflow-y: auto;
 }
 
-/* Odatdagi kartalar */
-.card,
-.panel {
+/* ------------------------------------------------------------
+   4. MAHSULOTLAR (#page-products)
+   ------------------------------------------------------------ */
+#page-products {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-products .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-products .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-products table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   5. KATEGORIYALAR (#page-categories)
+   ------------------------------------------------------------ */
+#page-categories {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-categories .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-categories .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-categories table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   6. MIJOZLAR (#page-customers)
+   ------------------------------------------------------------ */
+#page-customers {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-customers .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#page-customers .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#page-customers .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-customers .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-customers table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   7. FILIALLAR (#page-branches)
+   ------------------------------------------------------------ */
+#page-branches {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-branches .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#page-branches .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#branchesContainer {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 18px;
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   8. KIRIM / CHIQIM (#page-cashflow)
+   ------------------------------------------------------------ */
+#page-cashflow {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-cashflow .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#page-cashflow .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-cashflow .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-cashflow table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   9. XODIMLAR VA MAOSH (#page-employees)
+   ------------------------------------------------------------ */
+#page-employees {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-employees .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-employees .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-employees table {
+    width: 100%;
+}
+
+#page-employees .salary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 18px;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+#page-employees .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   10. SHARTNOMALAR (#page-contracts)
+   ------------------------------------------------------------ */
+#page-contracts {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-contracts .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-contracts .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-contracts table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   11. HISOBOTLAR (#page-reports)
+   ------------------------------------------------------------ */
+#page-reports {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-reports .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+#page-reports .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-reports .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-reports table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   12. AI YORDAMCHI (#page-assistant)
+   ------------------------------------------------------------ */
+#page-assistant {
+    width: 100%;
+    max-width: 1050px;
+    margin: 0 auto;
+    padding: 24px 28px 60px;
     box-sizing: border-box;
 }
 
-/* Reveal animations removed to restore classic tab behavior.
-   O'rniga ichki elementlar doimo ko'rinadigan qilib qo'yildi. */
-.page .panel,
-.page .stat-card,
-.page .chart-wrap,
-.page .table-wrap,
-.page .form-row,
-.page .form-col,
-.page .card {
-    opacity: 1;
-    transform: none;
-    transition: none;
+#page-assistant .panel {
+    width: 100%;
+    margin-bottom: 24px;
 }
 
-/* Bo'limlar orasidagi bo'shliq */
-.page>.panel,
-.page>.grid-2,
-.page>.stat-grid,
-.page>.card {
-    margin-bottom: 32px;
+/* ------------------------------------------------------------
+   13. CHEGIRMALAR (#page-discounts)
+   ------------------------------------------------------------ */
+#page-discounts {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-discounts .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-discounts .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-discounts table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   14. SMS TIZIMI (#page-sms)
+   ------------------------------------------------------------ */
+#page-sms {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-sms .grid-2 {
+    display: grid;
+    grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    width: 100%;
+}
+
+#page-sms .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-sms .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-sms table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   15. FAOLLIK LOGLARI (#page-logs)
+   ------------------------------------------------------------ */
+#page-logs {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-logs .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+#page-logs .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#page-logs table {
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   16. SOZLAMALAR (#page-settings)
+   ------------------------------------------------------------ */
+#page-settings {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 28px 60px;
+}
+
+#page-settings .tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+    width: 100%;
+}
+
+#page-settings .tab-pane {
+    display: none;
+    width: 100%;
+}
+
+#page-settings .tab-pane.active {
+    display: block;
+    animation: tabFadeIn .2s ease-out;
+}
+
+@keyframes tabFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#page-settings .panel {
+    width: 100%;
+    margin-bottom: 24px;
+}
+
+/* ------------------------------------------------------------
+   17. DO'KON / SHOP (#page-shop)
+   ------------------------------------------------------------ */
+#page-shop {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
 }
 
 /* ===== CARDS ===== */
@@ -2565,6 +3088,10 @@ select.form-control option {
     animation: fadeIn .2s ease;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0
@@ -2585,14 +3112,14 @@ select.form-control option {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
-    animation: modalSlide .3s cubic-bezier(.34, 1.56, .64, 1);
+    animation: modalSlide .22s cubic-bezier(.22, 1, .36, 1);
     will-change: transform, opacity;
 }
 
 @keyframes modalSlide {
     from {
         opacity: 0;
-        transform: scale(.88) translateY(20px)
+        transform: scale(.98) translateY(12px)
     }
 
     to {
@@ -2632,7 +3159,6 @@ select.form-control option {
     background: var(--danger);
     color: white;
     border-color: var(--danger);
-    transform: rotate(90deg);
 }
 
 /* ===== PAYMENT SUCCESS MODAL ===== */
@@ -2707,14 +3233,14 @@ select.form-control option {
     align-items: flex-start;
     gap: 12px;
     box-shadow: var(--shadow-lg);
-    animation: notifSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation: notifSlideIn .22s cubic-bezier(.22, 1, .36, 1) both;
     will-change: transform, opacity;
 }
 
 @keyframes notifSlideIn {
     from {
         opacity: 0;
-        transform: translateX(120%) scale(0.9);
+        transform: translateX(24px);
     }
 
     to {
@@ -2730,7 +3256,7 @@ select.form-control option {
 @keyframes notifSlideOut {
     to {
         opacity: 0;
-        transform: translateX(120%) scale(0.9)
+        transform: translateX(24px)
     }
 }
 
@@ -2980,29 +3506,45 @@ select.form-control option {
     }
 }
 
-/* Mobile menu toggle */
+/* Menu toggle (☰ / ✕) — desktopda sidebar yig'adi/ochadi, mobilda drawer */
 .menu-toggle {
-    display: none;
+    display: flex;
     position: fixed;
-    bottom: 24px;
-    left: 24px;
+    top: 12px;
+    left: 12px;
     z-index: 200;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: var(--primary);
-    border: none;
-    color: white;
-    font-size: 24px;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: rgba(26, 8, 10, .92);
+    border: 1px solid rgba(255, 90, 60, .32);
+    color: #fff;
+    font-size: 19px;
     cursor: pointer;
-    box-shadow: 0 8px 24px rgba(255, 107, 53, .5);
     align-items: center;
     justify-content: center;
-    transition: all .2s;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
+    transition: left .3s cubic-bezier(.4, 0, .2, 1), background .2s ease,
+        border-color .2s ease, box-shadow .2s ease, transform .15s ease;
+}
+
+.menu-toggle:hover {
+    background: rgba(255, 90, 60, .22);
+    border-color: rgba(255, 90, 60, .6);
+    box-shadow: 0 6px 20px rgba(225, 29, 46, .35);
 }
 
 .menu-toggle:active {
-    transform: scale(.9);
+    transform: scale(.92);
+}
+
+.menu-toggle i {
+    pointer-events: none;
+}
+
+/* Login sahifasida tugma ko'rinmaydi (do'kon rejimi qoidasi alohida) */
+body:has(#loginPage.active) .menu-toggle {
+    display: none !important;
 }
 
 /* ===== RECEIPT (THERMAL PRINTER 80mm) ===== */
@@ -3122,40 +3664,6 @@ select.form-control option {
 }
 
 @media(max-width:900px) {
-    :root {
-        --sidebar-w: 70px;
-    }
-
-    .sidebar-logo span,
-    .sidebar-logo small,
-    .nav-item span,
-    .nav-section-label,
-    .nav-badge,
-    .user-info {
-        display: none;
-    }
-
-    .nav-item {
-        justify-content: center;
-        padding: 16px;
-        min-height: 52px;
-    }
-
-    .nav-item i {
-        width: auto;
-        font-size: 20px;
-    }
-
-    .sidebar-logo {
-        justify-content: center;
-        padding: 18px;
-    }
-
-    .user-card {
-        justify-content: center;
-        padding: 10px;
-    }
-
     .pos-layout {
         grid-template-columns: 1fr;
     }
@@ -3198,12 +3706,25 @@ select.form-control option {
         --topbar-h: 60px;
     }
 
+    /* Mobil: sidebar yashirin drawer — ☰ bosilganda chapdan ochiladi */
     .sidebar {
+        width: min(300px, 84vw);
         transform: translateX(-100%);
+        z-index: 950;
+        box-shadow: 14px 0 44px rgba(0, 0, 0, .55);
     }
 
     .sidebar.open {
         transform: translateX(0);
+    }
+
+    /* Drawer ochilganda orqada qoramtir overlay (batafsil: SIDEBAR v4 bo'limi) */
+    .menu-toggle {
+        z-index: 960;
+    }
+
+    #app:not(.market-mode) .topbar {
+        padding-left: 68px;
     }
 
     .main,
@@ -3370,14 +3891,6 @@ select.form-control option {
         font-size: 12px;
     }
 
-    .menu-toggle {
-        display: flex;
-        width: 50px;
-        height: 50px;
-        bottom: 16px;
-        left: 16px;
-    }
-
     .qty-btn {
         min-width: 44px;
         min-height: 44px;
@@ -3397,10 +3910,12 @@ select.form-control option {
 
 @media(max-width:480px) {
     #loginPage {
-        align-items: flex-start;
+        --login-pad: 12px;
         min-height: 100dvh;
+        /* Mobilda kontent baland bo'lsa faqat ICHKI scroll (fon joyida) */
         overflow-y: auto;
-        padding: 14px 0;
+        overflow-x: hidden;
+        padding: var(--login-pad);
     }
 
     .main {
@@ -3425,7 +3940,9 @@ select.form-control option {
     }
 
     .login-box {
-        width: calc(100vw - 24px);
+        /* 100vw EMAS: scrollbar kengligi qo'shilib gorizontal overflow berardi */
+        width: calc(100% - 24px);
+        max-width: 430px;
         padding: 22px 16px;
         border-radius: 18px;
     }
@@ -3446,24 +3963,6 @@ select.form-control option {
 
     .login-logo p {
         font-size: 12px;
-    }
-
-    .quick-section {
-        padding: 10px 6px;
-    }
-
-    .section-icon {
-        font-size: 19px;
-        margin-bottom: 4px;
-    }
-
-    .section-title {
-        font-size: 10px;
-    }
-
-    .section-role {
-        font-size: 9px;
-        line-height: 1.2;
     }
 
     .form-group {
@@ -3492,8 +3991,7 @@ select.form-control option {
     .nav-item,
     .pay-type,
     .qty-btn,
-    .product-card,
-    .quick-section {
+    .product-card {
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
     }
@@ -6506,8 +7004,7 @@ canvas {
 
 body,
 #app,
-#app.market-mode,
-#loginPage {
+#app.market-mode {
     background: var(--bg);
     color: var(--text);
 }
@@ -7264,28 +7761,36 @@ body,
    FINAL DARK MARKET SURFACES + ACCESSIBILITY
    ============================================================ */
 #loginPage {
-    padding: clamp(18px, 4vw, 56px);
+    /* Faqat ICHKI gutter (fon baribir element chekkasigacha chiziladi),
+       shuning uchun bu padding yon bo'shliq (oqu/qora zona) hosil qilmaydi. */
+    padding: var(--login-pad);
     display: none;
-    place-items: center;
 }
 
 #loginPage.active {
     display: grid;
-    grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr);
-    gap: clamp(28px, 6vw, 92px);
-    width: min(1400px, 100%);
-    margin: 0 auto;
-    /* place-items:center on #loginPage made the showcase shrink-to-fit (0 width),
-       because all of its children are absolutely positioned. Keep the vertical
-       centring but let the grid columns stretch. */
+    /* CHAP: marketing/fon ustuni (moslashuvchan) — O'NG: login panel ustuni */
+    grid-template-columns: minmax(0, 1fr) minmax(420px, 480px);
+    gap: clamp(22px, 3vw, 56px);
+    /* FULL-BLEED: "width: min(1400px, 100%) + margin: 0 auto" OLIB TASHLANDI —
+       katta ekranlarda aynan shu qoida chap/o'ngda bo'sh zona hosil qilardi. */
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    /* place-items:center OLIB TASHLANDI: u #loginPage'ni markazga tortib,
+       panelning Y o'rnini kontent balandligiga bog'lab qo'yardi (siljish
+       sababi). Endi: ustunlar stretch, panelning markazga yaqin Y o'rni
+       faqat .login-box margin-block-start bilan beriladi. */
     justify-items: stretch;
-    align-items: center;
+    align-items: start;
 }
 
 .login-showcase {
     position: relative;
     isolation: isolate;
-    min-height: 590px;
+    /* min-height viewportdan oshmasin: qisqa oynalarda ham scroll paydo
+       bo'lmaydi (590px — katta ekran uchun baza qiymat). */
+    min-height: min(590px, calc(100dvh - 2 * var(--login-pad, 24px)));
     overflow: hidden;
     border: 1px solid var(--border-mid);
     border-radius: 28px;
@@ -7339,6 +7844,12 @@ body,
 .login-showcase-brand strong {
     font-size: 16px;
     letter-spacing: .04em;
+    /* Uzun nom banner balandligini o'zgartirmasin (stacked layoutda panel
+       joyidan siljib ketmasligi uchun) */
+    max-width: 60vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .login-showcase-copy {
@@ -7529,13 +8040,25 @@ body,
 
 @media (max-width: 900px) {
     #loginPage.active {
-        grid-template-columns: 1fr;
+        /* "1fr" emas, "minmax(0, 1fr)": ustun min-content bilan kengayib
+           kichik ekranlarda gorizontal overflow bermasin. */
+        grid-template-columns: minmax(0, 1fr);
         gap: 18px;
-        align-content: center;
+        /* "safe" — kontent ekran balandligidan oshsa, yuqori qism kesilib qolmaydi. */
+        align-content: safe center;
+    }
+
+    /* Stacked (mobil/planshet) rejim: kontent baland bo'lsa ICHKI scroll
+       ishlatiladi (tashqi/body scroll YO'Q) — fon rasmi joyida qoladi,
+       sahifa "sakramaydi". */
+    #loginPage,
+    #loginPage.active {
+        overflow-y: auto;
+        overflow-x: hidden;
     }
 
     .login-showcase {
-        min-height: 270px;
+        min-height: min(190px, calc(100dvh - 2 * var(--login-pad, 24px)));
     }
 
     .login-showcase-copy {
@@ -7597,7 +8120,8 @@ body,
 
 @media (max-width: 520px) {
     #loginPage {
-        padding: 12px;
+        --login-pad: 12px;
+        padding: var(--login-pad);
     }
 
     .login-showcase {
@@ -7893,7 +8417,7 @@ body:has(#app.market-mode) .menu-toggle {
 
 [data-theme="light"] #loginPage .form-control,
 [data-theme="light"] #loginPage .form-group input {
-    color-scheme: light;
+    color-scheme: dark;
 }
 
 /* ============================================================
@@ -8396,10 +8920,6 @@ body {
 }
 
 /* --- Login page: white sheet, blue brand + blue CTA --- */
-#loginPage {
-    background: var(--bg);
-}
-
 #loginPage .login-showcase {
     background: transparent;
     border: 0;
@@ -8412,41 +8932,46 @@ body {
 }
 
 #loginPage .login-showcase-brand {
-    color: var(--primary);
+    color: #fff;
 }
 
 #loginPage .login-showcase-brand span,
 #loginPage .login-showcase-brand i {
-    color: var(--primary);
+    color: #fff;
 }
 
 #loginPage .login-showcase-copy>span {
-    color: var(--primary);
+    color: var(--primary-light);
 }
 
 #loginPage .login-showcase-copy h2 {
-    color: var(--text);
+    color: #fff;
+    text-shadow: 0 2px 30px rgba(0, 0, 0, .55);
 }
 
 #loginPage .login-showcase-copy p {
-    color: var(--text-secondary);
+    color: #d9c6c1;
 }
 
 #loginPage .login-showcase-points span {
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, .16);
+    background: rgba(12, 5, 7, .52);
+    color: #e8dbd7;
 }
 
 #loginPage .login-showcase-points i {
-    color: var(--primary);
+    color: var(--primary-light);
 }
 
+/* Login kartochka: dark burgundy glass — ikkala theme'da ham bir xil ko'rinadi,
+   premium va yetarli kontrastli (haddan tashqari shaffof emas). */
 #loginPage .login-box {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    box-shadow: 0 18px 45px rgba(15, 23, 42, .08);
+    background: linear-gradient(160deg, rgba(46, 11, 16, .88), rgba(16, 5, 8, .95));
+    border: 1px solid rgba(255, 96, 44, .30);
+    border-radius: 20px;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 96, 44, .06) inset, 0 1px 0 rgba(255, 255, 255, .06) inset;
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 #loginPage .logo-icon {
@@ -8456,49 +8981,88 @@ body {
 }
 
 #loginPage .login-logo h1 {
-    color: var(--text);
+    color: #fff;
+    /* Brend nomi uzun bo'lsa ham karta balandligi o'zgarmasin (stabil layout) */
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #loginPage .login-logo p {
-    color: var(--text-secondary);
+    color: #d8b9b2;
+}
+
+#loginPage .form-group label {
+    color: #cbb1ac;
 }
 
 #loginPage .form-group input,
 #loginPage #loginPage .form-control {
-    background: var(--bg);
-    border-color: var(--border-mid);
-    color: var(--text);
+    background: rgba(255, 255, 255, .055);
+    border-color: rgba(255, 255, 255, .14);
+    color: #fff;
+}
+
+#loginPage .form-group input::placeholder {
+    color: #907c79;
 }
 
 #loginPage .form-group input:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px var(--primary-subtle);
+    border-color: #ff6a1f;
+    background: rgba(255, 106, 31, .08);
+    box-shadow: 0 0 0 3px rgba(255, 106, 31, .18);
+}
+
+#loginPage .form-group input:focus+.input-icon,
+#loginPage .form-group input:focus~.input-icon {
+    color: #ff8a45;
 }
 
 #loginPage .input-icon {
-    color: var(--text-muted);
+    color: #9c8480;
+}
+
+#loginPage .pass-toggle {
+    color: #9c8480;
+}
+
+#loginPage .pass-toggle:hover {
+    color: #ff8a45;
 }
 
 #loginPage .btn-login {
-    background: #e63b1f;
-    border-color: #e63b1f;
+    background: linear-gradient(135deg, #ff7a1a, #c8102e);
+    border: 0;
     color: #fff;
-    border-radius: 10px;
-    box-shadow: 0 10px 24px rgba(230, 59, 31, .3);
+    border-radius: 12px;
+    box-shadow: 0 14px 30px rgba(200, 16, 46, .34), inset 0 1px 0 rgba(255, 255, 255, .22);
+    transition: box-shadow .2s ease, filter .2s ease;
 }
 
 #loginPage .btn-login:hover {
-    filter: brightness(1.07);
+    transform: none;
+    filter: brightness(1.08);
+    box-shadow: 0 18px 38px rgba(200, 16, 46, .42), inset 0 1px 0 rgba(255, 255, 255, .26);
 }
 
-#loginPage .quick-section {
-    background: var(--card);
-    border: 1px solid var(--border-mid);
-    border-radius: 12px;
+#loginPage .btn-login:active {
+    transform: none;
+    filter: brightness(.94);
 }
 
-#loginPage .quick-section:hover {
-    border-color: var(--primary);
+/* Google tugmasi (mijoz ID bo'lmasa ko'rinadi): qoramtir kartochkaga moslashadi,
+   hover'da qimirlamaydi. Bazaviy uslubda !important bor — shuning uchun bu yerda ham. */
+#loginPage .google-custom-btn {
+    background: rgba(255, 255, 255, .06) !important;
+    border-color: rgba(255, 255, 255, .16) !important;
+    color: #f3eceb !important;
+}
+
+#loginPage .google-custom-btn:hover {
+    transform: none;
+    background: rgba(255, 255, 255, .10) !important;
+    border-color: rgba(255, 138, 69, .6) !important;
 }
 
 /* --- Responsive adjustments for the new blocks --- */
@@ -9147,12 +9711,9 @@ body {
 :focus-visible { outline: 2px solid #ff7a1a; outline-offset: 2px; }
 ::selection { background: rgba(255, 122, 26, .28); }
 
-/* Login sahifa */
+/* Login sahifa — showroom fon rasmi (yagona manba; overlay: #loginPage::before) */
 #loginPage {
-    background:
-        radial-gradient(ellipse 70% 60% at 15% 0%, rgba(255, 122, 26, .30), transparent 60%),
-        radial-gradient(ellipse 60% 60% at 100% 100%, rgba(225, 29, 46, .28), transparent 60%),
-        #0d0607;
+    background: #050505 url('assets/texno-park-n1-exterior.jpg') center center / cover no-repeat;
 }
 .login-logo .logo-icon { background: var(--primary-gradient); box-shadow: 0 12px 28px rgba(225, 29, 46, .45); }
 
@@ -9326,9 +9887,9 @@ body {
 #app:not(.market-mode) .nav-item { border-radius: 12px; transition: background .16s, color .16s; }
 #app:not(.market-mode) .nav-item:hover { background: rgba(255, 90, 60, .12); }
 #app:not(.market-mode) .nav-item.active {
-    background: linear-gradient(135deg, rgba(255, 122, 26, .28), rgba(225, 29, 46, .28));
+    background: linear-gradient(135deg, rgba(255, 122, 26, .3), rgba(225, 29, 46, .3));
     color: #fff;
-    box-shadow: inset 3px 0 0 #ff5a3c;
+    box-shadow: inset 3px 0 0 #ff5a3c, 0 6px 18px rgba(225, 29, 46, .22);
 }
 #app:not(.market-mode) .topbar {
     backdrop-filter: blur(14px);
@@ -10655,4 +11216,2090 @@ body.drawer-open {
         transform: none;
         transition: none;
     }
+}
+
+/* ============================================================
+   SIDEBAR v4 — Texno Park N1 (yagona manba / single source of truth)
+   Desktop: yig'ilgan (.sidebar.collapsed → 84px, faqat ikonlar)
+            ↔ ochilgan (276px, ikon + nom)
+   Mobil: chapdan drawer (min(300px, 84vw)) + qoramtir overlay
+   Layout: --sidebar-w orqali .sidebar/.main/.topbar silliq moslashadi
+   ============================================================ */
+
+/* ---------- 1. Menyu matnlari: silliq fade (ochilish/yopilish) ---------- */
+.sidebar-logo > div:last-child,
+.nav-item > span:not(.nav-badge),
+.user-info {
+    max-width: 200px;
+    opacity: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    transition: max-width .3s cubic-bezier(.4, 0, .2, 1), opacity .2s ease;
+}
+
+/* Sidebar ichki scroll — ingichka brend scrollbar */
+.sidebar-nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 90, 60, .38) transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(255, 90, 60, .32);
+    border-radius: 8px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 90, 60, .55);
+}
+
+/* ---------- 2. Desktop: yig'ilgan holat ---------- */
+@media (min-width: 769px) {
+
+    /* Yig'ilganda layout o'zgaruvchisi — .main/.topbar avtomatik moslashadi */
+    body:has(.sidebar.collapsed) {
+        --sidebar-w: var(--sidebar-collapsed-w);
+    }
+
+    /* ☰ tugma sidebar chekkasida turadi va holat almashganda siljiydi */
+    .menu-toggle {
+        left: calc(var(--sidebar-w) + 16px);
+    }
+
+    /* Topbar kontenti tugma ostida qolmasin */
+    #app:not(.market-mode) .topbar {
+        padding-left: 80px;
+    }
+
+    /* Logo: faqat belgi qoladi */
+    .sidebar.collapsed .sidebar-logo {
+        justify-content: center;
+        gap: 0;
+        padding: 22px 0;
+    }
+
+    .sidebar.collapsed .sidebar-logo > div:last-child {
+        max-width: 0;
+        opacity: 0;
+    }
+
+    /* Bo'lim sarlavhalari: ingichka ajratgich chiziqqa aylanadi */
+    .sidebar.collapsed .nav-section {
+        padding: 10px 22px;
+    }
+
+    .sidebar.collapsed .nav-section-label {
+        display: block;
+        font-size: 0;
+        line-height: 0;
+        height: 1px;
+        letter-spacing: 0;
+        background: linear-gradient(90deg, rgba(255, 90, 60, .38), rgba(255, 90, 60, .05));
+        border-radius: 2px;
+    }
+
+    /* Menyu elementlari: faqat ikon (markazda) */
+    .sidebar.collapsed .nav-item {
+        justify-content: center;
+        gap: 0;
+        padding: 14px 0;
+        min-height: 48px;
+        margin: 3px 14px;
+    }
+
+    .sidebar.collapsed .nav-item > span:not(.nav-badge) {
+        max-width: 0;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .sidebar.collapsed .nav-item i {
+        width: auto;
+        font-size: 19px;
+    }
+
+    /* Badge ikonka burchagidagi kichik nuqtaga aylanadi */
+    .sidebar.collapsed .nav-badge {
+        position: absolute;
+        top: 6px;
+        right: 12px;
+        margin-left: 0;
+        padding: 1px 5px;
+        font-size: 9px;
+        line-height: 1.4;
+        min-width: 16px;
+        text-align: center;
+        box-shadow: 0 0 0 2px rgba(22, 7, 9, .95);
+    }
+
+    /* Foydalanuvchi kartasi: faqat avatar */
+    .sidebar.collapsed .user-card {
+        justify-content: center;
+        gap: 0;
+        padding: 10px;
+    }
+
+    .sidebar.collapsed .user-info {
+        max-width: 0;
+        opacity: 0;
+    }
+
+    .sidebar.collapsed .user-card > i {
+        display: none;
+    }
+
+    /* Submenu yig'ilgan holatda ochilmaydi (JS Xodimlar bosilganda sidebarni ochadi) */
+    .sidebar.collapsed .nav-submenu {
+        display: none !important;
+    }
+}
+
+/* ---------- 3. Mobil drawer overlay ---------- */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 940;
+    background: rgba(8, 2, 4, .62);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .3s ease, visibility .3s ease;
+}
+
+#app.market-mode .sidebar-overlay {
+    display: none !important;
+}
+
+/* Mobil: overlay faqat drawer bilan ishlaydi (base qoidadan keyin — cascade tartibi muhim) */
+@media (max-width: 768px) {
+    .sidebar-overlay {
+        display: block;
+    }
+
+    .sidebar-overlay.visible {
+        opacity: 1;
+        visibility: visible;
+    }
+}
+
+/* ============================================================
+   LOGIN FULL-BLEED — yakuniy kafolat (Texno Park N1)
+   ------------------------------------------------------------
+   Login sahifasi browser oynasining BUTUN enini egallaydi:
+     • tashqi margin / max-width / margin:auto bilan markazlash YO'Q
+     • fon rasmi chap va o'ng chekkagacha boradi (cover)
+     • min-height: 100vh + 100dvh (mobil brauzer fallback)
+     • gorizontal scrollbar yo'q
+   Faqat #loginPage'ga tegishli — boshqa sahifalar o'zgarmaydi.
+   ============================================================ */
+
+/* html/body: browser default margin'i yo'q, to'liq kenglik */
+html,
+body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    min-height: 100%;
+}
+
+body {
+    min-height: 100vh;
+}
+
+/* Sahifa qobig'i (fon ham shu elementda) — full-bleed */
+#loginPage,
+#loginPage.active {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    box-sizing: border-box;
+}
+
+/* Fon rasmi: butun ekran bo'ylab — chekkalarda bo'sh zona qolmaydi */
+#loginPage {
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+}
+
+/* Overlay ham butun sahifani qoplaydi */
+#loginPage::before {
+    inset: 0;
+}
+
+/* Login panel: ustun kengligi panel o'lchamiga mos — chetdagi katta bo'sh
+   zona yo'q, panel esa ekran chetiga yopishib ketmaydi. */
+#loginPage .login-box {
+    width: min(100%, 430px);
+    max-width: 430px;
+    min-width: 0;
+    margin: 0;
+    justify-self: center;
+}
+
+/* Google tugmasi konteyneri: inline "width: 320px" kichik ekranda panelni
+   cho'zib, gorizontal overflow berardi — endi 100% bilan cheklanadi. */
+#googleBtnContainer {
+    max-width: 100%;
+}
+
+/* Grid ustunlarida noto'g'ri tashqi margin bo'lmasin */
+#loginPage.active > * {
+    margin: 0;
+}
+
+/* Mobil (<=480px): 100vw ishlatilmaydi — gorizontal overflow oldi olinadi */
+@media (max-width: 480px) {
+
+    #loginPage,
+    #loginPage.active {
+        padding-inline: 12px;
+        /* Ustun min-content bilan kengaymasin (kichik ekranlarda overflow yo'q) */
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #loginPage .login-box {
+        width: min(100%, 430px);
+        max-width: 430px;
+    }
+}
+
+/* Boshqa sahifalar 100% o'zgarmasligi uchun: tour tooltip strelkasi
+   avvalgi o'lchamida qoladi (global *::after qoidasi ta'sir qilmasin). */
+#tourTip::after,
+#tourTip[data-arrow="top"]::after,
+#tourTip[data-arrow="bottom"]::after {
+    box-sizing: content-box;
+}
+
+/* ============================================================
+   LOGIN PANEL — QIMIRLASHGA QARSHI YAKUNIY QATLAM (Texno Park N1)
+   ------------------------------------------------------------
+   Bu blok barcha eski login qoidalaridan KEYIN turadi va panelning
+   X/Y o'rnini 100% qotiradi:
+     1) Panel tepa cheti — kontent balandligidan mustaqil (markazga yaqin);
+     2) Input / Kirish / Google / CAPTCHA balandliklari qat'iy —
+        focus, type almashish (show/hide) hech narsani siljitmaydi;
+     3) Rol kartalari selected/hover'da o'lchamini o'zgartirmaydi;
+     4) Qisqa ekranlarda karta zich rejimga o'tadi va TO'LIQ sig'adi —
+        shu sababli login sahifasida vertikal scroll umuman yo'q;
+     5) Login ochiq paytda hujjat (body) scroll qilolmaydi — brauzerning
+        "focus → scroll into view" mexanizmi panelni surib ketolmaydi.
+   Login/parol/ADMIN/CASHIER/MANAGER/API mantiqiga TEGILMAGAN.
+   ============================================================ */
+
+/* 1) Panel Y o'rni: vertikal markazga yaqin, ammo QOTIRILGAN tepa chet */
+@media (min-width: 901px) {
+    #loginPage.active > .login-box {
+        align-self: start;
+        justify-self: center;
+        /* (viewport - ichki padding - karta balandligi) / 2 — markazga yaqin */
+        margin-block-start: max(0px, calc((100dvh - 2 * var(--login-pad) - var(--login-card-h)) / 2));
+    }
+
+    /* Chap showcase ustuni panel bilan bir qatorda vertikal markazda qoladi */
+    #loginPage.active > .login-showcase {
+        align-self: center;
+    }
+
+    /* Login ochiq paytda sahifa (viewport) scroll bo'lmaydi */
+    body:has(#loginPage.active) {
+        overflow: hidden;
+    }
+}
+
+/* 2) Boshqaruv elementlari: QAT'IY balandlik (layout o'lchami o'zgarmaydi) */
+#loginPage .form-group input {
+    height: 47px;
+    box-sizing: border-box;
+}
+
+#loginPage .btn-login {
+    height: 52px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Google bloki: async tugma almashganda karta balandligi o'zgarmaydi */
+#loginPage .login-google-block {
+    margin-top: 20px;
+}
+
+#loginPage #googleBtnContainer {
+    height: 44px;
+    min-height: 44px;
+    overflow: hidden;
+}
+
+/* CAPTCHA (Turnstile): joy QAT'IY (106px) — widget paydo bo'lganda ham
+   karta balandligi deterministik o'sadi, panel tepasi qimirlamaydi. */
+#loginPage #turnstileWrap {
+    height: 106px;
+    min-height: 106px;
+    margin: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+/* Agar CAPTCHA bloki ko'rsatilsa (JS inline "display:block" qo'yadi), karta
+   pastga qarab o'sadi — panelning TEPA cheti o'zgarmaydi. Faqat shu holatda,
+   karta viewportdan chiqib ketsa, ICHKI scroll ruxsat etiladi (Kirish tugmasi
+   yetib boriladigan bo'lib qoladi). Oddiy holatda scroll YO'Q. */
+@media (min-width: 901px) {
+    #loginPage:has(#turnstileWrap[style*="block"]) {
+        overflow-y: auto;
+    }
+}
+
+/* Stacked (mobil/planshet) rejimda: CAPTCHA paydo bo'lganda panel tepasi
+   aynan o'sha joyda qoladi — o'sish 106px ga teng, markazlashdagi siljish
+   padding bilan to'liq kompensatsiya qilinadi (karta faqat pastga o'sadi). */
+@media (max-width: 900px) {
+    #loginPage.active:has(#turnstileWrap[style*="block"]) {
+        align-content: center;
+        padding-block-start: calc(var(--login-pad) + 106px);
+    }
+}
+
+/* ============================================================
+   3) QISQA EKRANLAR: karta zich rejimga o'tadi (to'liq sig'adi).
+   Shu tufayli sahifa viewportdan oshmaydi va scroll paydo bo'lmaydi.
+   ============================================================ */
+@media (max-width: 900px), (max-height: 860px) {
+    #loginPage {
+        --login-card-h: 634px;
+    }
+
+    #loginPage .login-box {
+        padding: 20px 26px;
+    }
+
+    #loginPage .login-logo {
+        margin-bottom: 14px;
+    }
+
+    #loginPage .login-logo .logo-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+        margin-bottom: 10px;
+    }
+
+    #loginPage .login-logo h1 {
+        font-size: 19px;
+    }
+
+    #loginPage .login-logo p {
+        font-size: 12px;
+    }
+
+    #loginPage .form-group {
+        margin-bottom: 12px;
+    }
+
+    #loginPage .form-group label {
+        margin-bottom: 6px;
+    }
+
+    #loginPage .form-group input {
+        height: 44px;
+    }
+
+    #loginPage .btn-login {
+        height: 46px;
+    }
+
+    #loginPage .login-google-block {
+        margin-top: 12px;
+    }
+}
+
+/* ============================================================
+   4) JUDA QISQA EKRANLAR (masalan 720/768 balandlikdagi oynalar):
+   yanada zich rejim — panel baribir to'liq ko'rinadi.
+   ============================================================ */
+@media (max-height: 699px) {
+    #loginPage {
+        --login-card-h: 560px;
+        --login-pad: 10px;
+    }
+
+    #loginPage .login-box {
+        padding: 16px 20px;
+    }
+
+    #loginPage .login-logo {
+        margin-bottom: 10px;
+    }
+
+    #loginPage .login-logo .logo-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        margin-bottom: 8px;
+        font-size: 20px;
+    }
+
+    #loginPage .login-logo h1 {
+        font-size: 17px;
+    }
+
+    #loginPage .form-group {
+        margin-bottom: 10px;
+    }
+
+    #loginPage .form-group label {
+        margin-bottom: 4px;
+        font-size: 10px;
+    }
+
+    #loginPage .form-group input {
+        height: 42px;
+    }
+
+    #loginPage .btn-login {
+        height: 44px;
+    }
+
+    #loginPage .login-google-block {
+        margin-top: 10px;
+    }
+}
+
+/* 5) MOBIL/TABLET: stacked rejimda qisqa ekranlarda marketing banneri
+   yashiriladi — login panel bir ekranga to'liq sig'adi va markazda turadi
+   (mobilda "scroll sabab sakrash" bo'lmasligi uchun). */
+@media (max-width: 900px) and (max-height: 870px) {
+    #loginPage .login-showcase {
+        display: none;
+    }
+}
+
+/* Mobile QA final pass: compact admin controls without changing desktop. */
+@media (max-width: 768px) {
+    #app:not(.market-mode) .main { width: 100%; padding-top: calc(var(--hdr-h) + 16px); }
+    #app:not(.market-mode) .page { width: 100%; max-width: none; margin: 0; padding: 16px; }
+    #app:not(.market-mode) .panel-header { align-items: flex-start; flex-wrap: wrap; gap: 10px; padding: 16px; }
+    #app:not(.market-mode) .panel-header > :last-child:not(:only-child),
+    #app:not(.market-mode) .panel-header input,
+    #app:not(.market-mode) .panel-header select { max-width: 100%; }
+    #app:not(.market-mode) .form-control,
+    #app:not(.market-mode) input:not([type="checkbox"]):not([type="radio"]),
+    #app:not(.market-mode) select,
+    #app:not(.market-mode) textarea { max-width: 100%; }
+    .modal-overlay { align-items: flex-end; padding: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+    .modal { width: min(100%, 680px) !important; max-height: min(86dvh, 760px); margin: 0; overflow: auto; -webkit-overflow-scrolling: touch; }
+    .modal-header { position: sticky; top: 0; z-index: 1; background: var(--card); }
+    .table-wrap { max-width: 100%; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 480px) {
+    #app:not(.market-mode) .page { padding: 12px; }
+    #app:not(.market-mode) .employee-login-btn { width: var(--hdr-ctrl); min-width: var(--hdr-ctrl); padding: 0; justify-content: center; }
+    #app:not(.market-mode) .employee-login-btn span,
+    #app:not(.market-mode) .employee-login-btn .fa-chevron-down { display: none; }
+    #app:not(.market-mode) .panel-body { padding: 16px; }
+    #app:not(.market-mode) .panel-header > div,
+    #app:not(.market-mode) .panel-header input,
+    #app:not(.market-mode) .panel-header select { width: 100% !important; min-width: 0 !important; }
+}
+
+/* Shared glyph alignment and mobile-safe notification sizing. */
+.category-icon,
+.category-placeholder-icon {
+    display: inline-block;
+    width: 1.2em;
+    line-height: 1;
+    text-align: center;
+    vertical-align: -0.125em;
+    color: var(--primary);
+}
+
+.modal:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+    #notifContainer {
+        right: 12px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        left: 12px;
+    }
+
+    .notif {
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+    }
+}
+
+/* ============================================================
+   MOBILE REBUILD — PROFESSIONAL UX (≤768px)
+   Mobile = alohida layout, shrunk desktop EMAS.
+   Toza, native app ko'rinishi. Barcha 17 sahifa uchun.
+   ============================================================ */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-w: 0;
+    --hdr-h: 58px;
+    --hdr-pad-x: 12px;
+    --hdr-ctrl: 42px;
+  }
+
+  html, body, #app, #loginPage {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  body, .main, .page, .panel, .card, .stat-grid, .grid-2, .grid-3 {
+    max-width: 100% !important;
+  }
+
+  .topbar {
+    left: 0 !important;
+    right: 0 !important;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: env(safe-area-inset-top, 0px) 12px 8px 12px !important;
+    transition: none;
+  }
+  .topbar .page-title {
+    padding-left: 0;
+    font-size: 16px;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .topbar .page-title small {
+    font-size: 11px;
+    white-space: normal;
+    line-height: 1.3;
+  }
+  .topbar-search {
+    width: 100% !important;
+    order: 10;
+    flex: 0 0 100% !important;
+    margin-top: 4px;
+  }
+  .topbar-actions {
+    gap: 4px;
+  }
+  .topbar-actions .icon-btn:not(.btn-icon),
+  .topbar-actions > .icon-btn:not(:has(#themeIcon)):not(:has(.fa-bell)),
+  .topbar-clock,
+  .branch-switcher,
+  .hotkeys-bar,
+  .icon-btn:has(.fa-route),
+  .icon-btn:has(.fa-triangle-exclamation),
+  .icon-btn:has(.fa-print) {
+    display: none !important;
+  }
+  .icon-btn.btn-icon,
+  .icon-btn:has(.fa-bell),
+  .employee-dropdown-container {
+    display: inline-flex !important;
+  }
+
+  .main {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: calc(var(--hdr-h) + 20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+  .page {
+    display: none;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 12px 14px calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0;
+  }
+  .page.active { display: block; }
+  .page > .panel,
+  .page > .grid-2,
+  .page > .grid-3,
+  .page > .stat-grid,
+  .page > .card {
+    margin-bottom: 14px;
+  }
+
+  .grid-2, .grid-3, .grid-4,
+  #page-dashboard .grid-2,
+  #page-customers .grid-2,
+  #page-branches .grid-2,
+  #page-warehouse .grid-2,
+  #page-reports .grid-2,
+  #page-cashflow .grid-2,
+  #page-contracts .grid-2,
+  #page-employees .grid-2 {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+    width: 100% !important;
+  }
+
+  .stat-grid,
+  #admin-dashboard .stat-grid,
+  #cashier-dashboard .stat-grid,
+  #manager-dashboard .stat-grid,
+  #page-customers .stat-grid,
+  #page-warehouse .stat-grid,
+  #page-branches .stat-grid,
+  #page-cashflow .stat-grid,
+  #page-categories .stat-grid,
+  #page-discounts .stat-grid,
+  #page-assistant .stat-grid,
+  #page-settings .stat-grid,
+  #page-contracts .stat-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px;
+    width: 100% !important;
+  }
+  .stat-card {
+    padding: 14px 12px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .stat-num {
+    font-size: clamp(18px, 4.6vw, 24px);
+    word-break: break-word;
+    line-height: 1.15;
+    white-space: normal;
+    font-weight: 900;
+  }
+  .stat-label {
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .stat-change {
+    font-size: 10px;
+    margin-top: 4px;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  h1 { font-size: 20px; line-height: 1.25; }
+  h2 { font-size: 18px; line-height: 1.3; }
+  h3 { font-size: 16px; line-height: 1.35; }
+  h4 { font-size: 14px; }
+  body { font-size: 14px; line-height: 1.55; }
+  small { font-size: 11px; }
+  p, span, div, li, td, th, label, button, input, select, textarea {
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  img, * img, .product-card-img, .cart-item-img, .uzum-item-img {
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+    vertical-align: middle;
+  }
+
+  button, .btn, [role="button"], .icon-btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+    touch-action: manipulation;
+  }
+  .btn-sm { min-height: 40px; padding: 8px 12px; font-size: 13px; }
+  .btn-group, .actions, .button-row, .action-buttons {
+    gap: 10px;
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .action-buttons button { flex: 1; min-width: 0; }
+
+  .sidebar {
+    width: min(310px, 88vw) !important;
+    transform: translateX(-100%);
+    z-index: 950 !important;
+    border-radius: 0 20px 20px 0;
+    box-shadow: 14px 0 44px rgba(0,0,0,.55) !important;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-overlay.visible {
+    display: block;
+    background: rgba(0,0,0,.6);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: 900 !important;
+  }
+  .sidebar .nav-item {
+    min-height: 48px;
+    touch-action: manipulation;
+    margin: 3px 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  .sidebar-footer .user-card {
+    min-height: 52px;
+    padding: 12px;
+  }
+  .nav-section { padding: 10px 16px 6px; }
+
+  .menu-toggle {
+    display: none !important;
+  }
+
+  #app:not(.market-mode) .topbar .page-title {
+    padding-left: 0;
+  }
+
+  .admin-bottom-nav #bn-menu {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .menu-toggle {
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    left: 8px;
+    z-index: 960;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    font-size: 18px;
+  }
+
+  #loginPage.active {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    padding: 12px;
+    height: auto !important;
+    min-height: 100dvh;
+    overflow-y: auto;
+    align-content: start;
+  }
+  #loginPage { overflow-y: auto; }
+  .login-showcase {
+    padding: 14px 10px;
+  }
+  .login-showcase-copy { padding: 0; }
+  .login-showcase-copy h2 {
+    font-size: 20px;
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+  .login-showcase-copy p { font-size: 12px; }
+  .login-showcase-points {
+    gap: 6px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 10px;
+  }
+  .login-showcase-points span {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+  .login-box {
+    width: 100%;
+    max-width: 100%;
+    padding: 20px 18px;
+    gap: 14px;
+  }
+  .login-logo { gap: 10px; margin-bottom: 10px; }
+  .login-logo .logo-icon { width: 44px; height: 44px; font-size: 18px; border-radius: 12px; }
+  .login-logo h1 { font-size: 22px; }
+  .login-logo p { font-size: 12px; }
+  .form-group label { font-size: 12px; margin-bottom: 6px; }
+  .form-group input {
+    min-height: 50px;
+    padding-left: 44px !important;
+    padding-right: 44px !important;
+    font-size: 14px;
+    border-radius: 12px;
+  }
+  /* Telefon maydoni: +998 prefiksi bilan — bazaviy 44px'dan kattaroq chap padding */
+  #loginPage .form-group .phone-field input {
+    padding-left: 92px !important;
+  }
+  .form-group .input-icon { left: 14px; font-size: 14px; }
+  .pass-toggle { right: 8px; min-width: 38px; min-height: 38px; border-radius: 10px; }
+  .btn-login {
+    min-height: 52px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 800;
+  }
+  #googleBtnContainer { width: 100%; }
+  #turnstileWrap { width: 100% !important; }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  button:active, .nav-item:active, .icon-btn:active, .stat-card:active,
+  .bn-item:active, .product-card:active, .branch-card:active {
+    transform: scale(.97);
+    transition: transform .1s ease;
+  }
+
+  /* ============== PANEL + TABLE→CARDS ============== */
+  .panel {
+    border-radius: 16px;
+    overflow: hidden;
+    width: 100% !important;
+  }
+  .panel-header {
+    padding: 12px 14px;
+    min-height: 48px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .panel-header h3 { font-size: 14px; font-weight: 800; }
+  .panel-header h3 i { font-size: 14px; }
+  .panel-header .btn, .panel-header button {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
+  .panel-body { padding: 12px 14px; }
+  .panel-body:has(> .table-wrap:only-child),
+  .panel-body:has(table:only-child) { padding: 0 !important; }
+  .panel .table-wrap { padding: 0; }
+
+  .table-wrap,
+  #page-products .table-wrap, #page-products table,
+  #page-warehouse .table-wrap, #page-warehouse table,
+  #page-customers .table-wrap, #page-customers table,
+  #page-branches .table-wrap, #page-branches table,
+  #page-cashflow .table-wrap, #page-cashflow table,
+  #page-employees .table-wrap, #page-employees table,
+  #page-contracts .table-wrap, #page-contracts table,
+  #page-categories .table-wrap, #page-categories table,
+  #page-discounts .table-wrap, #page-discounts table,
+  #page-sms .table-wrap, #page-sms table,
+  #page-logs .table-wrap, #page-logs table,
+  #page-reports .table-wrap, #page-reports table,
+  #page-dashboard .table-wrap, #page-dashboard table,
+  #page-settings .table-wrap, #page-settings table,
+  #page-salary .table-wrap, #page-salary table,
+  table, .table {
+    overflow-x: visible !important;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    width: 100% !important;
+  }
+  .table-wrap thead, table thead { display: none !important; }
+  .table-wrap table, table, .table {
+    border-collapse: separate;
+    border-spacing: 0 12px;
+    background: transparent;
+    display: block;
+    width: 100%;
+  }
+  .table-wrap tbody, table tbody, .table tbody {
+    display: block;
+    width: 100%;
+  }
+  .table-wrap tbody tr, table tbody tr, .table tbody tr,
+  .table-wrap tfoot tr, table tfoot tr {
+    display: block !important;
+    border: 1px solid var(--border);
+    background: var(--card);
+    border-radius: 14px;
+    padding: 12px 14px !important;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+    page-break-inside: avoid;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  .table-wrap tbody tr:hover, table tbody tr:hover,
+  .table tbody tr:hover { background: var(--card-hover); }
+  .table-wrap tbody td, table tbody td, .table tbody td,
+  .table-wrap tfoot td, table tfoot td {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    text-align: right !important;
+    width: 100% !important;
+    padding: 5px 0 !important;
+    border: none !important;
+    border-bottom: 1px dashed rgba(148,163,184,.12) !important;
+    min-height: 28px;
+    font-size: 13px;
+    gap: 10px;
+    white-space: normal;
+    word-break: break-word;
+    box-sizing: border-box;
+  }
+  .table-wrap tbody td:last-child, table tbody td:last-child, .table tbody td:last-child,
+  .table-wrap tfoot td:last-child, table tfoot td:last-child { border-bottom: none !important; }
+  .table-wrap tbody td::before, table tbody td::before, .table tbody td::before,
+  .table-wrap tfoot td::before, table tfoot td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-align: left;
+    width: 42%;
+    max-width: 42%;
+    padding-right: 8px;
+    align-self: center;
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: normal;
+    word-break: break-word;
+  }
+  td:empty::before, td[data-label=""]::before, td:not([data-label])::before { content: ""; display: none; }
+  td:empty, td[data-label=""]:not(td:not([data-label])) { display: none !important; }
+  .table-wrap tbody td .edit-btn, .table-wrap tbody td .delete-btn,
+  table tbody td .edit-btn, table tbody td .delete-btn,
+  .table-wrap tbody td .action-btn, table tbody td .action-btn,
+  .table-wrap tbody td button, table tbody td button {
+    margin-left: auto;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 36px;
+    min-width: 36px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
+  .table-wrap tbody td .actions, table tbody td .actions {
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: 4px;
+  }
+  .table-wrap tbody td[colspan] { justify-content: center; text-align: center; font-style: italic; color: var(--muted); padding: 16px 0 !important; }
+  .table-wrap tbody td[colspan]::before { display: none; content: ""; }
+
+  /* ============== CHARTS ============== */
+  .chart-wrap, .chart-container, .chart-box {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 240px;
+    aspect-ratio: 16 / 10;
+    position: relative;
+    padding: 4px 0;
+  }
+  .chart-wrap canvas, .chart-container canvas, .chart-box canvas {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100%;
+  }
+
+  /* ============== FORMS ============== */
+  .form-group { margin-bottom: 14px; }
+  .form-group label { font-size: 12px; margin-bottom: 6px; font-weight: 600; }
+  .form-group input, .form-group select, .form-group textarea,
+  input[type="text"], input[type="number"], input[type="email"], input[type="password"], input[type="tel"], input[type="date"],
+  select, textarea {
+    min-height: 48px;
+    padding: 10px 14px;
+    font-size: 14px;
+    border-radius: 12px;
+    width: 100% !important;
+    box-sizing: border-box;
+    touch-action: manipulation;
+  }
+  textarea { min-height: 96px; padding: 12px 14px; line-height: 1.5; }
+  .form-grid, .grid-form, form .grid-2, form .grid-3, form .grid-4,
+  #employeeForm .grid-2, .form-row, [class*="form-grid"] {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    min-height: 22px;
+    min-width: 22px;
+    width: 22px;
+    height: 22px;
+    transform: none;
+  }
+  .form-check, .checkbox-row, .radio-row {
+    min-height: 48px;
+    padding: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 40px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 16px;
+  }
+
+  /* ============== MODALS → BOTTOM SHEET ============== */
+  .modal, modal, [class*="modal"]:not(.sidebar-overlay):not(.market-drawer-overlay),
+  .payment-modal, .product-modal, .customer-modal, .employee-modal, .branch-modal,
+  #paymentModal, #productModal, #customerModal, #employeeModal, #branchModal,
+  #receiptModal, #reportModal, #contractModal, #discountModal, #categoryModal,
+  #profileModal, #notifModal, [role="dialog"],
+  [id$="Modal"] {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 92vh !important;
+    margin: 0 !important;
+    border-radius: 22px 22px 0 0 !important;
+    padding: 0 !important;
+    z-index: 9999 !important;
+    transform: none !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    animation: mSlideUp .28s cubic-bezier(.22,1,.36,1) !important;
+    box-shadow: 0 -20px 60px rgba(0,0,0,.6) !important;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: 0;
+  }
+  @keyframes mSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal .modal-header, modal .modal-header, [class*="modal"]:not(.sidebar-overlay) .modal-header,
+  [id$="Modal"] .modal-header, [role="dialog"] .modal-header,
+  .payment-modal .modal-header, .product-modal .modal-header {
+    padding: 14px 16px;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  .modal .modal-body, modal .modal-body, [class*="modal"]:not(.sidebar-overlay) .modal-body,
+  [id$="Modal"] .modal-body, [role="dialog"] .modal-body {
+    max-height: calc(92vh - 120px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 16px;
+    flex: 1 1 auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .modal .close-btn, modal .close-btn, [class*="modal"]:not(.sidebar-overlay) .close-btn,
+  [id$="Modal"] .close-btn, [role="dialog"] .close-btn, button.close,
+  .modal-header button, .modal-header .close, .modal-header .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 18px;
+    border-radius: 12px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal .modal-footer, modal .modal-footer, [class*="modal"]:not(.sidebar-overlay) .modal-footer,
+  [id$="Modal"] .modal-footer, [role="dialog"] .modal-footer {
+    position: sticky;
+    bottom: 0;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: stretch;
+    flex: 0 0 auto;
+  }
+  .modal .modal-footer button, modal .modal-footer button,
+  [class*="modal"]:not(.sidebar-overlay) .modal-footer button,
+  [id$="Modal"] .modal-footer button, [role="dialog"] .modal-footer button {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    min-height: 48px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .modal .modal-footer button:first-child:last-child { flex: 1 1 100%; }
+  .modal-backdrop, .modal-bg, .overlay:not(.sidebar-overlay):not(.market-drawer-overlay),
+  [class*="backdrop"] {
+    background: rgba(0,0,0,.65);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 9998;
+  }
+
+  /* ============== DROPDOWNS → BOTTOM SHEET ============== */
+  .dropdown-menu, .employee-dropdown-menu, [class*="-dropdown-menu"] {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 22px 22px 0 0 !important;
+    margin: 0 !important;
+    padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    max-height: 75vh !important;
+    overflow-y: auto;
+    z-index: 9998 !important;
+    box-shadow: 0 -18px 44px rgba(0,0,0,.5) !important;
+    animation: mSlideUp .25s ease !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border);
+    border-bottom: 0;
+  }
+  .dropdown-menu li, .dropdown-menu a, .dropdown-menu button,
+  .employee-dropdown-menu li, .employee-dropdown-menu a, .employee-dropdown-menu button,
+  [class*="-dropdown-menu"] li, [class*="-dropdown-menu"] a, [class*="-dropdown-menu"] button,
+  .dropdown-item, [class*="-dropdown-item"] {
+    min-height: 48px;
+    padding: 12px 16px;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+  .employee-dropdown-item {
+    min-height: 48px;
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+    margin: 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ============== FILTERS / TOOLBARS / CHIPS ============== */
+  .filter-bar, .filter-row, .toolbar, [class*="filter"], .page-toolbar, .toolbar-row,
+  .page-header-actions, .action-row, [class*="-toolbar"]:not(.hotkeys-bar) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100% !important;
+    min-width: 0;
+    padding: 0 0 12px;
+    align-items: stretch;
+  }
+  .page-toolbar > *, .toolbar > *, .action-row > *, .filter-bar > * {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+  .page-toolbar input, .toolbar input, .toolbar select, .page-toolbar select,
+  .toolbar button, .page-toolbar button, .filter-bar button, .filter-bar select, .filter-bar input,
+  [class*="filter"] button, [class*="filter"] select, [class*="filter"] input {
+    min-height: 44px;
+    width: 100% !important;
+    font-size: 13px;
+  }
+  .filter-chip, [class*="chip"], .chips-row button, .chips button {
+    padding: 8px 14px;
+    min-height: 38px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    flex: 0 0 auto;
+  }
+  .chips-row, .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ============== PAYMENT UI ============== */
+  .payment-methods, .pay-types, #paymentTypes, .payment-options, #paymentMethods {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+  .payment-methods button, .payment-methods .payment-btn,
+  .pay-types button, .pay-types .payment-btn,
+  #paymentTypes button, #paymentTypes .payment-btn,
+  .payment-options button, .payment-options .payment-btn,
+  #paymentMethods button, #paymentMethods .payment-btn,
+  [class*="payment-method"] button, .pay-type-btn {
+    min-height: 72px !important;
+    padding: 12px !important;
+    border-radius: 16px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  .payment-methods button i, .payment-methods .payment-btn i,
+  .pay-types button i, .pay-types .payment-btn i,
+  #paymentTypes button i, #paymentTypes .payment-btn i,
+  .payment-options button i, .payment-options .payment-btn i,
+  #paymentMethods button i, #paymentMethods .payment-btn i {
+    font-size: 24px !important;
+    line-height: 1;
+  }
+  .payment-amount, .total-amount, #paymentAmount, .amount-display, .pay-total {
+    font-size: clamp(22px, 6vw, 32px);
+    font-weight: 900;
+    text-align: center;
+    padding: 12px 14px;
+    line-height: 1.1;
+  }
+
+  /* ============== SCROLL PERF ============== */
+  .table-wrap tbody, .sidebar-nav, .modal-body, .cart-items,
+  .shop-cat-sidebar .cat-sidebar-list, .cat-tabs, .admin-bottom-nav {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* ============== POS / KASSA SAHIFASI ============== */
+  #page-pos { padding: 12px 12px calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
+  #page-pos .pos-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    width: 100% !important;
+    gap: 14px !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  #page-pos .pos-left {
+    order: 1;
+    width: 100% !important;
+    min-width: 0;
+    gap: 10px;
+  }
+  #page-pos .pos-search input, #posSearch, #page-pos .pos-search input[type="text"] {
+    width: 100% !important;
+    min-height: 52px !important;
+    padding: 0 46px 0 46px !important;
+    font-size: 15px;
+    border-radius: 14px;
+  }
+  #page-pos .pos-search i.search-icon, #page-pos .pos-search .fa-search {
+    left: 16px; font-size: 16px;
+  }
+  #page-pos .pos-search .clear-btn {
+    right: 12px; min-width: 36px; min-height: 36px; font-size: 16px;
+  }
+  #page-pos .cat-tabs {
+    gap: 8px;
+    padding: 2px 0 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    width: 100% !important;
+    min-width: 0;
+    display: flex;
+    flex-wrap: nowrap;
+  }
+  #page-pos .cat-tabs::-webkit-scrollbar { display: none; }
+  #page-pos .cat-tabs .cat-tab, #page-pos .cat-tab, [class*="cat-tab"], .category-chip {
+    flex: 0 0 auto;
+    min-width: 72px;
+    min-height: 44px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    touch-action: manipulation;
+    white-space: nowrap;
+  }
+  #page-pos .product-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px;
+    width: 100% !important;
+  }
+  #page-pos .product-card, #page-pos .pos-product-card, .product-card {
+    width: 100%;
+    min-height: 0;
+    aspect-ratio: auto;
+    border-radius: 14px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  #page-pos .product-card .product-card-img, .product-card-img {
+    width: 100% !important;
+    aspect-ratio: 1 / 1;
+    height: auto !important;
+    max-height: 140px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: var(--surface);
+    display: block;
+    margin: 0 auto;
+  }
+  .product-card-info {
+    padding: 2px 2px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 0;
+  }
+  .product-card-name {
+    font-size: 12px;
+    line-height: 1.3;
+    font-weight: 600;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-word;
+    min-height: 30px;
+  }
+  .product-card-price {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-top: 2px;
+  }
+  .product-card-stock {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.2;
+  }
+  .product-card-action, .product-card button[onclick*="addToCart"], .product-card .add-btn {
+    min-height: 40px;
+    width: 100%;
+    margin-top: 6px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  #page-pos .pos-right {
+    order: 2;
+    position: static !important;
+    top: auto !important;
+    width: 100% !important;
+    min-width: 0;
+    max-height: none !important;
+    height: auto !important;
+    display: flex;
+    flex-direction: column;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+  }
+  #page-pos .pos-right::before {
+    content: "";
+    display: block;
+    height: 4px;
+    width: 36px;
+    background: var(--border-mid);
+    border-radius: 4px;
+    margin: 10px auto 0;
+    opacity: .5;
+    flex-shrink: 0;
+  }
+  #page-pos .cart-header, .pos-cart-header {
+    padding: 10px 14px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 52px;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #page-pos .cart-header h3, .cart-title { font-size: 15px; font-weight: 800; }
+  #page-pos .cart-header .cart-count, .cart-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: var(--primary-subtle);
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 12px;
+    min-height: 26px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .cart-clear-btn, .cart-empty-btn {
+    min-height: 36px;
+    min-width: 36px;
+    padding: 0 12px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
+  #page-pos .cart-items {
+    max-height: 36vh;
+    min-height: 120px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 6px 8px;
+    flex: 1 1 auto;
+  }
+  #page-pos .cart-item, .cart-items [class*="cart-row"], .cart-row, .cart-line {
+    display: grid;
+    grid-template-columns: 48px 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 4px 10px;
+    padding: 10px 6px;
+    border-radius: 12px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  #page-pos .cart-item:last-child, .cart-row:last-child { border-bottom: none; }
+  #page-pos .cart-item-img, .cart-item-img {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  #page-pos .cart-item-info, .cart-item-info {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .cart-item-name {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--text);
+    display: block;
+    white-space: normal;
+    word-break: break-word;
+    overflow: hidden;
+    min-height: 30px;
+  }
+  .cart-item-price {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 12px;
+    color: var(--muted);
+    align-self: center;
+  }
+  #page-pos .cart-item-remove, .cart-item-remove, .cart-remove-btn, .cart-item-delete {
+    grid-column: 3;
+    grid-row: 1;
+    min-width: 34px;
+    min-height: 34px;
+    border-radius: 10px;
+    font-size: 13px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #page-pos .cart-qty-control, .qty-control, .cart-item-qty, .pos-qty {
+    grid-column: 3;
+    grid-row: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 2px;
+    min-height: 34px;
+  }
+  .cart-qty-control button, .qty-control button, .pos-qty button {
+    min-width: 30px;
+    min-height: 30px;
+    border-radius: 8px;
+    font-size: 14px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cart-qty-value, .qty-value {
+    min-width: 26px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 0 4px;
+  }
+  #page-pos .cart-summary, .pos-summary, .cart-total-section {
+    order: 3;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .summary-row, .cart-summary-row, .subtotal-row, .tax-row, .discount-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    padding: 2px 0;
+    gap: 10px;
+  }
+  .summary-row.total, .cart-total-grand, .grand-total-row {
+    padding: 10px 12px;
+    margin: 4px 0 0;
+    border-radius: 12px;
+    background: var(--primary-subtle);
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--primary);
+    min-height: 48px;
+  }
+  .summary-row.total .total-value, .cart-total-grand .total-val, .grand-total-value {
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--primary);
+  }
+  #page-pos .checkout-btn, .pay-btn, #payNowBtn, .btn-checkout, button[onclick*="openPayment"],
+  #page-pos .pay-finalize-btn, #checkoutButton {
+    order: 4;
+    min-height: 60px !important;
+    margin: 0 14px 14px;
+    width: calc(100% - 28px);
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-shadow: 0 10px 28px var(--primary-glow);
+    touch-action: manipulation;
+    padding: 0 20px;
+    flex-shrink: 0;
+  }
+  #page-pos .checkout-btn i, .pay-btn i, #payNowBtn i { font-size: 18px; }
+  #page-pos .checkout-btn:disabled, .pay-btn:disabled { opacity: .5; }
+
+  /* ============== CUSTOMER SHOP / DO'KON ============== */
+  #page-shop { padding: 10px 12px calc(96px + env(safe-area-inset-bottom)) !important; }
+  #page-shop .market-shell { width: 100% !important; max-width: 100%; min-width: 0; }
+  #page-shop .market-top {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    padding: env(safe-area-inset-top, 0px) 12px 10px !important;
+    height: auto !important;
+    min-height: calc(var(--hdr-h) + env(safe-area-inset-top, 0px));
+  }
+  #page-shop .market-brand { min-width: 0; flex-shrink: 1; }
+  #page-shop .market-brand strong { font-size: 15px; }
+  #page-shop .market-brand span { font-size: 10px; }
+  #page-shop .market-logo {
+    width: 36px; height: 36px; font-size: 16px; border-radius: 11px;
+  }
+  #page-shop .market-search {
+    order: 10;
+    flex: 0 0 100%;
+    width: 100% !important;
+    min-height: 48px;
+    margin-top: 4px;
+  }
+  #page-shop .market-top-actions { gap: 6px; }
+  #page-shop .market-icon-btn {
+    min-width: 40px; min-height: 40px; border-radius: 12px; font-size: 16px;
+  }
+  #page-shop .market-layout {
+    display: flex !important;
+    flex-direction: column;
+    grid-template-columns: none !important;
+    width: 100% !important;
+    gap: 14px;
+    min-width: 0;
+  }
+  #page-shop .uzum-grid, .product-grid#uzumGrid, #shopProducts, #shop-product-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px;
+    width: 100% !important;
+  }
+  #page-shop .uzum-item, #shopProducts .product-card, .shop-product-card {
+    padding: 8px;
+    border-radius: 14px;
+    min-height: 0;
+    width: 100%;
+  }
+  #page-shop .uzum-item-img, .shop-product-img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+    max-height: 140px;
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  #page-shop .uzum-item-name {
+    font-size: 12px; line-height: 1.3; min-height: 30px;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    display: -webkit-box; overflow: hidden;
+  }
+  #page-shop .uzum-item-price { font-size: 13px; font-weight: 800; color: var(--primary); }
+  #page-shop .uzum-buy-btn, .shop-product-card .add-btn, #shopProducts button[onclick*="add"] {
+    min-height: 40px; border-radius: 10px; font-size: 12px; font-weight: 700;
+    margin-top: 6px; width: 100%;
+  }
+  #page-shop .shop-cart-panel, #page-shop .market-cart, #page-shop .shopCartPanel,
+  #page-shop #shopCart, #page-shop .market-checkout {
+    width: 100% !important;
+    max-width: 100% !important;
+    position: static !important;
+    top: auto !important;
+    max-height: none !important;
+  }
+
+  /* ============== LIST + DATA PAGES ============== */
+  #page-products, #page-categories, #page-warehouse, #page-customers, #page-employees,
+  #page-branches, #page-cashflow, #page-reports, #page-contracts, #page-discounts,
+  #page-sms, #page-logs, #page-assistant, #page-settings,
+  #page-salary, #page-shop {
+    padding: 12px 14px calc(96px + env(safe-area-inset-bottom)) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
+  }
+  #branchesContainer {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    gap: 12px;
+  }
+  #page-branches .branch-card, .branch-card {
+    padding: 14px;
+    border-radius: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+  #page-settings .settings-sections, #page-settings .settings-grid, .settings-wrap,
+  .settings-container, #settingsWrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100% !important;
+  }
+  #page-settings .settings-section, .settings-section {
+    padding: 14px;
+    border-radius: 16px;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  #page-assistant .chat-box, #page-assistant .ai-chat, .chat-container, #aiChat {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 50vh;
+    padding: 12px !important;
+    box-sizing: border-box;
+  }
+  .chat-input-row, .ai-input, #aiInputRow {
+    min-height: 52px;
+    width: 100% !important;
+  }
+  .chat-input-row input, .ai-input input, #aiInput {
+    min-height: 48px;
+    flex: 1;
+  }
+  .chat-input-row button, .ai-input button, #aiSendBtn {
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 12px;
+  }
+  .chat-message {
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: normal;
+    word-break: break-word;
+    max-width: 92%;
+    border-radius: 14px;
+    margin: 4px 0;
+  }
+
+  /* ============== PRODUCT DETAIL ============== */
+  .product-detail, .detail-view, .product-detail-view, #productDetailView,
+  #productModal .product-detail-modal, #editProductModal .edit-product-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px;
+    border-radius: 16px;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  .product-detail-main, .product-detail-grid, .product-detail-layout,
+  .detail-main-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    grid-template-columns: none !important;
+  }
+  .product-detail-img-wrap, .detail-image, .product-image-large {
+    width: 100% !important;
+    aspect-ratio: 1 / 1;
+    max-height: 300px;
+    border-radius: 16px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .product-detail-img-wrap img, .detail-image img, .product-image-large img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .product-detail-info, .detail-info-wrap {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .product-detail-info h1, .detail-title, #productDetailTitle {
+    font-size: 20px;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .detail-price, .product-detail-price {
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--primary);
+  }
+  .detail-stock-row, .product-stock-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: 12px;
+    align-items: center;
+  }
+  .detail-actions, .product-detail-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .detail-actions button, .product-detail-actions button {
+    width: 100% !important;
+    min-height: 52px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .detail-meta-section, .detail-description, .detail-section,
+  .product-description, .product-specs, .product-meta {
+    padding: 12px 14px;
+    background: var(--card);
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.6;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  .customer-detail, .employee-profile, .contract-detail-card, .branch-detail-card {
+    grid-template-columns: 1fr !important;
+    padding: 14px;
+    border-radius: 16px;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  #page-sms .sms-campaign-list, .log-list, .log-table, .contract-list, .campaign-list {
+    width: 100%;
+  }
+  .log-row, .log-list .log-item, .sms-campaign-item, .campaign-item, .contract-item {
+    display: block;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    margin-bottom: 10px;
+    background: var(--card);
+    white-space: normal;
+    word-break: break-word;
+    box-sizing: border-box;
+  }
+
+  /* ============== ADMIN BOTTOM NAVIGATION ============== */
+  .admin-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;
+    height: calc(66px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--hdr-bg) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+    border-top: 1px solid var(--hdr-border);
+    box-shadow: 0 -8px 28px rgba(0,0,0,.28);
+    color: var(--hdr-fg);
+    transition: background .2s ease, border-color .2s ease;
+  }
+  body:has(#app.market-mode) .admin-bottom-nav,
+  body:has(#loginPage.active) .admin-bottom-nav { display: none !important; }
+  .admin-bottom-nav .bn-item {
+    flex: 1;
+    min-width: 0;
+    min-height: 66px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--hdr-fg-muted);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 6px 4px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .2s ease, transform .15s ease;
+    position: relative;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .admin-bottom-nav .bn-item i {
+    font-size: 20px;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+  .admin-bottom-nav .bn-item.active { color: var(--primary-light); }
+  .admin-bottom-nav .bn-item.active::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 3px;
+    background: var(--primary);
+    border-radius: 0 0 4px 4px;
+  }
+  .bn-badge {
+    position: absolute;
+    top: 6px;
+    right: calc(50% - 24px);
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  }
+}
+
+/* ============================================================
+   MOBILE REBUILD — KICHIKROQ EKRANLAR (≤480px)
+   Kichik ekranlarda yanada ixchamlashtirish.
+   ============================================================ */
+@media (max-width: 480px) {
+  :root {
+    --hdr-h: 54px;
+    --hdr-ctrl: 40px;
+    --hdr-pad-x: 10px;
+  }
+  .menu-toggle { display: none !important; }
+  .topbar .page-title { padding-left: 0; font-size: 15px; }
+  .page { padding: 10px !important; }
+  .login-box { padding: 16px; gap: 12px; }
+  .stat-num { font-size: clamp(16px, 5vw, 20px); }
+  .stat-card { padding: 12px 10px; gap: 5px; }
+  .stat-icon { width: 32px; height: 32px; font-size: 14px; border-radius: 9px; }
+  #page-branches .stat-grid,
+  #page-categories .stat-grid,
+  #page-discounts .stat-grid,
+  #page-assistant .stat-grid,
+  #page-settings .stat-grid,
+  #page-contracts .stat-grid { grid-template-columns: 1fr !important; gap: 10px; }
+  .toolbar > *, .page-toolbar > * { flex: 1 1 100%; }
+  .admin-bottom-nav { height: calc(62px + env(safe-area-inset-bottom, 0px)); }
+  .admin-bottom-nav .bn-item {
+    font-size: 9px;
+    padding: 6px 2px;
+    min-height: 62px;
+  }
+  .admin-bottom-nav .bn-item i { font-size: 18px; }
+  .chart-wrap, .chart-container, .chart-box {
+    min-height: 280px;
+    aspect-ratio: 4 / 3;
+  }
+  .payment-methods, .pay-types, #paymentTypes, .payment-options, #paymentMethods {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  #page-pos .product-grid { gap: 8px; }
+  #page-pos .product-card-img { max-height: 110px; }
+  #page-pos .checkout-btn, .pay-btn, #payNowBtn, .btn-checkout {
+    margin: 0 10px 10px;
+    width: calc(100% - 20px);
+    min-height: 56px !important;
+    font-size: 15px;
+    border-radius: 14px;
+  }
+  .cart-item { grid-template-columns: 44px 1fr auto; gap: 4px 8px; }
+  #page-shop .uzum-grid, #shopProducts { grid-template-columns: 1fr !important; }
+  #page-shop .uzum-item-img, .shop-product-img { max-height: 180px; }
+  .table-wrap tbody tr, table tbody tr { padding: 10px 12px !important; gap: 4px; }
+  .table-wrap tbody td, table tbody td { font-size: 12px; padding: 4px 0 !important; gap: 8px; }
+  .table-wrap tbody td::before, table tbody td::before {
+    width: 40%;
+    max-width: 40%;
+    font-size: 10px;
+  }
+  h1 { font-size: 18px; }
+  h2 { font-size: 16px; }
+  h3 { font-size: 14px; }
+  .login-showcase-copy h2 { font-size: 18px; }
+  .login-showcase-points { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   DESKTOP RESET (≥769px) — mobile CSS ni override qilmaslik
+   uchun asosiy desktop xolatiga qaytaruvchi xavfsizlik blok.
+   ============================================================ */
+@media (min-width: 769px) {
+  .admin-bottom-nav {
+    display: none !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+  }
+  #app {
+    padding-bottom: 0 !important;
+  }
+  .page {
+    padding-bottom: 24px !important;
+  }
+  body.mobile-mode .page, body .page {
+    padding: 24px !important;
+  }
+  body.mobile-mode #sidebar {
+    transform: none !important;
+  }
+  body.mobile-mode #sidebar.collapsed {
+    transform: none !important;
+  }
+  #sidebarOverlay.visible {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+  body.mobile-mode #page-pos { padding: 24px !important; }
+  body.mobile-mode #page-pos .pos-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr) !important;
+    flex-direction: row !important;
+  }
+  body.mobile-mode .stat-grid,
+  body.mobile-mode #page-dashboard .stat-grid,
+  body.mobile-mode #page-reports .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+  }
+  body.mobile-mode .table-wrap, body.mobile-mode table { width: 100%; }
+  body.mobile-mode .table-wrap tbody, body.mobile-mode table tbody { display: table-row-group !important; }
+  body.mobile-mode .table-wrap tbody tr, body.mobile-mode table tbody tr {
+    display: table-row !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+  body.mobile-mode .table-wrap tbody td, body.mobile-mode table tbody td,
+  body.mobile-mode .table-wrap tbody th, body.mobile-mode table tbody th {
+    display: table-cell !important;
+    padding: 10px 14px !important;
+    border-bottom: 1px solid var(--border) !important;
+    text-align: inherit !important;
+    width: auto !important;
+    justify-content: normal !important;
+  }
+  body.mobile-mode .table-wrap tbody td::before, body.mobile-mode table tbody td::before {
+    display: none !important;
+    content: none !important;
+  }
+  body.mobile-mode .form-grid, body.mobile-mode form .grid,
+  body.mobile-mode [class*="form-grid"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  body.mobile-mode .product-grid, body.mobile-mode #page-products .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+  }
+  body.mobile-mode #page-shop .uzum-grid, body.mobile-mode #shopProducts {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+  }
+  body.mobile-mode .payment-methods, body.mobile-mode .pay-types,
+  body.mobile-mode #paymentTypes, body.mobile-mode .payment-options, body.mobile-mode #paymentMethods {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+  body.mobile-mode .modal, body.mobile-mode [class*="modal"] {
+    max-width: 720px !important;
+    max-height: 86vh !important;
+    inset: auto !important;
+    border-radius: 18px !important;
+  }
 }
