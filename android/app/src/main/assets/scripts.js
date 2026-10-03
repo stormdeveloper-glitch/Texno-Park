@@ -37,6 +37,8 @@ let systemSettings = {
     companyTin: '',
     // ── Brending: kompaniya logotipi (havola: bucket yoki /uploads/...) ──
     companyLogo: '',
+    // ── KPI: har bir sotilgan tovar foydasidan xodimga % (sozlanadigan) ──
+    kpiPercent: 0,
     // ── Xavfsizlik ──
     sessionTimeoutMin: 20,
     maxLoginAttempts: 5,
@@ -666,6 +668,7 @@ function normalizeProduct(p) {
         name: cleanText(p?.name, 120),
         cat: cleanText(p?.cat, 80) || 'Aksessuarlar',
         price: Math.max(0, Number(p?.price) || 0),
+        cost: Math.max(0, Number(p?.cost) || 0),
         stock: Math.max(0, Number(p?.stock) || 0),
         barcode: cleanText(p?.barcode, 64),
         img: safeImageUrl(p?.img),
@@ -944,10 +947,32 @@ let employees = USERS
     }));
 
 /** Haqiqiy savdo tarixidan xodimning ko'rsatkichlarini hisoblaydi. */
+/* Foyda: (sotuv-tan narx)*dona - chegirma ulushi. Zarar bo'lsa minus, KPI=0. */
+function saleProfit(s) {
+    if (s && s.profit !== undefined && s.profit !== null && s.profit !== '') return Number(s.profit) || 0;
+    if (!s || !Array.isArray(s.items)) return 0;
+    const sub = s.items.reduce((a, i) => a + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
+    let p = 0;
+    s.items.forEach(i => {
+        const line = (Number(i.price) || 0) * (Number(i.qty) || 0);
+        const share = sub > 0 ? line / sub : 0;
+        p += ((Number(i.price) || 0) - (Number(i.cost) || 0)) * (Number(i.qty) || 0) - (Number(s.discAmt) || 0) * share;
+    });
+    return Math.round(p);
+}
+/* Har bir sotuv (har bir qator) uchun alohida KPI: musbat foydadan %. */
+function saleKpi(s) {
+    if (s && s.kpi !== undefined && s.kpi !== null && s.kpi !== '') return Number(s.kpi) || 0;
+    const p = saleProfit(s);
+    if (p <= 0) return 0;
+    return Math.round(p * (Number(systemSettings.kpiPercent) || 0) / 100);
+}
 function employeeStats(emp) {
     const mine = salesHistory.filter(s => s.cashier === emp.name);
     const total = mine.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-    return { sales: mine.length, total };
+    const profit = mine.reduce((sum, s) => sum + saleProfit(s), 0);
+    const kpi = mine.reduce((sum, s) => sum + saleKpi(s), 0);
+    return { sales: mine.length, total, profit, kpi };
 }
 
 let salesHistory = safeJsonParse(localStorage.getItem('tp_sales') || '[]', []);
@@ -2337,8 +2362,7 @@ function loadAdminDashboard() {
 
     const dProfit = document.getElementById('d-profit');
     if (dProfit) {
-        const totalRevenue = salesHistory.reduce((a, b) => a + b.total, 0);
-        const totalProfit = Math.round(totalRevenue * 0.20); // 20% profit margin
+        const totalProfit = salesHistory.reduce((a, b) => a + saleProfit(b), 0);
         dProfit.textContent = fmt(totalProfit) + ' so\'m';
     }
 
@@ -2354,7 +2378,7 @@ function loadAdminDashboard() {
     uiSetHtml('d-orders-change', '<i class="fas fa-receipt"></i> O\'rtacha chek: ' + fmt(todaysSales.length ? Math.round(todaysTotal / todaysSales.length) : 0) + ' so\'m');
     uiSetHtml('d-customers-change', '<i class="fas fa-user-check"></i> Faol: ' + customers.filter(c => c.status === 'active').length + ' · VIP: ' + customers.filter(c => c.status === 'vip').length);
     uiSetHtml('d-products-change', '<i class="fas fa-triangle-exclamation"></i> Kam qolgan: ' + products.filter(p => p.stock < 5).length + ' ta');
-    uiSetHtml('d-profit-change', '<i class="fas fa-percent"></i> Savdo hajmining 20% marjasi asosida');
+    uiSetHtml('d-profit-change', '<i class="fas fa-percent"></i> Real foyda: sotuv − tan narx');
     uiSetHtml('d-employees-change', '<i class="fas fa-id-badge"></i> Admin, kassir va menejerlar');
 
     const tbody = document.getElementById('recentSales');
@@ -3301,9 +3325,13 @@ function checkoutUzumOrder() {
         return;
     }
     const saleId = salesHistory.length + 1;
+    const shopItems = JSON.parse(JSON.stringify(shopCart)).map(ci => {
+        const p = products.find(x => x.id === ci.id);
+        return { ...ci, cost: (ci.cost || p?.cost || 0) };
+    });
     const sale = {
         id: saleId,
-        items: JSON.parse(JSON.stringify(shopCart)),
+        items: shopItems,
         subtotal,
         disc: 0,
         discAmt: 0,
@@ -3315,8 +3343,11 @@ function checkoutUzumOrder() {
         cashier: 'Online do\'kon',
         customer: (currentUser?.role === 'customer' ? currentUser.name : 'Online xaridor') + ` (${phone})`,
         customerId: null,
+        customerPhone: phone || '',
         status: isOnline ? 'pending' : 'paid'
     };
+    sale.profit = saleProfit(sale);
+    sale.kpi = saleKpi(sale);
 
     if (!isOnline) {
         shopCart.forEach(ci => {
@@ -3418,7 +3449,7 @@ function addToCart(id, isScan = false) {
         if (ex.qty >= p.stock) { playError(); showNotif('error', 'Yetarli emas!', 'Qoldiq tugadi'); return; }
         ex.qty++;
     } else {
-        cart.push({ id: p.id, name: p.name, price: p.price, qty: 1, img: p.img, cat: p.cat });
+        cart.push({ id: p.id, name: p.name, price: p.price, cost: p.cost || 0, qty: 1, img: p.img, cat: p.cat });
     }
     updateCart();
     if (isScan) playScan(); else playSuccess();
@@ -3618,11 +3649,15 @@ function checkout() {
         time: new Date().toLocaleTimeString('uz-UZ'),
         date: new Date().toLocaleDateString('uz-UZ'),
         cashier: currentUser?.name || 'Noma\'lum',
+        cashierLogin: currentUser?.login || '',
         customer: cust?.name || 'Noma\'lum',
         customerId: custId || null,
+        customerPhone: cust?.phone || '',
         credit: providerId === 'credit' ? readCreditInfo() : null,
         status: isOnline ? 'pending' : 'paid'
     };
+    sale.profit = saleProfit(sale);
+    sale.kpi = saleKpi(sale);
     salesHistory.push(sale);
     lastCheckoutSale = sale;
 
@@ -3911,6 +3946,8 @@ function renderProducts() {
                 ? '<span class="badge" style="background:' + escapeHTML(branch.markerColor) + '22;color:' + escapeHTML(branch.markerColor) + '">' + escapeHTML(branch.markerIcon + ' ' + branch.name) + '</span>'
                 : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
     <td style="font-weight:700;color:var(--primary)">${fmt(p.price)} so'm</td>
+    <td style="color:var(--muted)">${fmt(p.cost || 0)} so'm</td>
+    <td style="font-weight:700;color:${(p.price - (p.cost || 0)) < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(p.price - (p.cost || 0))}</td>
     <td><span class="${p.stock < 5 ? 'badge badge-red' : 'badge badge-green'}">${p.stock} dona</span></td>
     <td><span class="badge ${p.stock > 0 ? 'badge-green' : 'badge-red'}">${p.stock > 0 ? 'Bor' : 'Tugagan'}</span></td>
     <td>
@@ -3918,7 +3955,7 @@ function renderProducts() {
       <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteProduct(${p.id})"><i class="fas fa-trash"></i></button>
     </td>
   </tr>`;
-    }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing</td></tr>';
+    }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing</td></tr>';
 }
 
 function filterByCategory(val) { currentCategory = val; renderProducts(); }
@@ -3935,6 +3972,7 @@ function openProductModal(id) {
             document.getElementById('p-name').value = p.name;
             document.getElementById('p-cat').value = p.cat;
             document.getElementById('p-price').value = p.price;
+            document.getElementById('p-cost').value = p.cost || 0;
             document.getElementById('p-stock').value = p.stock;
             document.getElementById('p-img').value = p.img || '';
             document.getElementById('p-desc').value = p.desc || '';
@@ -3944,7 +3982,7 @@ function openProductModal(id) {
             document.getElementById('p-vat').value = String(p.vatPercent ?? 12);
         }
     } else {
-        ['p-name', 'p-price', 'p-stock', 'p-img', 'p-desc', 'p-barcode', 'p-ikpu', 'p-package'].forEach(i => document.getElementById(i).value = '');
+        ['p-name', 'p-price', 'p-cost', 'p-stock', 'p-img', 'p-desc', 'p-barcode', 'p-ikpu', 'p-package'].forEach(i => document.getElementById(i).value = '');
         document.getElementById('p-vat').value = '12';
     }
     updateProductImagePreview(document.getElementById('p-img')?.value || '');
@@ -3956,6 +3994,7 @@ function saveProduct() {
     const name = validateSafeInput('Mahsulot nomi', document.getElementById('p-name').value, 120);
     const cat = validateSafeInput('Kategoriya', document.getElementById('p-cat').value, 80);
     const price = parseInt(document.getElementById('p-price').value) || 0;
+    const cost = parseInt(document.getElementById('p-cost')?.value) || 0;
     const stock = parseInt(document.getElementById('p-stock').value) || 0;
     const img = safeImageUrl(document.getElementById('p-img').value);
     const desc = validateSafeInput('Tavsif', document.getElementById('p-desc').value, 300);
@@ -3981,11 +4020,11 @@ function saveProduct() {
     const taxFields = { ikpu, packageCode, vatPercent };
     if (editingProductId) {
         const p = products.find(x => x.id === editingProductId);
-        if (p) Object.assign(p, { name, cat, price, stock, img, desc, barcode }, taxFields);
+        if (p) Object.assign(p, { name, cat, price, cost, stock, img, desc, barcode }, taxFields);
         addLog('Mahsulot', `"${name}" tahrirlandi`);
         showNotif('success', 'Saqlandi!', 'Mahsulot yangilandi');
     } else {
-        products.push(Object.assign({ id: Date.now(), name, cat, price, stock, img, desc, barcode }, taxFields));
+        products.push(Object.assign({ id: Date.now(), name, cat, price, cost, stock, img, desc, barcode }, taxFields));
         addLog('Mahsulot', `"${name}" qo'shildi`);
         showNotif('success', 'Qo\'shildi!', name + ' mahsulot qo\'shildi');
     }
@@ -4124,6 +4163,7 @@ function openEmployeeModal() {
 // ============================================================
 function renderReports() {
     renderEmployeeRank();
+    renderSalesDetail();
     setTimeout(() => { initMonthChart(); initIncomeChart(); }, 50);
 }
 
@@ -4141,12 +4181,50 @@ function renderEmployeeRank() {
     <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:white">${escapeHTML(e.name[0])}</div>${escapeHTML(e.name)}</div></td>
     <td>${e.sales}</td>
     <td style="font-weight:700;color:var(--primary)">${fmt(e.total)} so'm</td>
+    <td style="font-weight:700;color:${(e.profit || 0) < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(e.profit || 0)}</td>
+    <td style="font-weight:700;color:var(--warning)">${fmt(e.kpi || 0)}</td>
     <td><div class="progress-bar" style="width:120px"><div class="progress-fill" style="width:${Math.min(100, (e.total / maxTotal) * 100)}%;background:var(--primary)"></div></div></td>
   </tr>`).join('');
 }
 
+/* Har bir sotuv tafsiloti: sana/kimga/tovar/summa/kim sotdi/foyda/KPI. Har qator alohida. */
+function renderSalesDetail() {
+    const el = document.getElementById('salesDetailBody');
+    if (!el) return;
+    const rows = [];
+    [...salesHistory].reverse().slice(0, 200).forEach(s => {
+        (s.items || []).forEach(it => {
+            const qty = Number(it.qty) || 0, price = Number(it.price) || 0, cost = Number(it.cost) || 0;
+            const line = price * qty;
+            const share = (Number(s.subtotal) || 0) > 0 ? line / (Number(s.subtotal) || 1) : 0;
+            const p = Math.round((price - cost) * qty - (Number(s.discAmt) || 0) * share);
+            const k = p > 0 ? Math.round(p * (Number(systemSettings.kpiPercent) || 0) / 100) : 0;
+            rows.push(`<tr><td>${escapeHTML(s.date || '')} ${escapeHTML(s.time || '')}</td><td>${escapeHTML(s.customer || '')}</td><td>${escapeHTML(it.name || '')} ×${qty}</td><td style="font-weight:700">${fmt(line)}</td><td>${escapeHTML(s.cashier || '')}</td><td style="font-weight:700;color:${p < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(p)}</td><td style="font-weight:700;color:var(--warning)">${fmt(k)}</td></tr>`);
+        });
+    });
+    el.innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Hali savdo yo\'q</td></tr>';
+}
+
 function loadReport() { showNotif('info', 'Filtrlandi!', 'Hisobot yangilandi'); renderReports(); }
-function exportReport(type) { showNotif('success', 'Export!', type.toUpperCase() + ' yuklanmoqda...'); }
+function exportReport(type) {
+    try {
+        const rows = [['Sana', 'Kimga', 'Tovar', 'Soni', 'Summa', 'Kim sotdi', 'Foyda', 'KPI']];
+        salesHistory.forEach(s => (s.items || []).forEach(it => {
+            const qty = Number(it.qty) || 0, price = Number(it.price) || 0, cost = Number(it.cost) || 0;
+            const line = price * qty;
+            const share = (Number(s.subtotal) || 0) > 0 ? line / (Number(s.subtotal) || 1) : 0;
+            const p = Math.round((price - cost) * qty - (Number(s.discAmt) || 0) * share);
+            const k = p > 0 ? Math.round(p * (Number(systemSettings.kpiPercent) || 0) / 100) : 0;
+            rows.push([`${s.date || ''} ${s.time || ''}`, s.customer || '', it.name || '', qty, line, s.cashier || '', p, k]);
+        }));
+        const csv = '﻿' + rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = 'sotuv-hisoboti.csv';
+        a.click();
+        showNotif('success', 'Export!', 'CSV yuklandi');
+    } catch (e) { showNotif('error', 'Xato', 'Export bo\'lmadi'); }
+}
 
 // ============================================================
 // SMS
@@ -4306,6 +4384,7 @@ function loadSettings() {
     setVal('clickPhone', systemSettings.clickPhone || '');
     setVal('taxRate', systemSettings.taxRate ?? 12);
     setVal('barcodeTimeout', systemSettings.barcodeTimeout ?? 50);
+    setVal('kpiPercent', systemSettings.kpiPercent ?? 0);
     setChecked('soundEnabled', systemSettings.soundEnabled ?? true);
     setChecked('autoPrint', systemSettings.autoPrint ?? true);
     // Brending: logotip va kompaniya nomi butun interfeysga qo'llaniladi
@@ -4328,6 +4407,7 @@ function saveSettings() {
     systemSettings.clickPhone = cleanText(getVal('clickPhone'), 40);
     systemSettings.taxRate = parseFloat(getVal('taxRate')) || 0;
     systemSettings.barcodeTimeout = parseInt(getVal('barcodeTimeout')) || 50;
+    systemSettings.kpiPercent = Math.min(100, Math.max(0, parseFloat(getVal('kpiPercent')) || 0));
     systemSettings.soundEnabled = getChecked('soundEnabled');
     systemSettings.autoPrint = getChecked('autoPrint');
 
@@ -7546,7 +7626,7 @@ function renderWarehousePage() {
     const branch = selectedBranch();
     const list = visibleProducts();
     const lowStock = list.filter(p => p.stock < 5);
-    const totalValue = list.reduce((acc, p) => acc + (p.price * p.stock), 0);
+    const totalValue = list.reduce((acc, p) => acc + ((p.cost || p.price) * p.stock), 0);
 
     const valEl = document.getElementById('warehouseTotalValue');
     if (valEl) valEl.textContent = fmt(totalValue) + ' so\'m';
@@ -7576,7 +7656,7 @@ function renderWarehousePage() {
                 : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
             <td style="font-weight:700;color:${p.stock < 5 ? 'var(--danger)' : 'var(--success)'}">${p.stock} ta</td>
             <td>${fmt(p.price)} so'm</td>
-            <td style="font-weight:700">${fmt(p.price * p.stock)} so'm</td>
+            <td style="font-weight:700">${fmt((p.cost || p.price) * p.stock)} so'm</td>
         </tr>
     `;
     }).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Mahsulot yo\'q</td></tr>';
@@ -9167,11 +9247,17 @@ const storeLocation = {
     let _mmTimer = null;
     window.addEventListener('resize', function () {
         clearTimeout(_mmTimer);
-        _mmTimer = setTimeout(syncMobileMode, 120);
+        _mmTimer = setTimeout(function () {
+            syncMobileMode();
+            syncBottomMenuState();
+        }, 120);
     });
     try {
         const mm = window.matchMedia('(max-width: 768px)');
-        const apply = function () { syncMobileMode(); };
+        const apply = function () {
+            syncMobileMode();
+            syncBottomMenuState();
+        };
         try { mm.addEventListener('change', apply); } catch (e) { try { mm.addListener(apply); } catch (_) {} }
     } catch (e) { /* ignore */ }
 
