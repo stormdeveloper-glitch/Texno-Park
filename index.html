@@ -310,7 +310,7 @@
               </div>
               <div class="stat-num" id="d-profit">0</div>
               <div class="stat-label">Jami Foyda</div>
-              <div class="stat-change up" id="d-profit-change"><i class="fas fa-percent"></i> 20% marja asosida</div>
+              <div class="stat-change up" id="d-profit-change"><i class="fas fa-percent"></i> Real foyda asosida</div>
             </div>
             <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
               <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i
@@ -1040,7 +1040,9 @@
                     <th>Nomi</th>
                     <th>Kategoriya</th>
                     <th>Filial</th>
-                    <th>Narxi</th>
+                    <th>Narxi (sotuv)</th>
+                    <th>Tan narxi</th>
+                    <th>Foyda</th>
                     <th>Qoldiq</th>
                     <th>Holati</th>
                     <th>Amallar</th>
@@ -1681,6 +1683,29 @@
         </div>
         <div class="panel">
           <div class="panel-header">
+            <h3><i class="fas fa-receipt" style="color:var(--success)"></i> Sotuvlar tafsiloti — sana / mijoz / tovar / summa / sotuvchi / foyda / KPI</h3>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Sana</th>
+                    <th>Kimga</th>
+                    <th>Tovar</th>
+                    <th>Summa</th>
+                    <th>Kim sotdi</th>
+                    <th>Foyda</th>
+                    <th>KPI</th>
+                  </tr>
+                </thead>
+                <tbody id="salesDetailBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
             <h3><i class="fas fa-trophy" style="color:var(--warning)"></i> Xodimlar Reytingi</h3>
           </div>
           <div class="panel-body" style="padding:0">
@@ -1692,6 +1717,8 @@
                     <th>Xodim</th>
                     <th>Sotuvlar</th>
                     <th>Jami</th>
+                    <th>Foyda</th>
+                    <th>KPI</th>
                     <th>Ko'rsatkich</th>
                   </tr>
                 </thead>
@@ -2106,6 +2133,12 @@
                   <label>Barkod Skaner Vaqti (ms)</label>
                   <input class="form-control" type="number" value="50" id="barcodeTimeout">
                 </div>
+                <div class="form-col">
+                  <label>KPI foizi (%) — har bir sotuv foydasidan</label>
+                  <input class="form-control" type="number" min="0" max="100" step="0.5" value="0" id="kpiPercent">
+                </div>
+              </div>
+              <div class="form-row">
                 <div class="form-col">
                   <label>Chek Printer</label>
                   <select class="form-control">
@@ -2782,7 +2815,9 @@
         </div>
       </div>
       <div class="form-row">
-        <div class="form-col"><label>Narxi (so'm) *</label><input class="form-control" id="p-price" type="number"
+        <div class="form-col"><label>Narxi (sotuv, so'm) *</label><input class="form-control" id="p-price" type="number"
+            placeholder="0"></div>
+        <div class="form-col"><label>Tan narxi (sotib olish, so'm)</label><input class="form-control" id="p-cost" type="number"
             placeholder="0"></div>
         <div class="form-col"><label>Qoldiq (dona) *</label><input class="form-control" id="p-stock" type="number"
             placeholder="0"></div>

@@ -3114,9 +3114,20 @@ def build_ai_context():
     today_count = 0
     for sale in sales:
         amount = _safe_float(sale.get('total')) or _safe_float(sale.get('amount'))
-        profit = _safe_float(sale.get('profit'))
-        if not profit:
-            profit = amount * 0.20
+        profit = sale.get('profit')
+        if profit in (None, ''):
+            # Real foyda: (sotuv-tan narx)*dona - chegirma ulushi. Minus (zarar) ham saqlanadi.
+            items = sale.get('items') or []
+            sub = sum(_safe_float(i.get('price')) * _safe_int(i.get('qty')) for i in items if isinstance(i, dict))
+            profit = 0.0
+            for i in items:
+                if not isinstance(i, dict):
+                    continue
+                line = _safe_float(i.get('price')) * _safe_int(i.get('qty'))
+                share = (line / sub) if sub > 0 else 0
+                profit += (_safe_float(i.get('price')) - _safe_float(i.get('cost'))) * _safe_int(i.get('qty')) - _safe_float(sale.get('discAmt')) * share
+        else:
+            profit = _safe_float(profit)
         day = _parse_date(sale.get('date') or sale.get('createdAt') or sale.get('time'))
         total_revenue += amount
         total_profit += profit
@@ -3190,7 +3201,7 @@ def local_ai_answer(question, ctx):
                 f"• Bugun: {ctx['bugungi_savdo_soni']} ta savdo — {_fmt(ctx['bugungi_daromad_som'])} so'm\n"
                 f"• Jami: {ctx['savdo_soni']} ta savdo — {_fmt(ctx['jami_daromad_som'])} so'm\n"
                 f"• O'rtacha chek: {_fmt(ctx['ortacha_chek_som'])} so'm\n"
-                f"• Jami foyda (20% marja): {_fmt(ctx['jami_foyda_som'])} so'm")
+                f"• Jami foyda (real, sotuv−tan narx): {_fmt(ctx['jami_foyda_som'])} so'm")
     if has('ombor', 'qoldiq', 'zaxira', 'stock'):
         return (f"📦 Ombor holati:\n"
                 f"• Mahsulot turi: {ctx['mahsulot_soni']} ta\n"
