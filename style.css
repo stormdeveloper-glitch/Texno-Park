@@ -203,14 +203,15 @@ body {
    (2) karta qisqa ekranlarda sig'adigan zich rejimga o'tadi
    (pastdagi max-height bloklar), (3) panelning TEPA CHETI kontent
    balandligidan mustaqil qotiriladi (.login-box margin-block-start) —
-   async yuklanish (Google/CAPTCHA/font) ham uni qimirlatmaydi.
+   async yuklanish (CAPTCHA/font) ham uni qimirlatmaydi.
    ============================================================ */
 #loginPage {
     --login-pad: clamp(12px, 1.4vw, 24px);
     /* Panelning haqiqiy balandligi — "markazga yaqin" Y shundan hisoblanadi
        (pastdagi zich rejim bloklarida qayta belgilanadi).
-       O'lchangan: to'liq rejimda 817px, zich rejimda 634px. */
-    --login-card-h: 817px;
+       Google bloki olib tashlangach qayta o'lchandi:
+       to'liq rejimda 545px, zich rejimda 423px, qisqa rejimda 380px. */
+    --login-card-h: 545px;
     display: none;
     /* FULL-BLEED: sahifa butun viewport enini egallaydi — tashqi
        margin / max-width / margin:auto bilan markazlash YO'Q. */
@@ -6015,38 +6016,6 @@ canvas {
     flex-shrink: 0;
 }
 
-/* Google Custom Button Styling */
-.google-custom-btn {
-    width: 100%;
-    max-width: 320px;
-    height: 44px;
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-md) !important;
-    color: var(--text) !important;
-    font-weight: 700;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    box-shadow: var(--shadow-sm);
-}
-
-.google-custom-btn:hover {
-    transform: translateY(-2px);
-    border-color: var(--primary) !important;
-    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.15);
-    background: var(--bg-hover) !important;
-}
-
-.google-custom-btn .google-icon {
-    font-size: 18px;
-    color: var(--primary);
-}
-
 /* ============================================================
    TO'LOV TIZIMLARI (POS) — Click / Payme / Paynet / Uzum / Paylov
    ============================================================ */
@@ -9051,20 +9020,6 @@ body {
     filter: brightness(.94);
 }
 
-/* Google tugmasi (mijoz ID bo'lmasa ko'rinadi): qoramtir kartochkaga moslashadi,
-   hover'da qimirlamaydi. Bazaviy uslubda !important bor — shuning uchun bu yerda ham. */
-#loginPage .google-custom-btn {
-    background: rgba(255, 255, 255, .06) !important;
-    border-color: rgba(255, 255, 255, .16) !important;
-    color: #f3eceb !important;
-}
-
-#loginPage .google-custom-btn:hover {
-    transform: none;
-    background: rgba(255, 255, 255, .10) !important;
-    border-color: rgba(255, 138, 69, .6) !important;
-}
-
 /* --- Responsive adjustments for the new blocks --- */
 @media (max-width: 1024px) {
     #app.market-mode .market-hero-row {
@@ -11449,12 +11404,6 @@ body {
     justify-self: center;
 }
 
-/* Google tugmasi konteyneri: inline "width: 320px" kichik ekranda panelni
-   cho'zib, gorizontal overflow berardi — endi 100% bilan cheklanadi. */
-#googleBtnContainer {
-    max-width: 100%;
-}
-
 /* Grid ustunlarida noto'g'ri tashqi margin bo'lmasin */
 #loginPage.active > * {
     margin: 0;
@@ -11490,7 +11439,7 @@ body {
    Bu blok barcha eski login qoidalaridan KEYIN turadi va panelning
    X/Y o'rnini 100% qotiradi:
      1) Panel tepa cheti — kontent balandligidan mustaqil (markazga yaqin);
-     2) Input / Kirish / Google / CAPTCHA balandliklari qat'iy —
+     2) Input / Kirish / CAPTCHA balandliklari qat'iy —
         focus, type almashish (show/hide) hech narsani siljitmaydi;
      3) Rol kartalari selected/hover'da o'lchamini o'zgartirmaydi;
      4) Qisqa ekranlarda karta zich rejimga o'tadi va TO'LIQ sig'adi —
@@ -11536,17 +11485,6 @@ body {
     gap: 8px;
 }
 
-/* Google bloki: async tugma almashganda karta balandligi o'zgarmaydi */
-#loginPage .login-google-block {
-    margin-top: 20px;
-}
-
-#loginPage #googleBtnContainer {
-    height: 44px;
-    min-height: 44px;
-    overflow: hidden;
-}
-
 /* CAPTCHA (Turnstile): joy QAT'IY (106px) — widget paydo bo'lganda ham
    karta balandligi deterministik o'sadi, panel tepasi qimirlamaydi. */
 #loginPage #turnstileWrap {
@@ -11583,7 +11521,7 @@ body {
    ============================================================ */
 @media (max-width: 900px), (max-height: 860px) {
     #loginPage {
-        --login-card-h: 634px;
+        --login-card-h: 423px;
     }
 
     #loginPage .login-box {
@@ -11624,10 +11562,6 @@ body {
     #loginPage .btn-login {
         height: 46px;
     }
-
-    #loginPage .login-google-block {
-        margin-top: 12px;
-    }
 }
 
 /* ============================================================
@@ -11636,7 +11570,7 @@ body {
    ============================================================ */
 @media (max-height: 699px) {
     #loginPage {
-        --login-card-h: 560px;
+        --login-card-h: 380px;
         --login-pad: 10px;
     }
 
@@ -11675,10 +11609,6 @@ body {
 
     #loginPage .btn-login {
         height: 44px;
-    }
-
-    #loginPage .login-google-block {
-        margin-top: 10px;
     }
 }
 
@@ -12043,7 +11973,6 @@ body {
     font-size: 15px;
     font-weight: 800;
   }
-  #googleBtnContainer { width: 100%; }
   #turnstileWrap { width: 100% !important; }
 
   * {

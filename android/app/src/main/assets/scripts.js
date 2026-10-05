@@ -712,13 +712,13 @@ function normalizeCustomer(c) {
 // USERS
 // ============================================================
 const USERS = [
-    { id: 1, login: 'admin', phone: '+998908480921', salt: 'tp-adm-9x2', passHash: '847987bfe33b7e4354666fd0a6084ec34e6f09b60f673065a10735f8aa2b7057', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 2, login: 'cashier', phone: '+998905450921', salt: 'tp-csh-4k7', passHash: 'e3da606a986c263b7018487dfdbc9e8316898f0a1b68792106619ef867c97f41', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 3, login: 'manager', phone: '+998902750921', salt: 'tp-mng-3z8', passHash: '91416abaaa7af1470c242189d1cfe0d6658d1b2eee31a1fdcbd001426dfcc895', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 1, login: 'admin', phone: '+998908480921', salt: 'tp-adm-9x2', passHash: '1a25159d411b5128ef8c163d5219159ae2e68a475028803916d231217d44b32a', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 2, login: 'cashier', phone: '+998905450921', salt: 'tp-csh-4k7', passHash: 'c9ca5cfba8a78e3ecaf6e2f649954af302cbbc8bfd0cda66b5f952e24a571c67', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 3, login: 'manager', phone: '+998902750921', salt: 'tp-mng-3z8', passHash: '1cd5bbc9db80f2c06d67eb639dc43dceb7e8c2d2862331cc05a7ded2a3b700f0', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
     { id: 7, login: 'customer', phone: '', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
-    { id: 4, login: 'admin@texnopark.uz', salt: 'tp-adm-9x2', passHash: '847987bfe33b7e4354666fd0a6084ec34e6f09b60f673065a10735f8aa2b7057', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 5, login: 'cashier@texnopark.uz', salt: 'tp-csh-4k7', passHash: 'e3da606a986c263b7018487dfdbc9e8316898f0a1b68792106619ef867c97f41', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 6, login: 'manager@texnopark.uz', salt: 'tp-mng-3z8', passHash: '91416abaaa7af1470c242189d1cfe0d6658d1b2eee31a1fdcbd001426dfcc895', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 4, login: 'admin@texnopark.uz', salt: 'tp-adm-9x2', passHash: '1a25159d411b5128ef8c163d5219159ae2e68a475028803916d231217d44b32a', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 5, login: 'cashier@texnopark.uz', salt: 'tp-csh-4k7', passHash: 'c9ca5cfba8a78e3ecaf6e2f649954af302cbbc8bfd0cda66b5f952e24a571c67', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 6, login: 'manager@texnopark.uz', salt: 'tp-mng-3z8', passHash: '1cd5bbc9db80f2c06d67eb639dc43dceb7e8c2d2862331cc05a7ded2a3b700f0', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
     { id: 8, login: 'customer@texnopark.uz', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
 ];
 const ROLES = { admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
@@ -764,6 +764,78 @@ function initLoginPhoneMask() {
     });
 }
 
+/** Login telefon maydonidagi qiymatni bir xil maskaga keltiradi. */
+function formatLoginPhoneField() {
+    const inp = document.getElementById('loginPhone');
+    if (!inp) return;
+    const masked = formatPhoneMaskUz(inp.value);
+    if (inp.value !== masked) {
+        inp.value = masked;
+        // Kursor doim matn oxirida qoladi
+        try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
+    }
+}
+
+/**
+ * Brauzer autofill'i / sahifa qayta tiklanishi natijasida maydonga tushgan
+ * telefon qiymatini ham bir xil maskaga keltiradi. Maydonga DEFAULT qiymat
+ * yozilmaydi — faqat foydalanuvchi yozgan yoki autofill qilgan qiymat
+ * ko'rinishi to'g'ri (+998 prefiksi alohida elementda) bo'ladi.
+ */
+function initLoginPhoneAutofillGuard() {
+    const inp = document.getElementById('loginPhone');
+    if (!inp || inp.dataset.autofillBound === '1') return;
+    inp.dataset.autofillBound = '1';
+    inp.addEventListener('change', formatLoginPhoneField);
+    inp.addEventListener('blur', formatLoginPhoneField);
+    window.addEventListener('pageshow', formatLoginPhoneField);
+    formatLoginPhoneField();
+}
+
+// ============================================================
+// LOGIN PAROL MAYDONI — DOIM YASHIRIN (standart holat)
+// ============================================================
+// Parol faqat foydalanuvchi ko'z tugmasini bosganda ko'rinadi. Brauzer
+// autofill'i, kengaytmalar yoki boshqa kod maydonni "text" holatiga
+// o'tkazsa — darhol "password" holatiga qaytaramiz (ochiq matn ko'rinmaydi).
+let loginPasswordVisible = false;
+
+/** Parolni ko'rsatish/yashirish holatini yagona joydan boshqaradi. */
+function setLoginPasswordVisible(visible) {
+    const inp = document.getElementById('loginPass');
+    const ico = document.querySelector('#loginPage .pass-toggle i');
+    const btn = document.querySelector('#loginPage .pass-toggle');
+    loginPasswordVisible = !!visible;
+    if (inp) inp.type = loginPasswordVisible ? 'text' : 'password';
+    if (ico) ico.className = loginPasswordVisible ? 'fas fa-eye-slash' : 'fas fa-eye';
+    if (btn) btn.setAttribute('aria-label', loginPasswordVisible ? 'Parolni yashirish' : 'Parolni ko\'rsatish');
+}
+
+/** Parolni yashirin holatga qaytaradi (foydalanuvchi ko'rsatmagan bo'lsa). */
+function enforceLoginPasswordHidden() {
+    if (loginPasswordVisible) return;
+    setLoginPasswordVisible(false);
+}
+
+/** Sahifa ochilganda va qayta tiklanishida parolni doim yashirin qiladi. */
+function initLoginPasswordGuard() {
+    const inp = document.getElementById('loginPass');
+    if (!inp || inp.dataset.guardBound === '1') return;
+    inp.dataset.guardBound = '1';
+    loginPasswordVisible = false;
+    enforceLoginPasswordHidden();
+    if (typeof MutationObserver !== 'undefined') {
+        // Ruxsatsiz `type` o'zgarishi (autofill/kengaytma/boshqa kod)
+        // darhol bekor qilinadi.
+        new MutationObserver(() => {
+            if (!loginPasswordVisible && inp.type !== 'password') enforceLoginPasswordHidden();
+        }).observe(inp, { attributes: true, attributeFilter: ['type'] });
+    }
+    ['focus', 'input', 'change'].forEach(evt => inp.addEventListener(evt, enforceLoginPasswordHidden));
+    window.addEventListener('pageshow', enforceLoginPasswordHidden);
+    document.addEventListener('visibilitychange', enforceLoginPasswordHidden);
+}
+
 function showLoginFieldError(id, message) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -787,8 +859,12 @@ function setLoginLoading(on) {
     if (label) label.textContent = on ? 'Kirish...' : 'Kirish';
 }
 
-// Login sahifasi ochilishda maska tayyor (skript body oxirida yuklanadi)
+// Login sahifasi ochilishda maska tayyor (skript body oxirida yuklanadi).
+// Parol maydoni esa har doim YASHIRIN holatdan boshlanadi (default hidden),
+// autofill natijasidagi telefon qiymati ham bir xil ko'rinishga keltiriladi.
 initLoginPhoneMask();
+initLoginPhoneAutofillGuard();
+initLoginPasswordGuard();
 
 // ============================================================
 // KATEGORIYALAR — yagona manba (POS, do'kon, mahsulot formasi, hisobot)
@@ -1401,34 +1477,6 @@ async function loadFromBackend() {
             const configResponse = await fetch('/api/config');
             const config = await configResponse.json();
             if (config) {
-                // Initialize Google Sign-in dynamically
-                const btnContainer = document.getElementById("googleBtnContainer");
-                if (config.googleClientId && window.google) {
-                    window.google.accounts.id.initialize({
-                        client_id: config.googleClientId,
-                        callback: handleCredentialResponse,
-                        context: 'signin',
-                        ux_mode: 'popup',
-                        auto_prompt: false
-                    });
-                    if (btnContainer) {
-                        btnContainer.innerHTML = '';
-                        window.google.accounts.id.renderButton(
-                            btnContainer,
-                            { type: "standard", shape: "pill", theme: "outline", text: "signin_with", size: "large", width: 320 }
-                        );
-                    }
-                } else {
-                    if (btnContainer) {
-                        btnContainer.innerHTML = `
-                            <button type="button" class="google-custom-btn" onclick="simulateGoogleSignIn()">
-                                <i class="fab fa-google google-icon"></i>
-                                <span>Google orqali kirish</span>
-                            </button>
-                        `;
-                    }
-                }
-
                 // Cloudflare Turnstile (CAPTCHA) — bo'lsa login formasida ko'rsatiladi
                 if (typeof TurnstileGate !== 'undefined') TurnstileGate.init(config);
 
@@ -1647,10 +1695,9 @@ function processBarcodeInput(code) {
 // ============================================================
 function togglePassword() {
     const inp = document.getElementById('loginPass');
-    const ico = document.querySelector('#loginPage .pass-toggle i');
-    if (!inp || !ico) return;
-    if (inp.type === 'password') { inp.type = 'text'; ico.className = 'fas fa-eye-slash'; }
-    else { inp.type = 'password'; ico.className = 'fas fa-eye'; }
+    if (!inp) return;
+    // Ko'z tugmasi — parolni ko'rsatishning YAGONA yo'li (foydalanuvchi tanlovi)
+    setLoginPasswordVisible(inp.type === 'password');
 }
 
 function toggleEmployeeDropdown(e) {
@@ -1958,13 +2005,11 @@ function doLogout(force = false) {
     const loginPhone = document.getElementById('loginPhone');
     const loginPass = document.getElementById('loginPass');
     if (loginPhone) loginPhone.value = '';
-    if (loginPass) {
-        loginPass.value = '';
-        loginPass.type = 'password';
-    }
+    if (loginPass) loginPass.value = '';
     clearLoginFieldErrors();
-    const toggleIcon = document.querySelector('#loginPage .pass-toggle i');
-    if (toggleIcon) toggleIcon.className = 'fas fa-eye';
+    // Ko'z holati ham boshlang'ich (yashirin) holatga qaytadi — parol
+    // hech qachon ochiq matn holatida qolib ketmaydi.
+    setLoginPasswordVisible(false);
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     setupRoleBasedNav();
 }
@@ -5569,7 +5614,7 @@ const Security = {
         updateSessionIndicators();
     },
 
-    /** Sessiyani boshlash (doLogin / Google kirish uchun) */
+    /** Sessiyani boshlash (doLogin uchun) */
     startSession(user) {
         startSession(user);
     },
@@ -7857,44 +7902,6 @@ const Assistant = (() => {
     return { init, render, renderStats, send, sendFromInput, askQuick, reset };
 })();
 
-// ============================================================
-// GOOGLE OAUTH SIGN-IN
-// ============================================================
-function handleCredentialResponse(response) {
-    try {
-        const responsePayload = decodeJwtResponse(response.credential);
-        const name = responsePayload.name || 'Google Xaridor';
-        const email = responsePayload.email || 'google_user@gmail.com';
-        const picture = responsePayload.picture || '';
-
-        currentUser = {
-            id: Date.now(),
-            login: email,
-            name: name,
-            role: 'customer',
-            color: '#2563EB',
-            picture: picture
-        };
-
-        loginWithUser(currentUser);
-        addLog('Google Kirish', `Google orqali kirdi: ${name} (${email})`);
-        showNotif('success', 'Google orqali kirdingiz! 👋', name);
-    } catch (e) {
-        console.error('Google Sign-In error:', e);
-        playError();
-        showNotif('error', 'Google Kirish xatosi', 'Tizimga kirib bo\'lmadi');
-    }
-}
-
-function decodeJwtResponse(token) {
-    var base64Url = token.split('.')[1];
-    var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    return JSON.parse(jsonPayload);
-}
-
 function toggleShopCatSidebar() {
     const sidebar = document.getElementById('shopCatSidebar');
     if (!sidebar) return;
@@ -7920,7 +7927,7 @@ function toggleShopCatSidebar() {
 }
 
 function loginWithUser(user) {
-    // Google yoki sessiya tiklash orqali kirganda sessiya ochilishini kafolatlaymiz
+    // Sessiya tiklash orqali kirganda ham sessiya ochilishini kafolatlaymiz
     if (user && !currentSession) startSession(user);
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
@@ -8754,46 +8761,6 @@ function requireRoleSilent(...roles) {
 
 // Filial ma'lumotlari serverdan (ommaviy endpoint) boshlang'ich yuklash
 try { if (typeof Branches !== 'undefined') Branches.loadFromServer(); } catch (e) { }
-
-function simulateGoogleSignIn() {
-    showNotif('info', 'Google Login', 'Google orqali tizimga kirish simulyatsiya qilinmoqda...');
-    setTimeout(() => {
-        const googleUser = {
-            id: 9,
-            login: 'google-user',
-            name: 'Google Foydalanuvchi',
-            role: 'customer',
-            color: '#4285F4'
-        };
-        currentUser = googleUser;
-
-        const topName = document.getElementById('topbarEmployeeName');
-        if (topName) topName.textContent = googleUser.name;
-
-        document.getElementById('sideUser').textContent = googleUser.name;
-        document.getElementById('sideRole').textContent = ROLES[googleUser.role];
-        const av = document.getElementById('sideAvatar');
-        if (av) {
-            av.textContent = googleUser.name[0];
-            av.style.background = `linear-gradient(135deg,${googleUser.color},#10B981)`;
-        }
-
-        const loginPage = document.getElementById('loginPage');
-        const app = document.getElementById('app');
-        if (loginPage) {
-            loginPage.classList.remove('active');
-            loginPage.style.display = 'none';
-        }
-        if (app) {
-            app.style.display = 'block';
-            app.classList.add('market-mode');
-        }
-
-        initApp();
-        playSuccess();
-        showNotif('success', 'Muvaffaqiyatli!', 'Google orqali tizimga kirildi');
-    }, 800);
-}
 
 // ============================================================
 // COMPLAINTS & SUGGESTIONS (REPORT SYSTEM)

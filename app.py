@@ -312,12 +312,12 @@ def add_security_headers(response):
     # CSP: CDN'lar uchun aniq whitelist (inline onclick ishlatilgani uchun 'unsafe-inline' zarur)
     response.headers.setdefault('Content-Security-Policy', (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://accounts.google.com https://*.google.com; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://challenges.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; "
         "img-src 'self' data: blob: https:; "
         "connect-src 'self' https:; "
-        "frame-src https://challenges.cloudflare.com https://accounts.google.com https://*.click.uz https://checkout.paycom.uz https://*.uzumbank.uz; "
+        "frame-src https://challenges.cloudflare.com https://*.click.uz https://checkout.paycom.uz https://*.uzumbank.uz; "
         "object-src 'none'; "
         "base-uri 'self'; "
         "form-action 'self'"
@@ -1397,7 +1397,6 @@ def serve_static(path):
 def get_config():
     """Frontend uchun xavfsiz (maxfiy bo'lmagan) konfiguratsiya."""
     return jsonify({
-        'googleClientId': os.getenv('GOOGLE_CLIENT_ID', ''),
         # Click: faqat OCHIQ identifikatorlar (maxfiy kalit YO'Q)
         'clickMerchantId': os.getenv('CLICK_MERCHANT_ID', ''),
         'clickServiceId': os.getenv('CLICK_SERVICE_ID', ''),

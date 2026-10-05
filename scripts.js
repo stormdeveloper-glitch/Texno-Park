@@ -1325,34 +1325,6 @@ async function loadFromBackend() {
             const configResponse = await fetch('/api/config');
             const config = await configResponse.json();
             if (config) {
-                // Initialize Google Sign-in dynamically
-                const btnContainer = document.getElementById("googleBtnContainer");
-                if (config.googleClientId && window.google) {
-                    window.google.accounts.id.initialize({
-                        client_id: config.googleClientId,
-                        callback: handleCredentialResponse,
-                        context: 'signin',
-                        ux_mode: 'popup',
-                        auto_prompt: false
-                    });
-                    if (btnContainer) {
-                        btnContainer.innerHTML = '';
-                        window.google.accounts.id.renderButton(
-                            btnContainer,
-                            { type: "standard", shape: "pill", theme: "outline", text: "signin_with", size: "large", width: 320 }
-                        );
-                    }
-                } else {
-                    if (btnContainer) {
-                        btnContainer.innerHTML = `
-                            <button type="button" class="google-custom-btn" onclick="simulateGoogleSignIn()">
-                                <i class="fab fa-google google-icon"></i>
-                                <span>Google orqali kirish</span>
-                            </button>
-                        `;
-                    }
-                }
-
                 // Cloudflare Turnstile (CAPTCHA) — bo'lsa login formasida ko'rsatiladi
                 if (typeof TurnstileGate !== 'undefined') TurnstileGate.init(config);
 
@@ -1664,14 +1636,14 @@ function openEmployeeLogin() {
         loginPage.style.display = 'grid';
     }
     if (app) app.style.display = 'none';
-    document.getElementById('loginUser')?.focus();
+    document.getElementById('loginPhone')?.focus();
 }
 
 // ============================================================
 // LOGIN
 // ============================================================
 async function doLogin() {
-    const u = cleanText(document.getElementById('loginUser')?.value, 80).toLowerCase();
+    const u = cleanText(document.getElementById('loginPhone')?.value, 80).toLowerCase();
     const p = document.getElementById('loginPass')?.value || '';
 
     if (hasSqlInjectionPattern(u) || hasSqlInjectionPattern(p) || hasXssPattern(u) || hasXssPattern(p)) {
@@ -1864,9 +1836,9 @@ function doLogout(force = false) {
         app.classList.add('market-mode');
     }
 
-    const loginUser = document.getElementById('loginUser');
+    const loginPhone = document.getElementById('loginPhone');
     const loginPass = document.getElementById('loginPass');
-    if (loginUser) loginUser.value = '';
+    if (loginPhone) loginPhone.value = '';
     if (loginPass) {
         loginPass.value = '';
         loginPass.type = 'password';
@@ -5533,7 +5505,7 @@ const Security = {
         updateSessionIndicators();
     },
 
-    /** Sessiyani boshlash (doLogin / Google kirish uchun) */
+    /** Sessiyani boshlash (doLogin uchun) */
     startSession(user) {
         startSession(user);
     },
@@ -8213,44 +8185,6 @@ const Assistant = (() => {
     return { init, render, renderStats, send, sendFromInput, askQuick, reset };
 })();
 
-// ============================================================
-// GOOGLE OAUTH SIGN-IN
-// ============================================================
-function handleCredentialResponse(response) {
-    try {
-        const responsePayload = decodeJwtResponse(response.credential);
-        const name = responsePayload.name || 'Google Xaridor';
-        const email = responsePayload.email || 'google_user@gmail.com';
-        const picture = responsePayload.picture || '';
-
-        currentUser = {
-            id: Date.now(),
-            login: email,
-            name: name,
-            role: 'customer',
-            color: '#2563EB',
-            picture: picture
-        };
-
-        loginWithUser(currentUser);
-        addLog('Google Kirish', `Google orqali kirdi: ${name} (${email})`);
-        showNotif('success', 'Google orqali kirdingiz! 👋', name);
-    } catch (e) {
-        console.error('Google Sign-In error:', e);
-        playError();
-        showNotif('error', 'Google Kirish xatosi', 'Tizimga kirib bo\'lmadi');
-    }
-}
-
-function decodeJwtResponse(token) {
-    var base64Url = token.split('.')[1];
-    var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    return JSON.parse(jsonPayload);
-}
-
 function toggleShopCatSidebar() {
     const sidebar = document.getElementById('shopCatSidebar');
     if (sidebar) {
@@ -8259,7 +8193,7 @@ function toggleShopCatSidebar() {
 }
 
 function loginWithUser(user) {
-    // Google yoki sessiya tiklash orqali kirganda sessiya ochilishini kafolatlaymiz
+    // Sessiya tiklash orqali kirganda ham sessiya ochilishini kafolatlaymiz
     if (user && !currentSession) startSession(user);
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
@@ -9203,46 +9137,6 @@ function requireRoleSilent(...roles) {
 
 // Filial ma'lumotlari serverdan (ommaviy endpoint) boshlang'ich yuklash
 try { if (typeof Branches !== 'undefined') Branches.loadFromServer(); } catch (e) { }
-
-function simulateGoogleSignIn() {
-    showNotif('info', 'Google Login', 'Google orqali tizimga kirish simulyatsiya qilinmoqda...');
-    setTimeout(() => {
-        const googleUser = {
-            id: 9,
-            login: 'google-user',
-            name: 'Google Foydalanuvchi',
-            role: 'customer',
-            color: '#4285F4'
-        };
-        currentUser = googleUser;
-
-        const topName = document.getElementById('topbarEmployeeName');
-        if (topName) topName.textContent = googleUser.name;
-
-        document.getElementById('sideUser').textContent = googleUser.name;
-        document.getElementById('sideRole').textContent = ROLES[googleUser.role];
-        const av = document.getElementById('sideAvatar');
-        if (av) {
-            av.textContent = googleUser.name[0];
-            av.style.background = `linear-gradient(135deg,${googleUser.color},#10B981)`;
-        }
-
-        const loginPage = document.getElementById('loginPage');
-        const app = document.getElementById('app');
-        if (loginPage) {
-            loginPage.classList.remove('active');
-            loginPage.style.display = 'none';
-        }
-        if (app) {
-            app.style.display = 'block';
-            app.classList.add('market-mode');
-        }
-
-        initApp();
-        playSuccess();
-        showNotif('success', 'Muvaffaqiyatli!', 'Google orqali tizimga kirildi');
-    }, 800);
-}
 
 // ============================================================
 // COMPLAINTS & SUGGESTIONS (REPORT SYSTEM)
