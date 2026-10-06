@@ -24,6 +24,7 @@ const Boss = (() => {
         financeBranch: '', financeFrom: '', financeTo: '',
         auditQuery: '', auditSource: '',
         activeStaffId: null,
+        revealedPass: {},   // id -> {password, changedAt, changedBy} (vaqtincha ko'rsatilgan)
         cache: {}
     };
 
@@ -336,6 +337,8 @@ function setPeriod(value) {
         if (!isBoss()) return;
         const data = await api('/api/boss/staff?' + staffParams());
         if (!data) return;
+        // Ro'yxat yangilanganda eski ko'rinishlar o'chadi (parol almashgan bo'lishi mumkin).
+        state.revealedPass = {};
         state.cache.staff = data;
         const box = document.getElementById('boss-staff-table');
         if (box) box.innerHTML = staffRowsHtml(data.staff || []);
@@ -344,7 +347,7 @@ function setPeriod(value) {
     }
 
     function staffRowsHtml(rows) {
-        if (!rows.length) return `<tr><td colspan="9">${emptyState('Xodim topilmadi')}</td></tr>`;
+        if (!rows.length) return `<tr><td colspan="10">${emptyState('Xodim topilmadi')}</td></tr>`;
         return rows.map(s => {
             const blocked = String(s.status || '').toLowerCase() === 'blocked';
             const me = currentUser && s.login === currentUser.login;
@@ -354,8 +357,16 @@ function setPeriod(value) {
                     <div class="boss-avatar">${escapeHTML((s.name || '?')[0])}</div>
                     <div><strong>${escapeHTML(s.name)}</strong>
                         ${me ? '<span class="boss-me">siz</span>' : ''}
-                        <small>${escapeHTML(s.login || '')}</small></div></div></td>
-                <td data-label="Telefon">${escapeHTML(s.phone || '—')}</td>
+                        <small>${s.login && s.login !== s.phone
+                            ? 'login ID: ' + escapeHTML(s.login) : ''}</small></div></div></td>
+                <td data-label="Login (telefon)"><div class="boss-login-cell">
+                    <code>${escapeHTML(s.phone || '—')}</code>
+                    ${s.phone ? `<button type="button" class="boss-icon-btn" data-boss-copy="${escapeHTML(s.phone)}"
+                        title="Login'ni nusxalash"><i class="fas fa-copy"></i></button>` : ''}
+                    ${s.phoneChangedAt ? `<i class="fas fa-pen-to-square boss-phone-changed"
+                        title="Login o'zgartirilgan${s.phoneChangedBy ? ': ' + escapeHTML(s.phoneChangedBy) : ''}${s.phoneChangedAt ? ' · ' + escapeHTML(s.phoneChangedAt) : ''}${s.phonePrev ? ' (eski: ' + escapeHTML(s.phonePrev) + ')' : ''}"></i>` : ''}
+                </div></td>
+                <td data-label="Parol (joriy)">${passCellHtml(s)}</td>
                 <td data-label="Rol">${roleBadge(s.role)}</td>
                 <td data-label="Filial">${escapeHTML(s.branchName || '—')}</td>
                 <td data-label="Sotuvlar"><strong>${s.sales || 0}</strong> ta
@@ -366,11 +377,128 @@ function setPeriod(value) {
                     <small>${escapeHTML(s.lastSeen || s.updatedAt || '—')}</small></td>
                 <td data-label="Amallar" class="boss-actions">
                     <button class="btn btn-outline btn-sm" data-boss-sale="${escapeHTML(String(s.id))}">Savdosi</button>
-                    <button class="btn btn-outline btn-sm" data-boss-pass="${escapeHTML(String(s.id))}">Parol</button>
+                    <button class="btn btn-outline btn-sm" data-boss-pass="${escapeHTML(String(s.id))}">Almashtirish</button>
                     <button class="btn btn-outline btn-sm" data-boss-block="${escapeHTML(String(s.id))}">${blocked ? 'Ruhsat' : 'Blok'}</button>
                     <button class="btn btn-outline btn-sm danger" data-boss-del="${escapeHTML(String(s.id))}">O'chirish</button>
 </td></tr>`;
         }).join('');
+    }
+
+    /**
+     * Xodimning JORIY paroli katakchasi.
+     * Boshlang'ich holatda yashirin; ko'z tugmasi bosilganda serverdan olinadi.
+     */
+    function passCellHtml(s) {
+        const id = String(s.id);
+        const info = state.revealedPass[id];
+        if (!info || !info.password) {
+            // Eski akount: xazinada nusxa hali yo'q (xodim xazina yoqilgandan
+            // keyin hali kirmagan). Holatni YASHIRMASDAN aniq ko'rsatamiz —
+            // ko'z tugmasi bosilsa server sababni aytadi.
+            const unknown = s.passKnown === false;
+            if (unknown) {
+                return `<div class="boss-login-cell">
+                    <code class="boss-pass-code unknown" title="Parol nusxasi hali yo'q — xodim keyingi kirishida avtomatik yozib olinadi (yoki «Almashtirish» orqali yangi parol o'rnatasiz)">yozilmagan</code>
+                    <button type="button" class="boss-icon-btn" data-boss-reveal="${escapeHTML(id)}"
+                        title="Nega ko'rinmayotganini bilib olish"><i class="fas fa-circle-question"></i></button>
+                </div>`;
+            }
+            return `<div class="boss-login-cell">
+                <code class="boss-pass-code masked">••••••••</code>
+                <button type="button" class="boss-icon-btn" data-boss-reveal="${escapeHTML(id)}"
+                    title="Joriy parolni ko'rish"><i class="fas fa-eye"></i></button>
+            </div>`;
+        }
+        const meta = [];
+        if (info.changedBy) meta.push(escapeHTML(String(info.changedBy)));
+        if (info.changedAt) meta.push(escapeHTML(String(info.changedAt)));
+        return `<div class="boss-login-cell">
+            <code class="boss-pass-code">${escapeHTML(String(info.password))}</code>
+            <button type="button" class="boss-icon-btn"
+                data-boss-copy="${escapeHTML(String(info.password))}"
+                data-boss-copy-label="Parol nusxalandi" title="Parolni nusxalash">
+                <i class="fas fa-copy"></i></button>
+            <button type="button" class="boss-icon-btn" data-boss-reveal="${escapeHTML(id)}"
+                title="Yashirish"><i class="fas fa-eye-slash"></i></button>
+            ${meta.length ? `<small class="boss-pass-meta">${meta.join(' · ')}</small>` : ''}
+        </div>`;
+    }
+
+    /** Joriy kesh bo'yicha xodimlar jadvalini qayta chizadi (sahifa almashmasdan). */
+    function rerenderStaffTable() {
+        const box = document.getElementById('boss-staff-table');
+        const data = state.cache.staff || {};
+        if (box) box.innerHTML = staffRowsHtml(data.staff || []);
+    }
+
+    /**
+     * Xodimning JORIY (amal qilayotgan) parolini ko'rsatadi yoki yashiradi.
+     * Xodim o'zi parol almashtirgan bo'lsa ham eng yangisi qaytadi.
+     * Har bir ko'rish serverda xavfsizlik jurnaliga yoziladi.
+     */
+    async function revealStaffPassword(id) {
+        if (!isBoss()) return;
+        const key = String(id);
+        if (state.revealedPass[key]) {          // allaqachon ochiq — yopamiz
+            delete state.revealedPass[key];
+            rerenderStaffTable();
+            renderPassModalCurrent();
+            return;
+        }
+        const res = await fetch('/api/boss/staff/' + encodeURIComponent(key) + '/password',
+            { headers: authHeaders() });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            playError();
+            showNotif('error', "Parol ko'rinmaydi",
+                body.message || 'Bu xodim uchun parol nusxasi saqlanmagan');
+            return;
+        }
+        state.revealedPass[key] = body;
+        rerenderStaffTable();
+        renderPassModalCurrent();
+    }
+
+    /** Modal ichidagi «joriy parol» blokini holatga moslaydi. */
+    function renderPassModalCurrent() {
+        const code = document.getElementById('boss-pass-current');
+        if (!code) return;
+        const copy = document.getElementById('boss-pass-current-copy');
+        const meta = document.getElementById('boss-pass-current-meta');
+        const eye = document.getElementById('boss-pass-current-eye');
+        const info = state.revealedPass[String(state.activeStaffId)];
+        if (info && info.password) {
+            code.textContent = String(info.password);
+            code.classList.remove('masked');
+            if (copy) { copy.hidden = false; copy.dataset.bossCopy = String(info.password); }
+            if (eye) eye.className = 'fas fa-eye-slash';
+            if (meta) {
+                const bits = [];
+                if (info.changedBy) bits.push("Oxirgi o'zgarish: " + info.changedBy);
+                if (info.changedAt) bits.push(String(info.changedAt));
+                meta.textContent = bits.join(' · ');
+            }
+        } else {
+            const row = findStaffRow(state.activeStaffId);
+            const unknown = row ? row.passKnown === false : false;
+            code.textContent = unknown ? 'yozilmagan' : '••••••••';
+            code.classList.toggle('masked', !unknown);
+            code.classList.toggle('unknown', unknown);
+            if (copy) { copy.hidden = true; copy.dataset.bossCopy = ''; }
+            if (eye) eye.className = unknown ? 'fas fa-circle-question' : 'fas fa-eye';
+            if (meta) {
+                meta.textContent = unknown
+                    ? "Bu xodim parolni xazina yoqilgandan keyin hali kiritmagan — "
+                      + "keyingi kirishida avtomatik yozib olinadi. Hoziroq ko'rish uchun "
+                      + "quyida unga yangi parol o'rnating."
+                    : "Ko'rish uchun «Ko'rish» tugmasini bosing";
+            }
+        }
+    }
+
+    /** Modal tugmasidan joriy parolni ochadi/yashiradi. */
+    function toggleCurrentPassword() {
+        if (state.activeStaffId != null) revealStaffPassword(state.activeStaffId);
     }
 
     /** Boshliq dashboardidagi qisqa reyting. */
@@ -979,6 +1107,8 @@ function setPeriod(value) {
         const events = data.events || [];
         const labels = {
             'staff-create': "Xodim qo'shildi", 'staff-update': 'Xodim yangilandi',
+            'staff-phone-change': "Login (telefon) o'zgartirildi",
+            'phone-changed': "Login (telefon) o'zgartirildi",
             'staff-delete': "Xodim o'chirildi", 'password-change-own': 'Parol yangilandi',
             'password-change': 'Parol almashtirildi', 'login': 'Tizimga kirildi',
             'login-failed': 'Muvaffaqiyatsiz kirish', 'logout': 'Chiqildi',
@@ -1013,34 +1143,166 @@ function setPeriod(value) {
         return rows.find(s => String(s.id) === String(id));
     }
 
+    /** Matnni xavfsiz nusxalaydi (clipboard API + zaxira yo'l). */
+    function copyText(text, okLabel) {
+        const value = String(text || '');
+        if (!value) return;
+        const done = () => showNotif('success', 'Nusxalandi', okLabel || 'Buferga nusxalandi');
+        const fallback = () => {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = value;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                done();
+            } catch (e) {
+                showNotif('error', 'Xatolik', 'Nusxalab bo\'lmadi — qo\'lda ko\'chiring');
+            }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done).catch(fallback);
+        } else {
+            fallback();
+        }
+    }
+
+    /** Yaratilgan xodimning kirish ma'lumotlarini formadan keyin ko'rsatadi. */
+    function showNewStaffCredentials(info) {
+        const form = document.getElementById('boss-new-form');
+        const box = document.getElementById('boss-new-credentials');
+        if (form) form.hidden = true;
+        if (box) box.hidden = false;
+        const set = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        set('boss-cred-login', info.login || '—');
+        set('boss-cred-pass', info.password || '—');
+        set('boss-cred-role', ROLES[info.role] || info.role || '—');
+    }
+
+    /** Formani tozalab, «yana xodim qo\'shish» holatiga qaytaradi. */
+    function resetNewStaffForm() {
+        ['boss-new-name', 'boss-new-phone', 'boss-new-password'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = '';
+            if (id === 'boss-new-password') el.type = 'password';
+        });
+        const eye = document.getElementById('boss-new-pass-eye');
+        if (eye) eye.className = 'fas fa-eye';
+        const hint = document.getElementById('boss-new-pass-hint');
+        if (hint) hint.textContent = 'Kamida 6 belgi. Parol tizimda faqat xesh ko\'rinishida saqlanadi.';
+        const form = document.getElementById('boss-new-form');
+        const box = document.getElementById('boss-new-credentials');
+        if (form) form.hidden = false;
+        if (box) box.hidden = true;
+    }
+
+    /** Parol maydonini ko'rsatish/yashirish. */
+    function toggleNewPassword() {
+        const input = document.getElementById('boss-new-password');
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        const eye = document.getElementById('boss-new-pass-eye');
+        if (eye) eye.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+    }
+
+    /** Kuchli tasodifiy parol yaratadi (~10 belgi, adashtiruvchi belgilarsiz). */
+    function generatePassword() {
+        const input = document.getElementById('boss-new-password');
+        if (!input) return;
+        const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        const bytes = new Uint8Array(10);
+        if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+            crypto.getRandomValues(bytes);
+        } else {
+            for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+        }
+        let pass = '';
+        for (let i = 0; i < bytes.length; i++) pass += abc[bytes[i] % abc.length];
+        input.value = pass;
+        input.type = 'text';
+        const eye = document.getElementById('boss-new-pass-eye');
+        if (eye) eye.className = 'fas fa-eye-slash';
+        const hint = document.getElementById('boss-new-pass-hint');
+        if (hint) hint.textContent = 'Parol yaratildi — xodimga shu parolni bering.';
+    }
+
     async function createStaff() {
         if (!isBoss()) return;
         const name = (document.getElementById('boss-new-name')?.value || '').trim();
-        const phone = (document.getElementById('boss-new-phone')?.value || '').trim();
+        const phoneRaw = (document.getElementById('boss-new-phone')?.value || '').trim();
         const role = document.getElementById('boss-new-role')?.value || 'cashier';
         const branch = document.getElementById('boss-new-branch')?.value || '';
         const status = document.getElementById('boss-new-status')?.value || 'active';
         const password = document.getElementById('boss-new-password')?.value || '';
-        if (!name) { showNotif('error', 'Xatolik', 'Ism majburiy'); return; }
-        if (password.length < 6) { showNotif('error', 'Xatolik', 'Parol kamida 6 belgi'); return; }
 
-        const res = await fetch('/api/boss/staff', {
-            method: 'POST',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ name, phone, role, branchId: branch, status, password })
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            showNotif('error', 'Xatolik', body.message || 'Xodimni qo\'shib bo\'lmadi');
+        if (!name) { showNotif('error', 'Xatolik', 'Xodim ismini kiriting'); return; }
+        // Login TELEFON raqami bo'lgani uchun raqam majburiy — aks holda
+        // xodim tizimga kira olmaydi (login maydoni telefon uchun).
+        const phone = (typeof normalizePhoneUz === 'function') ? normalizePhoneUz(phoneRaw) : '';
+        if (!phone) {
+            playError();
+            showNotif('error', 'Telefon xato',
+                'Telefon raqamini to\'liq kiriting: +998 90 123 45 67');
+            document.getElementById('boss-new-phone')?.focus();
             return;
         }
-        ['boss-new-name', 'boss-new-phone', 'boss-new-password'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-        closeModal('bossStaffModal');
-        showNotif('success', 'Qo\'shildi', name + ' — ' + (ROLES[role] || role));
-        loadStaff();
+        if (password.length < 6) {
+            playError();
+            showNotif('error', 'Xatolik', 'Parol kamida 6 belgidan iborat bo\'lsin');
+            return;
+        }
+
+        const saveBtn = document.getElementById('boss-new-save');
+        const oldLabel = saveBtn ? saveBtn.innerHTML : '';
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saqlanmoqda...';
+        }
+        try {
+            const res = await fetch('/api/boss/staff', {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ name, phone, role, branchId: branch, status, password })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                playError();
+                showNotif('error', 'Xatolik', body.message || 'Xodimni qo\'shib bo\'lmadi');
+                return;
+            }
+            const created = body.staff || {};
+            // Kirish ma'lumotlari darhol ko'rsatiladi — Boshliq xodimga beradi.
+            showNewStaffCredentials({
+                login: created.phone || phone,
+                password: password,
+                role: created.role || role
+            });
+            showNotif('success', 'Xodim qo\'shildi',
+                name + ' endi shu login va parol bilan kiradi');
+            loadStaff();
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = oldLabel;
+            }
+        }
+    }
+
+    /** Yaratilgan xodimning kirish ma'lumotlarini buferga nusxalaydi. */
+    function copyCredentials() {
+        const login = (document.getElementById('boss-cred-login')?.textContent || '').trim();
+        if (!login || login === '—') return;
+        const pass = (document.getElementById('boss-cred-pass')?.textContent || '').trim();
+        copyText(`Texno Park N1 POS\nLogin (telefon): ${login}\nParol: ${pass}`,
+            'Kirish ma\'lumotlari nusxalandi');
     }
 
     async function putStaff(id, patch, okMessage) {
@@ -1095,11 +1357,13 @@ function setPeriod(value) {
         if (nameEl) nameEl.textContent = row.name;
         const input = document.getElementById('boss-pass-new');
         if (input) input.value = '';
+        renderPassModalCurrent();
         openModal('bossPassModal');
     }
 
     async function submitStaffPassword() {
         const pass = document.getElementById('boss-pass-new')?.value || '';
+        if (!pass) { closeModal('bossPassModal'); return; }   // faqat ko'rish uchun ochilgan
         if (pass.length < 6) { showNotif('error', 'Xatolik', 'Parol kamida 6 belgi'); return; }
         await putStaff(state.activeStaffId, { password: pass }, 'Parol yangilandi');
         closeModal('bossPassModal');
@@ -1314,6 +1578,9 @@ function setPeriod(value) {
                 return;
             }
 
+            const reveal = ev.target.closest('[data-boss-reveal]');
+            if (reveal) { await revealStaffPassword(reveal.dataset.bossReveal); return; }
+
             const pass = ev.target.closest('[data-boss-pass]');
             if (pass) { openPassModal(pass.dataset.bossPass); return; }
 
@@ -1333,8 +1600,19 @@ function setPeriod(value) {
                 return;
             }
 
+            const copyBtn = ev.target.closest('[data-boss-copy]');
+            if (copyBtn) {
+                copyText(copyBtn.dataset.bossCopy,
+                    copyBtn.dataset.bossCopyLabel || 'Login nusxalandi');
+                return;
+            }
+
             if (ev.target.closest('[data-boss-export]')) { await exportReportsCsv(); return; }
-            if (ev.target.closest('[data-boss-add]')) { openModal('bossStaffModal'); return; }
+            if (ev.target.closest('[data-boss-add]')) {
+                resetNewStaffForm();
+                openModal('bossStaffModal');
+                return;
+            }
             if (ev.target.closest('[data-boss-ownpass]')) { openOwnPasswordModal(); return; }
             if (ev.target.closest('[data-boss-refresh]')) { refreshCurrent(); return; }
         });
@@ -1437,6 +1715,9 @@ function setPeriod(value) {
         loadFinanceCharts, renderCharts, paintCharts,
         openReceiptModal, openProductModal, openBranchModal,
         createStaff, deleteStaff, toggleBlock, submitStaffPassword,
+        revealStaffPassword, toggleCurrentPassword, rerenderStaffTable,
+        toggleNewPassword, generatePassword, copyCredentials, resetNewStaffForm,
+        showNewStaffCredentials, copyText,
         submitOwnPassword, openOwnPasswordModal, exportReportsCsv,
         paintPeriodChips, periodChips, syncCustomDates
     };

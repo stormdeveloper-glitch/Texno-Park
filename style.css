@@ -730,13 +730,36 @@ body {
 .page-title {
     font-size: 20px;
     font-weight: 700;
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 auto;
+    /* DIQQAT: ilgari `min-width: 0` edi — tor ekranlarda sarlavha 0 kenglikka
+       siqilib, qidiruv maydoni va tugmalar USTIGA chiqib ketardi (o'qib
+       bo'lmaydigan "ustma-ust" ko'rinish). Endi minimal kenglik beriladi va
+       uzun matn "..." bilan qisqartiriladi. */
+    min-width: 96px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Sarlavha rangi ikkala temada ham header foniga mos (oq) */
 .topbar .page-title {
     color: var(--hdr-fg);
+}
+
+/* Sarlavha matni ham qisqarsin (ustma-ust tushmasin) */
+.topbar .page-title span {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Tor ekranda qidiruv maydoni kichrayadi — sarlavha va tugmalar sig'adi */
+@media (max-width: 1080px) {
+    .topbar-search {
+        flex: 0 1 150px;
+        width: 150px;
+    }
 }
 
 .page-title small {
@@ -3185,6 +3208,17 @@ select.form-control option {
     backdrop-filter: blur(8px);
     padding: 20px;
     overflow-y: auto;
+    /* MUHIM: bu elementlar `class="modal"` ga ham ega — `.modal` qoidalari
+       kenglikni 520px, balandlikni 90vh qilib qo'yardi. Natijada qoraytirilgan
+       fon faqat yarim ekranni qoplab, modal markazga tushmay qolardi va
+       pastki 10% qoraymasdi. Overlay uchun bular bekor qilinadi. */
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
 }
 
 #bossStaffModal.open,
@@ -6939,6 +6973,11 @@ canvas {
     font-size: 13px;
     font-weight: 600;
     max-width: 170px;
+    /* Tor ekranda o'ram (wrap) siqilganda select UNING ICHIDA qolsin —
+       aks holda matn tugmalar ustiga chiqib ketadi (ustma-ust ko'rinish) */
+    min-width: 0;
+    flex: 0 1 auto;
+    text-overflow: ellipsis;
     cursor: pointer;
     outline: none;
 }

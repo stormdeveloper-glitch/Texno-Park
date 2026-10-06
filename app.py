@@ -20,7 +20,7 @@ import traceback
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta, timezone
-from flask import Flask, request, jsonify, send_from_directory, redirect
+from flask import Flask, request, jsonify, send_from_directory, redirect, abort
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
@@ -791,6 +791,207 @@ def auth_secret():
     return _AUTH_SECRET
 
 
+# ============================================================
+# PAROL XAZINASI — Boshliq panelida xodimlarning JORIY parolini ko'rish
+# ============================================================
+# Talab: Boshliq HAR BIR xodimning hozir amal qilayotgan parolini panelda
+# ko'rishi kerak — xodim parolni O'ZI almashtirgandan keyin ham.
+#
+# Nega faqat xesh bilan bo'lmaydi: `sha256(salt + '::' + parol)` — bir
+# tomonlama. Undan parolni tiklab bo'lmaydi (bu uning butun ma'nosidir).
+# Shu sababli parolning QAYTA TIKLANADIGAN nusxasi qo'shimcha saqlanadi.
+#
+# XAVFSIZLIK (o'qib chiqing):
+#  • Nusxa SHIFRLANGAN holda saqlanadi (Fernet: AES-128-CBC + HMAC-SHA256).
+#    Kalit: PASSWORD_VAULT_KEY (.env); berilmasa API_AUTH_SECRET dan hosil
+#    qilinadi. Baza dump'i/backup'i tushsa ham parollar ochiq ko'rinmaydi.
+#  • Ammo KALIT (.env) ham qo'lga tushsa — nusxalar o'qiladi. Shu sababli
+#    .env faqat serverda, gitdan tashqarida saqlansin.
+#  • Har bir "ko'rish" xavfsizlik jurnaliga yoziladi (kim, qachon, kimning).
+#  • Bu funksiya STAFF_PASSWORD_VAULT=false bilan butunlay o'chiriladi —
+#    o'shanda yangi nusxalar saqlanmaydi va mavjudlari ham ko'rsatilmaydi.
+#  • Shifrlash kutubxonasi (cryptography) bo'lmasa — HECH NARSA saqlanmaydi
+#    (ochiq matnda saqlashdan ko'ra ko'rsatmaslik xavfsizroq).
+PASSWORD_VAULT_ENABLED = ((os.getenv('STAFF_PASSWORD_VAULT') or 'true').strip().lower()
+                          not in ('false', '0', 'no'))
+
+try:
+    from cryptography.fernet import Fernet as _Fernet
+    _HAS_FERNET = True
+except Exception:  # pragma: no cover
+    _Fernet = None
+    _HAS_FERNET = False
+
+_vault_cipher = None
+_vault_lock = threading.Lock()
+
+
+def vault_available():
+    """Xazina ishlashga tayyormi (yoqilgan + kutubxona bor)."""
+    return bool(PASSWORD_VAULT_ENABLED and _HAS_FERNET)
+
+
+def _vault_cipher_get():
+    """Fernet shifrlagichini bir marta tayyorlaydi."""
+    global _vault_cipher
+    if _vault_cipher is not None:
+        return _vault_cipher
+    with _vault_lock:
+        if _vault_cipher is not None:
+            return _vault_cipher
+        raw = (os.getenv('PASSWORD_VAULT_KEY') or '').strip()
+        cipher = None
+        if raw:
+            try:
+                cipher = _Fernet(raw.encode('ascii'))
+            except Exception:
+                cipher = None
+        if cipher is None:
+            # Kalit berilmagan/xato — API_AUTH_SECRET dan hosil qilamiz
+            material = (raw or auth_secret()).encode('utf-8')
+            key = base64.urlsafe_b64encode(
+                hashlib.sha256(b'tp-pos-parol-xazinasi::' + material).digest())
+            cipher = _Fernet(key)
+        _vault_cipher = cipher
+    return _vault_cipher
+
+
+def vault_encrypt(password):
+    """Parolning shifrlangan (qayta tiklanadigan) nusxasini qaytaradi."""
+    value = str(password or '')
+    if not value or not vault_available():
+        return ''
+    try:
+        token = _vault_cipher_get().encrypt(value.encode('utf-8'))
+        return 'fernet:' + token.decode('ascii')
+    except Exception as e:
+        print(f'[VAULT] Parolni shifrlab bo\'lmadi: {e}')
+        return ''
+
+
+def vault_decrypt(stored):
+    """Shifrlangan nusxadan parolni qaytaradi (bo'lmasa yoki ochilmasa — '').
+
+    STAFF_PASSWORD_VAULT=false bo'lsa mavjud nusxalar ham KO'RSATILMAYDI.
+    """
+    raw = str(stored or '')
+    if not raw or not vault_available() or not raw.startswith('fernet:'):
+        return ''
+    try:
+        return _vault_cipher_get().decrypt(raw[7:].encode('ascii')).decode('utf-8')
+    except Exception:
+        return ''
+
+
+def _now_stamp():
+    return datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+
+
+def apply_staff_password(user, password, changed_by='', 
+                         revoke_sessions=False, keep_jti=''):
+    """Xodim parolini o'rnatadi: xesh + shifrlangan nusxa + meta ma'lumot.
+
+    Meta maydonlar (boshliq panelida ko'rinadi):
+      • passChangedAt — parol oxirgi marta qachon o'zgargani;
+      • passChangedBy — kim o'zgartirgani ("Xodim o'zi" / xodim nomi / Boshliq).
+    """
+    salt = make_salt('tp-' + str(user.get('role', 'usr'))[:3] + '-')
+    user['salt'] = salt
+    user['passHash'] = hash_password(str(password), salt)
+    user['mustChange'] = False
+    user['updatedAt'] = _now_stamp()
+    vault = vault_encrypt(password)
+    if vault:
+        user['passVault'] = vault
+        user['passVaultAt'] = user['updatedAt']
+    user['passChangedAt'] = user['updatedAt']
+    user['passChangedBy'] = str(changed_by or '')[:120]
+    if revoke_sessions:
+        revoke_login_sessions(str(user.get('login', '')), keep_jti=keep_jti)
+    return True
+
+
+def apply_staff_phone(user, new_phone, changed_by=''):
+    """Xodimning LOGIN (telefon) raqamini o'rnatadi + meta ma'lumot.
+
+    Telefon — login identifikatori bo'lgani uchun:
+      • `phone` yangilanadi;
+      • eski `login` telefon ko'rinishida bo'lsa (boshliq qo'shgan xodimlar
+        shunday yaratiladi), `login` ham yangi raqamga o'tadi — aks holda
+        eski raqam bilan kirish mumkin bo'lib qolardi;
+      • `phoneChangedAt` / `phoneChangedBy` / `phonePrev` — boshliq panelida
+        kim va qachon o'zgartirganini ko'rsatish uchun (xodim O'ZI
+        almashtirsa ham ko'rinadi).
+    """
+    old_phone = normalize_phone(user.get('phone'))
+    stamp = _now_stamp()
+    user['phone'] = new_phone
+    old_login = str(user.get('login') or '').strip()
+    # Telefon login sifatida ishlatilayotgan bo'lsa — loginni ham yangilaymiz.
+    if not old_login or normalize_phone(old_login) == old_phone:
+        user['login'] = new_phone
+    user['updatedAt'] = stamp
+    user['phoneChangedAt'] = stamp
+    user['phoneChangedBy'] = str(changed_by or '')[:120]
+    if old_phone and old_phone != new_phone:
+        user['phonePrev'] = old_phone
+    return True
+
+
+def capture_staff_password(user, password):
+    """Login paytida parolni xazinaga yozib oladi (nusxa yo'q bo'lsa).
+
+    Eski akountlar (xazina yoqilishidan oldin yaratilgan) shu yo'l bilan
+    ko'rinadigan bo'ladi — xodim tizimga kirishi bilan.
+    """
+    if not vault_available():
+        return False
+    if str(user.get('passVault') or ''):
+        return False
+    token = vault_encrypt(password)
+    if not token:
+        return False
+    key = str(user.get('login', '')).strip().lower()
+    try:
+        people = load_staff()
+    except Exception:
+        return False
+    for item in people:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get('login', '')).strip().lower() != key:
+            continue
+        item['passVault'] = token
+        item['passVaultAt'] = _now_stamp()
+        if not item.get('passChangedAt'):
+            item['passChangedAt'] = item['passVaultAt']
+            item['passChangedBy'] = "Noma'lum (kirishda yozib olindi)"
+        try:
+            db_manager.save_keys({'staff_users': people})
+            return True
+        except Exception as e:
+            print(f'[VAULT] Parolni yozib olib bo\'lmadi: {e}')
+            return False
+    return False
+
+
+def staff_current_password(user):
+    """Xodimning joriy parolini qaytaradi. (parol, sabab) ko'rinishida.
+
+    Sabab bo'sh bo'lsa — parol muvaffaqiyatli o'qildi.
+    """
+    if not PASSWORD_VAULT_ENABLED:
+        return '', 'Parol xazinasi o\'chirilgan (STAFF_PASSWORD_VAULT=false)'
+    if not _HAS_FERNET:
+        return '', 'cryptography kutubxonasi o\'rnatilmagan (requirements.txt)'
+    password = vault_decrypt(user.get('passVault'))
+    if not password:
+        return '', ('Parol noma\'lum — bu xodim parolni xazina yoqilgandan keyin '
+                    'hali kiritmagan (u parolni almashtirsa yoki tizimga kirsa, '
+                    'avtomatik yozib olinadi)')
+    return password, ''
+
+
 # Standart xodimlar (frontend'dagi bilan bir xil parol sxemasi).
 # Productionda STAFF_DEFAULT_PASSWORD orqali almashtiring yoki
 # /api/auth/change-password orqali parolni yangilang.
@@ -942,13 +1143,10 @@ def _ensure_boss_account_locked():
               '           Boshliq parolini .env ga yozing yoki `python _tp_create_boss.py` ishga tushiring.')
         return None
 
-    salt = make_salt('tp-bss-')
     account = {
         'id': _next_staff_id(staff),
         'login': BOSS_LOGIN,
         'phone': BOSS_PHONE,
-        'salt': salt,
-        'passHash': hash_password(password, salt),
         'name': (os.getenv('BOSS_DISPLAY_NAME') or '').strip() or BOSS_NAME,
         'role': 'boss',
         'status': 'active',
@@ -957,6 +1155,8 @@ def _ensure_boss_account_locked():
         'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
     }
+    # Parol: xesh + shifrlangan nusxa (boshliq panelida ko'rish uchun)
+    apply_staff_password(account, password, 'Tizim (akount yaratildi)')
     staff.append(account)
     try:
         db_manager.save_keys({'staff_users': staff})
@@ -992,6 +1192,8 @@ def load_staff():
     if not password:
         password = _DEFAULT_PASSWORD
     seeded = []
+    # Shifrlangan nusxa bir marta hisoblanadi (barcha standart xodimlar uchun)
+    vault_token = vault_encrypt(password)
     for idx, item in enumerate(_DEFAULT_STAFF, start=1):
         salt = item['salt'] if password == _DEFAULT_PASSWORD else make_salt('tp-' + item['role'][:3] + '-')
         seeded.append({
@@ -1004,11 +1206,25 @@ def load_staff():
             'role': item['role'],
             'status': 'active',
             'mustChange': password == _DEFAULT_PASSWORD,
+            'passVault': vault_token,
+            'passVaultAt': _now_stamp(),
+            'passChangedAt': _now_stamp(),
+            'passChangedBy': "Tizim (boshlang'ich parol)",
         })
     try:
         db_manager.save_keys({'staff_users': seeded})
     except Exception as e:
         print(f'[SECURITY] Xodimlarni saqlab bo\'lmadi: {e}')
+    # MUHIM: Boshliq akountini SHU YERDA yaratamiz. Aks holda bo'sh bazada
+    # BOSHLIQ ning birinchi login urinishi "Login yoki parol xato" (401)
+    # qaytarardi: ro'yxat akount qo'shilishidan OLDIN olingan bo'lardi.
+    ensure_boss_account()
+    try:
+        fresh = (db_manager.get_all() or {}).get('staff_users')
+    except Exception:
+        fresh = None
+    if isinstance(fresh, list) and fresh:
+        seeded = fresh
     if password == _DEFAULT_PASSWORD:
         print("[SECURITY] Standart parol (123456) ishlatilmoqda! "
               "Iltimos, STAFF_DEFAULT_PASSWORD o'rnating yoki parollarni o'zgartiring.")
@@ -1323,6 +1539,11 @@ def auth_login():
         return jsonify({'status': 'error', 'code': 'bad_credentials',
                         'message': 'Login yoki parol xato'}), 401
 
+    # Parol to'g'ri kirdi — xazinada nusxa bo'lmasa, shu yerda yozib olamiz:
+    # eski (xazina yoqilishidan oldin yaratilgan) akountlar ham boshliq
+    # panelida ko'rinadigan bo'ladi.
+    capture_staff_password(user, password)
+
     token, payload = create_token(user)
     session = register_session(payload)
     server_security_log('login-success', 'low',
@@ -1332,7 +1553,8 @@ def auth_login():
         'token': token,
         'expiresIn': TOKEN_TTL_HOURS * 3600,
         'mustChangePassword': bool(user.get('mustChange')),
-        'user': {'login': user.get('login'), 'name': user.get('name'), 'role': user.get('role')},
+        'user': {'login': user.get('login'), 'name': user.get('name'),
+                 'role': user.get('role'), 'phone': user.get('phone')},
     })
 
 
@@ -1341,8 +1563,10 @@ def auth_session():
     payload = current_staff()
     if not payload:
         return jsonify({'status': 'error', 'code': 'unauthorized'}), 401
+    me = find_staff(str(payload.get('sub') or '')) or find_staff_by_phone(payload.get('sub'))
     return jsonify({'status': 'success', 'user': {
         'login': payload.get('sub'), 'name': payload.get('name'), 'role': payload.get('role'),
+        'phone': (me or {}).get('phone', ''),
     }, 'exp': payload.get('exp')})
 @app.route('/api/auth/logout', methods=['POST'])
 def auth_logout():
@@ -1405,11 +1629,10 @@ def auth_change_password():
                                 'Joriy parol xato', target_login)
             return jsonify({'status': 'error', 'message': 'Joriy parol xato'}), 401
 
-    salt = make_salt('tp-' + str(target.get('role', 'usr'))[:3] + '-')
-    target['salt'] = salt
-    target['passHash'] = hash_password(new_password, salt)
-    target['mustChange'] = False
-    target['updatedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    # Parol: xesh + shifrlangan nusxa + meta (kim/qachon o'zgartirdi).
+    # Xodim O'ZI almashtirsa ham, yangi parol boshliq panelida ko'rinadi.
+    apply_staff_password(target, new_password,
+                         "Xodim o'zi" if is_self else str(payload.get('name') or ''))
     try:
         db_manager.save_keys({'staff_users': staff})
     except Exception:
@@ -1423,6 +1646,77 @@ def auth_change_password():
     register_session(new_payload)
     return jsonify({'status': 'success', 'message': 'Parol yangilandi. Qayta kiring.',
                     'token': new_token})
+
+
+@app.route('/api/auth/change-phone', methods=['POST'])
+def auth_change_phone():
+    """Xodim O'ZI login (telefon) raqamini almashtiradi.
+
+    Xavfsizlik:
+      • joriy parol tasdiqlanadi;
+      • raqam boshqa xodimda band bo'lsa — 409;
+      • telefon login bo'lgani uchun yangi token beriladi va eski sessiyalar
+        yopiladi (eski raqam bilan kirish mumkin bo'lib qolmaydi);
+      • o'zgarish Boshliq panelida ko'rinadi (audit + xavfsizlik jurnali).
+    """
+    payload = current_staff()
+    if not payload:
+        return jsonify({'status': 'error', 'code': 'unauthorized',
+                        'message': 'Avtorizatsiya talab qilinadi'}), 401
+
+    body = request.get_json(silent=True) or {}
+    current_password = str(body.get('currentPassword') or '')[:200]
+    new_phone = normalize_phone(body.get('newPhone') or body.get('phone'))
+    if not new_phone:
+        return jsonify({'status': 'error', 'code': 'bad_phone',
+                        'message': "Telefon raqami noto'g'ri. Namuna: +998 90 123 45 67"}), 400
+
+    me_login = str(payload.get('sub') or '').strip()
+    staff = load_staff()
+    target = next((u for u in staff if isinstance(u, dict)
+                   and str(u.get('login', '')).strip().lower() == me_login.lower()), None)
+    if not target:
+        return jsonify({'status': 'error', 'message': 'Xodim topilmadi'}), 404
+
+    if not current_password or not hmac.compare_digest(
+            hash_password(current_password, target.get('salt', '')),
+            str(target.get('passHash', ''))):
+        server_security_log('phone-change-failed', 'medium',
+                            'Login almashtirishda joriy parol xato', me_login)
+        return jsonify({'status': 'error', 'message': 'Joriy parol xato'}), 401
+
+    if phones_match(target.get('phone'), new_phone):
+        return jsonify({'status': 'success',
+                        'message': 'Bu raqam allaqachon sizning loginingiz',
+                        'user': {'login': target.get('login'), 'name': target.get('name'),
+                                 'role': target.get('role'), 'phone': target.get('phone')}})
+
+    clash = find_staff_by_phone(new_phone)
+    if clash and _num(clash.get('id'), -1) != _num(target.get('id'), -1):
+        return jsonify({'status': 'error', 'code': 'phone_taken',
+                        'message': 'Bu telefon raqami boshqa xodimda band'}), 409
+
+    old_login = str(target.get('login') or '')
+    apply_staff_phone(target, new_phone, "Xodim o'zi")
+    try:
+        db_manager.save_keys({'staff_users': staff})
+    except Exception:
+        return jsonify({'status': 'error', 'message': "Raqamni saqlab bo'lmadi"}), 500
+
+    audit_log('staff-phone-change', str(target.get('name', '')),
+              f'login: {old_login} -> {new_phone}', "Xodim o'zi")
+    server_security_log('phone-changed', 'medium',
+                        f'Login (telefon) almashtirildi: {old_login} -> {new_phone}',
+                        target.get('name', '—'))
+    new_token, new_payload = create_token(target)
+    revoke_login_sessions(old_login, keep_jti=new_payload.get('jti'))
+    register_session(new_payload)
+    return jsonify({'status': 'success',
+                    'message': 'Login (telefon) yangilandi — keyingi kirishda '
+                               'yangi raqamdan foydalanasiz',
+                    'token': new_token,
+                    'user': {'login': target.get('login'), 'name': target.get('name'),
+                             'role': target.get('role'), 'phone': target.get('phone')}})
 
 
 @app.route('/api/auth/logout-all', methods=['POST'])
@@ -1859,6 +2153,12 @@ def staff_public_view(user, stats=None):
         'status': str(user.get('status') or 'active')[:30],
         'branchId': str(user.get('branchId') or '')[:40],
         'mustChange': bool(user.get('mustChange')),
+        'passKnown': bool(vault_decrypt(user.get('passVault'))),
+        'passChangedAt': str(user.get('passChangedAt') or '')[:30],
+        'passChangedBy': str(user.get('passChangedBy') or '')[:120],
+        'phonePrev': str(user.get('phonePrev') or '')[:40],
+        'phoneChangedAt': str(user.get('phoneChangedAt') or '')[:30],
+        'phoneChangedBy': str(user.get('phoneChangedBy') or '')[:120],
         'createdAt': str(user.get('createdAt') or '')[:30],
         'updatedAt': str(user.get('updatedAt') or '—')[:30],
         'lastSeen': str(user.get('lastSeen') or '')[:30],
@@ -2349,8 +2649,11 @@ def boss_staff_create():
     password, error = _validate_password(body.get('password'))
     if error:
         return json_error(error)
-    if phone and not re.fullmatch(r'\+998\d{9}', phone):
-        return json_error('Telefon +998 va 9 raqamli formatda bo\'lishi kerak')
+    # Telefon raqami MAJBURIY: xodim tizimga aynan shu raqam (login) bilan kiradi.
+    # Raqamsiz akount yaratilsa, xodim veb-login orqali kira olmay qolardi.
+    if not phone or not re.fullmatch(r'\+998\d{9}', phone):
+        return json_error("Telefon raqami majburiy va +998XXXXXXXXX formatda bo'lishi "
+                          "kerak — xodim tizimga shu raqam bilan kiradi")
 
     staff = load_staff()
     if phone and find_staff_by_phone(phone):
@@ -2358,13 +2661,10 @@ def boss_staff_create():
     if any(str(u.get('name', '')).strip().lower() == name.lower() for u in staff):
         return json_error('Bunday xodim allaqachon mavjud', 409)
 
-    salt = make_salt('tp-' + role[:3] + '-')
     account = {
         'id': _next_staff_id(staff),
         'login': (os.getenv('BOSS_STAFF_LOGIN_PREFIX') or 'user') + str(_next_staff_id(staff)),
         'phone': phone,
-        'salt': salt,
-        'passHash': hash_password(password, salt),
         'name': name,
         'role': role,
         'status': status,
@@ -2373,6 +2673,8 @@ def boss_staff_create():
         'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
     }
+    # Parol: xesh + shifrlangan nusxa (boshliq panelida ko'rish uchun)
+    apply_staff_password(account, password, _actor_name())
     staff.append(account)
     try:
         db_manager.save_keys({'staff_users': staff})
@@ -2389,6 +2691,42 @@ def boss_staff_create():
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
+
+@app.route('/api/boss/staff/<int:staff_id>/password', methods=['GET'])
+@require_staff('boss')
+def boss_staff_password(staff_id):
+    """Xodimning JORIY (amal qilayotgan) parolini qaytaradi — faqat Boshliq.
+
+    Parol xazinadan (shifrlangan nusxa) o'qiladi; xodim parolni O'ZI
+    almashtirgan bo'lsa ham eng yangisi qaytariladi. Har bir ko'rish
+    xavfsizlik jurnaliga yoziladi (kim, qachon, kimning parolini ko'rdi).
+
+    Nusxa bo'lmasa 404 + sabab qaytadi (xodim keyingi kirishida avtomatik
+    yozib olinadi yoki parolni qayta o'rnatasiz).
+    """
+    staff = load_staff()
+    target = next((u for u in staff
+                   if isinstance(u, dict) and _num(u.get('id'), -1) == staff_id), None)
+    if not target:
+        return json_error('Xodim topilmadi', 404)
+
+    password, reason = staff_current_password(target)
+    if not password:
+        return jsonify({'status': 'error', 'code': 'password_unknown',
+                        'message': reason,
+                        'staff': staff_public_view(target)}), 404
+
+    audit_log('password-reveal', str(target.get('name', '')),
+              'joriy parol ko\'rildi', _actor_name())
+    server_security_log('password-reveal', 'medium',
+                        f'{target.get("name")} nomli xodimning paroli ko\'rildi',
+                        _actor_name())
+    return jsonify({'status': 'success', 'password': password,
+                    'changedAt': str(target.get('passChangedAt') or ''),
+                    'changedBy': str(target.get('passChangedBy') or ''),
+                    'vaultAt': str(target.get('passVaultAt') or ''),
+                    'staff': staff_public_view(target)})
+
 
 @app.route('/api/boss/staff/<int:staff_id>', methods=['PUT'])
 @require_staff('boss')
@@ -2424,10 +2762,12 @@ def boss_staff_update(staff_id):
 
     if 'phone' in body:
         phone = normalize_phone(body.get('phone'))
-        if phone:
-            clash = find_staff_by_phone(phone)
-            if clash and _num(clash.get('id'), -1) != staff_id:
-                return json_error('Bu telefon raqami band', 409)
+        if not phone:
+            return json_error("Telefon raqami o'chirilmaydi — xodim tizimga shu raqam "
+                              "bilan kiradi")
+        clash = find_staff_by_phone(phone)
+        if clash and _num(clash.get('id'), -1) != staff_id:
+            return json_error('Bu telefon raqami band', 409)
         if phone != target.get('phone'):
             changes.append('telefon')
         target['phone'] = phone
@@ -2460,12 +2800,10 @@ def boss_staff_update(staff_id):
         password, error = _validate_password(body.get('password'))
         if error:
             return json_error(error)
-        salt = make_salt('tp-' + str(target.get('role', 'usr'))[:3] + '-')
-        target['salt'] = salt
-        target['passHash'] = hash_password(password, salt)
-        target['mustChange'] = False
+        # Xesh + shifrlangan nusxa + meta (kim/qachon o'zgartirdi).
+        # O'zgargan parol boshliq panelida DARHOL ko'rinadi.
+        apply_staff_password(target, password, _actor_name(), revoke_sessions=True)
         changes.append('parol')
-        revoke_login_sessions(str(target.get('login', '')))
 
     if not changes:
         return jsonify({'status': 'success', 'message': 'O\'zgarish yo\'q',
@@ -3061,11 +3399,8 @@ def boss_change_password():
                             'Joriy parol xato', payload.get('name', '—'))
         return json_error('Joriy parol xato', 401)
 
-    salt = make_salt('tp-' + str(target.get('role', 'usr'))[:3] + '-')
-    target['salt'] = salt
-    target['passHash'] = hash_password(new_password, salt)
-    target['mustChange'] = False
-    target['updatedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    # Parol: xesh + shifrlangan nusxa (boshliq panelida ko'rish uchun)
+    apply_staff_password(target, new_password, "Boshliq (o'zi)")
     try:
         db_manager.save_keys({'staff_users': staff})
     except Exception:
@@ -3133,6 +3468,7 @@ def get_config():
 # Ommaviy (anonim) do'kon uchun ruxsat etilgan maydonlar — mijoz PII'si YO'Q
 CATALOG_FIELDS = ('id', 'name', 'cat', 'price', 'stock', 'img', 'desc')
 PUBLIC_DATA_KEYS = ('products', 'categories')
+PRIVATE_DATA_KEYS = ('auth_secret', 'staff_users', 'active_sessions', 'serverSecurityLog')
 
 # Sinxronizatsiyada qabul qilinadigan kalitlar va ularning chegaralari
 SYNC_ALLOWED_KEYS = {
@@ -3152,6 +3488,12 @@ ALLOWED_IMAGE_PREFIXES = ('data:image/jpeg;base64,', 'data:image/png;base64,',
 def json_error(message, code=400, status='error'):
     """Ichki ma'lumot ochilmaydigan xato javobi."""
     return jsonify({'status': status, 'message': message}), code
+
+
+def client_data_snapshot():
+    """Brauzerga beriladigan baza nusxasi: server maxfiy kalitlari chiqarilmaydi."""
+    data = db_manager.get_all() or {}
+    return {k: v for k, v in data.items() if k not in PRIVATE_DATA_KEYS}
 
 
 def validate_sync_payload(payload):
@@ -3577,7 +3919,8 @@ def branches_summary():
     """
     data = db_manager.get_all() or {}
     products = [p for p in (data.get('products') or []) if isinstance(p, dict)]
-    sales = [s for s in (data.get('sales') or []) if isinstance(s, dict)]
+    sales = [s for s in (data.get('sales') or [])
+             if isinstance(s, dict) and str(s.get('status') or 'paid') == 'paid']
     flow = [c for c in (data.get('cashFlow') or []) if isinstance(c, dict)]
     legacy_expenses = [c for c in (data.get('expenses') or []) if isinstance(c, dict)]
     branches = public_branches()
@@ -3631,7 +3974,7 @@ def branches_summary():
 def get_data():
     """To'liq baza (mijoz PII, savdo, loglar) — faqat xodimlar uchun."""
     try:
-        return jsonify(db_manager.get_all() or {})
+        return jsonify(client_data_snapshot())
     except Exception as e:
         print(f'[ERROR] /api/data: {e}')
         return json_error('Ma\'lumotni olishda xatolik', 500)
@@ -3921,6 +4264,7 @@ def save_feedback_report():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/payments/create', methods=['POST'])
+@require_staff()
 def payments_create():
     """
     Online to'lovni boshlaydi.
@@ -3988,6 +4332,7 @@ def payments_create():
 
 
 @app.route('/api/payments/status/<order_id>', methods=['GET'])
+@require_staff()
 def payments_status(order_id):
     """To'lov holatini qaytaradi (frontend polling uchun)."""
     order = load_payment_orders().get(str(order_id))
@@ -4235,6 +4580,7 @@ def click_webhook():
         })
 
 @app.route('/api/payment/status/<int:sale_id>', methods=['GET'])
+@require_staff()
 def get_payment_status(sale_id):
     try:
         store_data = db_manager.get_all()
@@ -4433,6 +4779,7 @@ def generic_payment_callback(provider):
 
 
 @app.route('/api/payments/orders', methods=['GET'])
+@require_staff('admin')
 def payments_orders_list():
     """Admin uchun: oxirgi to'lov yozuvlari (maxfiy ma'lumotsiz)."""
     orders = list(load_payment_orders().values())
@@ -4490,22 +4837,42 @@ def security_status():
 # ============================================================
 # S3 / OBYEKT SAQLASH — Railway Bucket (Tigris), AWS S3, MinIO
 # ============================================================
-# Railway Bucket boshqa S3 provayderlaridan farq qiladi, shu sababli
-# quyidagi tuzatishlar kiritilgan (aks holda yuklash ishlamaydi):
-#   1) ACL (public-read) QO'LLAB-QUVVATLANMAYDI — ACL yuborilsa Railway
-#      "NotImplemented" xatosini qaytaradi va rasm yuklanmaydi. Standart
-#      holatda ACL yuborilmaydi (AWS S3 uchun S3_USE_ACL=true qilinadi).
-#   2) region_name MAJBURIY — Railway/Tigris uchun "auto" ishlatiladi.
-#   3) Endpoint protokolsiz berilishi mumkin ("t3.storageapi.dev") —
-#      avtomatik https:// qo'shiladi.
-#   4) S3_PUBLIC_URL berilmasa havola endpoint+bucket dan quriladi.
+# MUHIM (Railway Bucket): bucket'lar PRIVATE — "public access" yo'q, ya'ni
+# to'g'ridan-to'g'ri ochiq havola (endpoint/bucket/key) HECH QACHON ishlamaydi
+# (brauzer 403 oladi). Shu sababli:
+#   1) Yuklash SERVER orqali (boto3) amalga oshiriladi;
+#   2) Bazaga "ochiq" havola o'rniga `/media/<key>` yoziladi va fayl brauzerga
+#      server tomonidan beriladi — vaqtinchalik imzolangan (presigned) havolaga
+#      302 redirect qilinadi. Traffic bucket'dan ketadi (bucket egress bepul),
+#      servis egress'i esa minimal bo'ladi.
+#   3) S3_PUBLIC_URL faqat HAQIQIY ochiq bucket (AWS S3 public-read, R2 public
+#      domen) uchun beriladi — o'shanda havola to'g'ridan-to'g'ri ishlatiladi.
+#
+# Boshqa muhim tuzatishlar:
+#   • region_name MAJBURIY — Railway/Tigris uchun "auto" ishlatiladi
+#     (Railway `REGION` o'zgaruvchisini ham beradi);
+#   • URL uslubi: yangi Railway bucket'lari VIRTUAL-HOSTED uslubni talab qiladi
+#     (eski bucket'lar path-style) — S3_ADDRESSING_STYLE orqali boshqariladi;
+#   • Endpoint protokolsiz berilishi mumkin ("t3.storageapi.dev") →
+#     avtomatik https:// qo'shiladi;
+#   • Railway/Tigris ACL (public-read) ni qo'llab-quvvatlamaydi — ACL yuborilsa
+#     "NotImplemented" xatosi qaytadi (standart: S3_USE_ACL=false).
 S3_ENDPOINT = (os.getenv('S3_ENDPOINT') or os.getenv('ENDPOINT') or '').strip()
 S3_ACCESS_KEY = (os.getenv('S3_ACCESS_KEY') or os.getenv('ACCESS_KEY_ID') or '').strip()
 S3_SECRET_KEY = (os.getenv('S3_SECRET_KEY') or os.getenv('SECRET_ACCESS_KEY') or '').strip()
 S3_BUCKET_NAME = (os.getenv('S3_BUCKET_NAME') or os.getenv('BUCKET') or '').strip()
 S3_PUBLIC_URL = (os.getenv('S3_PUBLIC_URL') or '').strip().rstrip('/')
-S3_REGION = (os.getenv('S3_REGION') or os.getenv('AWS_REGION') or 'auto').strip()
+S3_REGION = (os.getenv('S3_REGION') or os.getenv('AWS_REGION')
+             or os.getenv('REGION') or 'auto').strip()
 S3_USE_ACL = (os.getenv('S3_USE_ACL', 'false') or '').strip().lower() == 'true'
+# URL uslubi: 'auto' (boto3 o'zi tanlaydi — Railway uchun to'g'ri),
+# 'virtual' (yangi Railway bucket'lari) yoki 'path' (eski bucket'lar).
+S3_ADDRESSING_STYLE = (os.getenv('S3_ADDRESSING_STYLE') or 'auto').strip().lower()
+if S3_ADDRESSING_STYLE not in ('auto', 'virtual', 'path'):
+    S3_ADDRESSING_STYLE = 'auto'
+# Presigned havola amal qilish muddati (sekund, 60s..7kun).
+S3_MEDIA_TTL = max(60, min(7 * 24 * 3600,
+                           int(os.getenv('S3_MEDIA_URL_TTL_SECONDS', '86400') or 86400)))
 
 
 def _normalize_s3_endpoint(url):
@@ -4544,7 +4911,7 @@ def s3_client():
         region_name=S3_REGION or 'auto',
         config=BotoConfig(
             signature_version='s3v4',
-            s3={'addressing_style': 'path'},
+            s3={'addressing_style': S3_ADDRESSING_STYLE},
             retries={'max_attempts': 3, 'mode': 'standard'},
             connect_timeout=10,
             read_timeout=30,
@@ -4553,10 +4920,43 @@ def s3_client():
 
 
 def s3_public_url(key):
-    """Yuklangan fayl uchun ochiq havola."""
-    if S3_PUBLIC_URL:
-        return f'{S3_PUBLIC_URL}/{key}'
+    """Bucket'dagi faylga TO'G'RIDAN-TO'G'RI havola (faqat diagnostika uchun).
+
+    DIQQAT: Railway bucket'lari private — bu havola brauzerda 403 beradi.
+    Brauzer uchun `media_url()` ishlatiladi.
+    """
     return f'{S3_ENDPOINT}/{S3_BUCKET_NAME}/{key}'
+
+
+def s3_presigned_url(key, expires=None):
+    """Private bucket uchun vaqtinchalik imzolangan (presigned) GET havolasi."""
+    client = s3_client()
+    return client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': S3_BUCKET_NAME, 'Key': str(key)},
+        ExpiresIn=int(expires or S3_MEDIA_TTL),
+    )
+
+
+def media_url(key):
+    """Fayl uchun BRAUZERDA ishlaydigan havolani qaytaradi.
+
+    Ustuvorlik:
+      1) S3_PUBLIC_URL berilgan bo'lsa — haqiqiy ochiq bucket (AWS S3 public-read
+         yoki Cloudflare R2 public domen) havolasi;
+      2) S3 sozlangan bo'lsa — `/media/<key>`: fayl server orqali beriladi
+         (Railway bucket private — bu yagona ishlaydigan yo'l);
+      3) aks holda — lokal `/uploads/<key>`.
+
+    Havola NISBIY: web va mobil (server origin'idan yuklangan) WebView uchun
+    bir xil ishlaydi.
+    """
+    safe_key = str(key or '').replace('\\', '/').lstrip('/')
+    if S3_PUBLIC_URL:
+        return f'{S3_PUBLIC_URL}/{safe_key}'
+    if s3_configured():
+        return f'/media/{safe_key}'
+    return f'/uploads/{safe_key}'
 
 
 def s3_upload(file_obj, key, content_type='application/octet-stream'):
@@ -4600,25 +5000,36 @@ def s3_upload(file_obj, key, content_type='application/octet-stream'):
                 _put(True)
             else:
                 raise
-    return s3_public_url(key)
+    return media_url(key)
+
+
 def s3_check():
     """Bucket bilan aloqani tekshiradi (diagnostika uchun).
 
-    Nima tekshiriladi: bucket mavjudmi (head_bucket), test fayl yuklanadimi
-    va ochiq havola ishlaydimi. Railway'da bucket uchun "Public access"
-    yoqilmagan bo'lsa rasm yuklanadi, lekin brauzerda ko'rinmaydi — shu
-    holat shu yerda aniqlanadi.
+    Tekshiriladi:
+      1) bucket mavjudmi (head_bucket);
+      2) test fayl yuklanadimi (boto3 → Railway);
+      3) fayl QAYTA o'qiladimi (presigned GET) — Railway bucket'lari PRIVATE
+         bo'lgani uchun "ochiq havola" tekshirilmaydi: brauzer uchun aynan
+         presigned havola (`/media/<key>` orqali) ishlatiladi.
     """
+    env_names = {'endpoint': bool(S3_ENDPOINT), 'accessKey': bool(S3_ACCESS_KEY),
+                 'secretKey': bool(S3_SECRET_KEY), 'bucket': bool(S3_BUCKET_NAME),
+                 'publicUrl': bool(S3_PUBLIC_URL)}
     if not s3_configured():
-        return {'ok': False, 'configured': False,
-                'message': "S3 sozlanmagan: S3_ENDPOINT, S3_ACCESS_KEY, "
-                           "S3_SECRET_KEY, S3_BUCKET_NAME (.env) to'ldirilsin"}
+        return {'ok': False, 'configured': False, 'env': env_names,
+                'message': "S3 sozlanmagan: Railway'da bucket → Variables orqali "
+                           "BUCKET, ENDPOINT, ACCESS_KEY_ID, SECRET_ACCESS_KEY ni "
+                           "servisga ulang (yoki .env da S3_ENDPOINT, S3_ACCESS_KEY, "
+                           "S3_SECRET_KEY, S3_BUCKET_NAME to'ldirilsin)"}
     if not _HAS_BOTO3:
-        return {'ok': False, 'configured': True,
+        return {'ok': False, 'configured': True, 'env': env_names,
                 'message': "boto3 moduli o'rnatilmagan (requirements.txt)"}
     result = {'ok': False, 'configured': True, 'bucket': S3_BUCKET_NAME,
               'endpoint': S3_ENDPOINT, 'region': S3_REGION,
-              'aclEnabled': S3_USE_ACL, 'publicUrl': S3_PUBLIC_URL}
+              'addressingStyle': S3_ADDRESSING_STYLE,
+              'aclEnabled': S3_USE_ACL, 'publicUrl': S3_PUBLIC_URL,
+              'env': env_names, 'private': not bool(S3_PUBLIC_URL)}
     try:
         client = s3_client()
         client.head_bucket(Bucket=S3_BUCKET_NAME)
@@ -4640,25 +5051,30 @@ def s3_check():
         result['message'] = f"Test faylni yuklab bo'lmadi: {e}"
         return result
 
-    url = s3_public_url(test_key)
-    result['testUrl'] = url
+    # Presigned havola — brauzerga rasmlar AYNAN shu yo'l orqali beriladi
     try:
-        req = urllib.request.Request(url, method='GET')
-        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
-            result['publicRead'] = resp.status == 200
+        url = s3_presigned_url(test_key, expires=300)
+        result['presigned'] = True
+        with urllib.request.urlopen(urllib.request.Request(url, method='GET'),
+                                    timeout=10) as resp:  # nosec B310
+            result['downloadOk'] = resp.status == 200
     except Exception as e:
-        result['publicRead'] = False
-        result['message'] = (f"Fayl yuklandi, lekin ochiq havola ishlamadi ({e}). "
-                             "Railway'da bucket uchun 'Public access' yoqilishi kerak")
+        result['presigned'] = False
+        result['downloadOk'] = False
+        result['message'] = f"Presigned havola bilan o'qib bo'lmadi: {e}"
     finally:
         try:
             client.delete_object(Bucket=S3_BUCKET_NAME, Key=test_key)
         except Exception:
             pass
 
-    if result.get('publicRead'):
+    if result.get('downloadOk'):
         result['ok'] = True
-        result['message'] = "Bucket ishlaydi — rasm yuklash va ochiq havola tayyor"
+        result['mediaBase'] = '/media'
+        result['message'] = ("Bucket ishlaydi — rasmlar `/media/<key>` orqali brauzerga "
+                             "beriladi (private bucket uchun yagona to'g'ri yo'l)")
+    elif 'message' not in result:
+        result['message'] = "Yuklash ishladi, lekin faylni qayta o'qib bo'lmadi"
     return result
 
 
@@ -4760,9 +5176,10 @@ def upload_file():
             return jsonify({'status': 'error',
                             'message': "S3 sozlangan, lekin boto3 modulini o'rnatmadingiz"}), 500
         try:
-            # Railway Bucket: ACL'siz yuklanadi (ACL qo'llab-quvvatlanmaydi)
-            public_url = s3_upload(file.stream or file, unique_filename, detected_mime)
-            return jsonify({'status': 'success', 'url': public_url,
+            # Railway Bucket: ACL'siz yuklanadi (ACL qo'llab-quvvatlanmaydi).
+            # Qaytgan havola brauzerda ishlaydigan `/media/<key>` (private bucket).
+            media = s3_upload(file.stream or file, unique_filename, detected_mime)
+            return jsonify({'status': 'success', 'url': media,
                             'key': unique_filename, 'storage': 's3'})
         except Exception as e:
             traceback.print_exc()
@@ -4786,7 +5203,7 @@ def upload_file():
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             file.stream.seek(0)
             file.save(file_path)
-            return jsonify({'status': 'success', 'url': f"/uploads/{unique_filename}",
+            return jsonify({'status': 'success', 'url': media_url(unique_filename),
                             'key': unique_filename, 'storage': 'local'})
         except Exception as e:
             return jsonify({'status': 'error', 'message': f"Lokal xotiraga yuklab bo'lmadi: {str(e)}"}), 500
@@ -4794,6 +5211,54 @@ def upload_file():
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     return send_from_directory(get_uploads_dir(), filename)
+
+
+# Faqat shu papkalar va xavfsiz kalit formati qabul qilinadi — bu bucket'dan
+# ixtiyoriy obyektni o'qishga yo'l qo'ymaydi (key faqat yuklashda yaratiladi).
+MEDIA_KEY_RE = re.compile(
+    r'^(products|logo|branches|contracts|receipts)/[A-Za-z0-9][A-Za-z0-9._-]{0,120}$')
+
+
+@app.route('/media/<path:key>')
+def serve_media(key):
+    """Bucket'dagi (yoki lokal) faylni brauzerga beradi.
+
+    NEGA KERAK: Railway bucket'lari PRIVATE — `https://<endpoint>/<bucket>/<key>`
+    havolasi brauzerda 403 beradi. Shu sababli bazaga `/media/<key>` yoziladi va
+    fayl shu endpoint orqali beriladi:
+      1) lokal nusxa bo'lsa — to'g'ridan-to'g'ri (tez, bucketsiz rejim ham);
+      2) S3 sozlangan bo'lsa — qisqa muddatli presigned havolaga 302 redirect.
+         Traffic bucket'dan ketadi (bucket egress bepul), servis orqali
+         og'ir fayl oqimi bo'lmaydi;
+      3) hech biri bo'lmasa — 404.
+
+    Havola tasodifiy UUID kalitdan iborat (capability URL) — shu sababli
+    autentifikatsiya talab qilinmaydi (<img> token yubora olmaydi).
+    """
+    clean = str(key or '').replace('\\', '/').strip('/')
+    if not clean or '..' in clean or not MEDIA_KEY_RE.match(clean):
+        abort(404)
+
+    # 1) Lokal nusxa — birinchi navbatda
+    uploads_dir = get_uploads_dir()
+    local_path = os.path.join(uploads_dir, *clean.split('/'))
+    if os.path.isfile(local_path):
+        resp = send_from_directory(uploads_dir, clean, conditional=True)
+        resp.headers['Cache-Control'] = 'public, max-age=604800, immutable'
+        return resp
+
+    # 2) Bucket (private) — presigned havolaga yo'naltiramiz
+    if not (s3_configured() and _HAS_BOTO3):
+        abort(404)
+    try:
+        target = s3_presigned_url(clean)
+    except Exception as e:
+        print(f'[STORAGE] Rasm havolasini yaratib bo\'lmadi ({clean}): {e}')
+        abort(502)
+    resp = redirect(target, code=302)
+    # Presigned havola muddatidan oldin keshlanmasin (redirect TTL qisqa)
+    resp.headers['Cache-Control'] = f'public, max-age={min(S3_MEDIA_TTL, 3600)}'
+    return resp
 
 
 # ============================================================
@@ -4898,7 +5363,7 @@ def build_ai_context():
         if day == today:
             today_revenue += amount
             today_count += 1
-        method = str(sale.get('method') or sale.get('payment') or 'naqd')[:20]
+        method = str(sale.get('provider') or sale.get('pay') or sale.get('method') or sale.get('payment') or 'naqd')[:20]
         by_method[method] = by_method.get(method, 0) + amount
         for item in (sale.get('items') or []):
             if isinstance(item, dict):

@@ -37,6 +37,8 @@ let systemSettings = {
     companyTin: '',
     // ── Brending: kompaniya logotipi (havola: bucket yoki /uploads/...) ──
     companyLogo: '',
+    // ── Xodim KPI: har bir sotuv foydasidan foiz (bonus hisobi) ──
+    kpiPercent: 0,
     // ── Xavfsizlik ──
     sessionTimeoutMin: 20,
     maxLoginAttempts: 5,
@@ -288,7 +290,8 @@ function isImageDataUrl(value) {
     return typeof value === 'string' && /^data:image\/(jpeg|png|webp|gif);base64,/i.test(value);
 }
 
-/** Faqat http(s) havolalar (tashqi rasm manzillari). */
+/** Faqat http(s) havolalar (tashqi rasm manzillari). Nisbiy havolalar ham
+ *  qabul qilinadi (/media/... va /uploads/...) — ular o'z saytimizdan olinadi. */
 function safeImageLink(value) {
     const raw = cleanText(value, 500);
     if (!raw) return '';
@@ -298,6 +301,40 @@ function safeImageLink(value) {
     } catch (e) {
         return '';
     }
+}
+
+/** Obyekt saqlash papkalari — bazadagi barcha rasm kalitlari shu papkalarda. */
+const STORAGE_FOLDERS = ['products', 'logo', 'branches', 'contracts', 'receipts'];
+
+/**
+ * Eski (brauzerda 403 beradigan) object-storage havolasini `/media/<key>` ga
+ * aylantiradi.
+ *
+ * MUAMMO: ilgari private bucket'ga TO'G'RIDAN-TO'G'RI havola saqlanardi
+ * (masalan "https://t3.storageapi.dev/<bucket>/products/abc.jpg") — Railway
+ * bucket'lari private bo'lgani uchun brauzer 403 olardi va rasm ko'rinmasdi.
+ * Endi fayl `/media/<key>` orqali beriladi; bu funksiya bazada qolib ketgan
+ * eski havolalarni ham avtomatik tuzatadi (ma'lumotni qayta saqlash shart emas).
+ */
+function storageKeyFromUrl(value) {
+    const raw = String(value || '').trim();
+    if (!/^https?:\/\//i.test(raw)) return '';
+    let url;
+    try {
+        url = new URL(raw);
+    } catch (e) {
+        return '';
+    }
+    if (url.origin === window.location.origin) return '';
+    const host = url.hostname.toLowerCase();
+    // Faqat obyekt saqlash provayderlari (Railway/Tigris, S3, R2, MinIO, B2)
+    const isStorage = /(storageapi|tigris|amazonaws|cloudflarestorage|backblazeb2|\.s3\.|^s3[.-]|minio)/.test(host);
+    if (!isStorage) return '';
+    const parts = url.pathname.split('/').filter(Boolean);
+    const idx = parts.findIndex(p => STORAGE_FOLDERS.includes(p.toLowerCase()));
+    if (idx === -1) return '';
+    const key = parts.slice(idx).join('/');
+    return /^(products|logo|branches|contracts|receipts)\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/.test(key) ? key : '';
 }
 
 /**
@@ -313,6 +350,9 @@ function safeImageUrl(value) {
         if (!isImageDataUrl(raw)) return '';
         return raw.length <= MAX_IMAGE_DATA_LENGTH ? raw : '';
     }
+    // Eski private bucket havolasi → server orqali beriladigan /media/<key>
+    const legacyKey = storageKeyFromUrl(value);
+    if (legacyKey) return '/media/' + legacyKey;
     return safeImageLink(value);
 }
 
@@ -333,7 +373,13 @@ function getPostimageUrl(data) {
     };
     collect(data);
     return urls.find(isDisplayableImageUrl) ||
-        urls.find(url => new URL(url).hostname.includes('postimg')) ||
+        urls.find(url => {
+            try {
+                return new URL(url, window.location.href).hostname.includes('postimg');
+            } catch (e) {
+                return false;
+            }
+        }) ||
         urls[0] ||
         '';
 }
@@ -343,7 +389,9 @@ function isDisplayableImageUrl(value) {
     const url = safeImageUrl(value);
     if (!url) return false;
     try {
-        const parsed = new URL(url);
+        // Nisbiy havola (/media/..., /uploads/...) ham qo'llanadi — bazani
+        // joriy manzilga nisbatan yechamiz (aks holda URL() xato beradi).
+        const parsed = new URL(url, window.location.href);
         return parsed.hostname.startsWith('i.') ||
             /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\?.*)?$/i.test(parsed.pathname);
     } catch (e) {
@@ -724,6 +772,64 @@ function normalizeCustomer(c) {
     };
 }
 
+function isPaidSale(s) {
+    return String(s?.status || 'paid') === 'paid';
+}
+
+function nextSaleId() {
+    const maxId = (salesHistory || []).reduce((max, sale) => {
+        const id = Number(sale?.id) || 0;
+        return id > max ? id : max;
+    }, 0);
+    return Math.max(maxId + 1, Date.now());
+}
+
+function normalizeSale(s) {
+    if (!s || typeof s !== 'object') return null;
+    const items = Array.isArray(s.items) ? s.items.map(it => ({
+        id: Number(it?.id) || it?.id || '',
+        name: cleanText(it?.name, 120),
+        price: Math.max(0, Number(it?.price) || 0),
+        cost: Math.max(0, Number(it?.cost) || 0),
+        qty: Math.max(0, Number(it?.qty) || 0),
+        img: safeImageUrl(it?.img),
+        barcode: cleanText(it?.barcode, 64),
+        branchId: cleanText(it?.branchId, 40),
+        ikpu: String(it?.ikpu ?? '').replace(/\D/g, '').slice(0, 17),
+        packageCode: cleanText(it?.packageCode, 20),
+        vatPercent: Number.isFinite(Number(it?.vatPercent)) ? Number(it.vatPercent) : 12,
+    })).filter(it => it.name && it.qty > 0) : [];
+    const subtotal = Number.isFinite(Number(s.subtotal))
+        ? Number(s.subtotal)
+        : items.reduce((sum, it) => sum + it.price * it.qty, 0);
+    const disc = Math.min(100, Math.max(0, Number(s.disc) || 0));
+    const discAmt = Number.isFinite(Number(s.discAmt)) ? Number(s.discAmt) : subtotal * disc / 100;
+    const total = Number.isFinite(Number(s.total)) ? Number(s.total) : Math.max(0, subtotal - discAmt);
+    const sale = {
+        ...s,
+        id: Number(s.id) || nextSaleId(),
+        items,
+        subtotal,
+        disc,
+        discAmt,
+        total,
+        pay: cleanText(s.pay, 60) || 'Naqd',
+        provider: cleanText(s.provider, 40) || '',
+        time: cleanText(s.time, 20),
+        date: cleanText(s.date, 20),
+        cashier: cleanText(s.cashier, 120) || 'Noma\'lum',
+        cashierLogin: cleanText(s.cashierLogin, 80),
+        customer: cleanText(s.customer, 160) || 'Noma\'lum',
+        customerId: s.customerId == null ? null : Number(s.customerId),
+        customerPhone: cleanText(s.customerPhone, 40),
+        branchId: cleanText(s.branchId, 40),
+        status: ['pending', 'paid', 'cancelled', 'expired'].includes(String(s.status)) ? String(s.status) : 'paid',
+    };
+    sale.profit = saleProfit(sale);
+    sale.kpi = saleKpi(sale);
+    return sale;
+}
+
 // ============================================================
 // USERS
 // ============================================================
@@ -1076,15 +1182,35 @@ let employees = USERS
     }));
 
 /** Haqiqiy savdo tarixidan xodimning ko'rsatkichlarini hisoblaydi. */
+/* Foyda: (sotuv-tan narx)*dona - chegirma ulushi. Zarar bo'lsa minus, KPI=0. */
+function saleProfit(s) {
+    if (!s || !Array.isArray(s.items)) return 0;
+    if (!s.items.length && s.profit !== undefined && s.profit !== null && s.profit !== '') return Number(s.profit) || 0;
+    const sub = s.items.reduce((a, i) => a + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
+    let p = 0;
+    s.items.forEach(i => {
+        const line = (Number(i.price) || 0) * (Number(i.qty) || 0);
+        const share = sub > 0 ? line / sub : 0;
+        p += ((Number(i.price) || 0) - (Number(i.cost) || 0)) * (Number(i.qty) || 0) - (Number(s.discAmt) || 0) * share;
+    });
+    return Math.round(p);
+}
+/* Har bir sotuv (har bir qator) uchun alohida KPI: musbat foydadan %. */
+function saleKpi(s) {
+    if (!isPaidSale(s)) return 0;
+    const p = saleProfit(s);
+    if (p <= 0) return 0;
+    return Math.round(p * (Number(systemSettings.kpiPercent) || 0) / 100);
+}
 function employeeStats(emp) {
-    const mine = salesHistory.filter(s => s.cashier === emp.name);
+    const mine = salesHistory.filter(s => isPaidSale(s) && s.cashier === emp.name);
     const total = mine.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
     return { sales: mine.length, total };
 }
 
 let salesHistory = safeJsonParse(localStorage.getItem('tp_sales') || '[]', []);
 let logs = safeJsonParse(localStorage.getItem('tp_logs') || '[]', []);
-salesHistory = Array.isArray(salesHistory) ? salesHistory : [];
+salesHistory = Array.isArray(salesHistory) ? salesHistory.map(normalizeSale).filter(Boolean) : [];
 logs = Array.isArray(logs) ? logs : [];
 
 // ============================================================
@@ -1561,7 +1687,7 @@ async function loadFromBackend() {
         if (data && Object.keys(data).length > 0) {
             if (data.products) products = data.products.map(normalizeProduct);
             if (data.customers) customers = data.customers.map(normalizeCustomer);
-            if (data.sales) salesHistory = data.sales;
+            if (data.sales) salesHistory = Array.isArray(data.sales) ? data.sales.map(normalizeSale).filter(Boolean) : [];
             if (data.logs) logs = data.logs;
             if (Array.isArray(data.contracts)) {
                 contracts = data.contracts.map(normalizeContract).filter(c => c && c.customer);
@@ -1974,6 +2100,9 @@ async function attemptLogin(u, p) {
             login: cleanText(server.user?.login, 120) || u,
             name: cleanText(server.user?.name, 120) || u,
             role: role,
+            // Login identifikatori — telefon. Profilda ko'rsatiladi va
+            // xodim o'zi almashtira oladi (Boshliq panelida ham ko'rinadi).
+            phone: cleanText(server.user?.phone, 40) || '',
             color: local?.color || '#2563EB'
         });
         if (server.mustChange) {
@@ -2529,7 +2658,7 @@ function loadAdminDashboard() {
     const now = new Date();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const todaysSales = salesHistory.filter(s => isSameDay(s.date, now));
+    const todaysSales = salesHistory.filter(s => isPaidSale(s) && isSameDay(s.date, now));
     const todaysTotal = todaySalesTotal();
     const dSales = document.getElementById('d-sales');
     if (dSales) dSales.textContent = fmt(todaysTotal) + ' so\'m';
@@ -2543,8 +2672,7 @@ function loadAdminDashboard() {
 
     const dProfit = document.getElementById('d-profit');
     if (dProfit) {
-        const totalRevenue = salesHistory.reduce((a, b) => a + b.total, 0);
-        const totalProfit = Math.round(totalRevenue * 0.20); // 20% profit margin
+        const totalProfit = salesHistory.filter(isPaidSale).reduce((a, b) => a + saleProfit(b), 0);
         dProfit.textContent = fmt(totalProfit) + ' so\'m';
     }
 
@@ -2560,7 +2688,7 @@ function loadAdminDashboard() {
     uiSetHtml('d-orders-change', '<i class="fas fa-receipt"></i> O\'rtacha chek: ' + fmt(todaysSales.length ? Math.round(todaysTotal / todaysSales.length) : 0) + ' so\'m');
     uiSetHtml('d-customers-change', '<i class="fas fa-user-check"></i> Faol: ' + customers.filter(c => c.status === 'active').length + ' · VIP: ' + customers.filter(c => c.status === 'vip').length);
     uiSetHtml('d-products-change', '<i class="fas fa-triangle-exclamation"></i> Kam qolgan: ' + products.filter(p => p.stock < 5).length + ' ta');
-    uiSetHtml('d-profit-change', '<i class="fas fa-percent"></i> Savdo hajmining 20% marjasi asosida');
+    uiSetHtml('d-profit-change', '<i class="fas fa-percent"></i> Haqiqiy tannarx asosida (sotuv − tannarx − chegirma)');
     uiSetHtml('d-employees-change', '<i class="fas fa-id-badge"></i> Admin, kassir va menejerlar');
 
     const tbody = document.getElementById('recentSales');
@@ -2578,7 +2706,7 @@ function loadAdminDashboard() {
     const topP = document.getElementById('topProducts');
     if (topP) {
         const productSales = {};
-        salesHistory.forEach(s => {
+        salesHistory.filter(isPaidSale).forEach(s => {
             if (s.items) {
                 s.items.forEach(item => {
                     productSales[item.name] = (productSales[item.name] || 0) + item.qty;
@@ -2668,7 +2796,7 @@ function renderLowStockBlock(id) {
 }
 
 function loadCashierDashboard() {
-    const ts = salesHistory.filter(s => isSameDay(s.date, new Date()) && s.cashier === currentUser?.name);
+    const ts = salesHistory.filter(s => isPaidSale(s) && isSameDay(s.date, new Date()) && s.cashier === currentUser?.name);
     const total = ts.reduce((a, b) => a + (Number(b.total) || 0), 0);
     uiSetText('d-sales-cashier', fmt(total) + ' so\'m');
     uiSetText('d-orders-cashier', ts.length + ' ta');
@@ -2688,14 +2816,15 @@ function loadCashierDashboard() {
 function loadManagerDashboard() {
     const now = new Date();
     const todayTotal = todaySalesTotal();
-    const todayCount = salesHistory.filter(s => isSameDay(s.date, now)).length;
+    const todayCount = salesHistory.filter(s => isPaidSale(s) && isSameDay(s.date, now)).length;
+    const paidCount = salesHistory.filter(isPaidSale).length;
 
     const ranked = employees
         .map(e => ({ ...e, ...employeeStats(e) }))
         .sort((a, b) => b.total - a.total);
 
     uiSetText('m-sales', fmt(todayTotal) + " so'm");
-    uiSetText('m-sales-change', todayCount + ' ta chek · ' + salesHistory.length + ' ta jami');
+    uiSetText('m-sales-change', todayCount + ' ta chek · ' + paidCount + ' ta jami');
     uiSetText('m-employees', String(employees.length));
     uiSetText('m-employees-change', 'Admin, kassir va menejerlar');
     const top = ranked[0];
@@ -2780,7 +2909,7 @@ function isSameDay(dateStr, d) {
 
 /** Bugungi savdo summasi (haqiqiy ma'lumot). */
 function salesTotalFor(predicate) {
-    return salesHistory.filter(predicate).reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+    return salesHistory.filter(s => isPaidSale(s) && predicate(s)).reduce((sum, s) => sum + (Number(s.total) || 0), 0);
 }
 
 /** Oxirgi 7 kunlik savdo — kun belgisi va mln so'mdagi qiymat. */
@@ -2857,7 +2986,7 @@ function initPayChart() {
     if (payChart) payChart.destroy();
     // Real data from sales
     const totals = { naqd: 0, karta: 0, click: 0, kredit: 0, boshqa: 0 };
-    salesHistory.forEach(s => {
+    salesHistory.filter(isPaidSale).forEach(s => {
         if (s.pay === 'Naqd') totals.naqd += s.total;
         else if (s.pay === 'Karta') totals.karta += s.total;
         else if (s.pay === 'Click') totals.click += s.total;
@@ -3580,7 +3709,11 @@ function checkoutUzumOrder() {
             'Iltimos, boshqa to\'lov usulini tanlang yoki qo\'llab-quvvatlashga murojaat qiling');
         return;
     }
-    const saleId = salesHistory.length + 1;
+    const saleId = nextSaleId();
+    const shopItems = JSON.parse(JSON.stringify(shopCart)).map(ci => {
+        const p = products.find(x => x.id === ci.id);
+        return { ...ci, cost: (ci.cost || p?.cost || 0) };
+    });
     const sale = {
         id: saleId,
         items: JSON.parse(JSON.stringify(shopCart)),
@@ -3595,6 +3728,8 @@ function checkoutUzumOrder() {
         cashier: 'Online do\'kon',
         customer: (currentUser?.role === 'customer' ? currentUser.name : 'Online xaridor') + ` (${phone})`,
         customerId: null,
+        customerPhone: phone || '',
+        branchId: (typeof activeBranch !== 'undefined' && activeBranch?.id) ? String(activeBranch.id) : '',
         status: isOnline ? 'pending' : 'paid'
     };
 
@@ -4015,7 +4150,7 @@ function checkout() {
     const custId = custSel ? parseInt(custSel.value) : null;
     const cust = customers.find(c => c.id === custId);
 
-    const saleId = salesHistory.length + 1;
+    const saleId = nextSaleId();
     const sale = {
         id: saleId, items: JSON.parse(JSON.stringify(cart)),
         subtotal, disc, discAmt, total,
@@ -4026,6 +4161,8 @@ function checkout() {
         cashier: currentUser?.name || 'Noma\'lum',
         customer: cust?.name || 'Noma\'lum',
         customerId: custId || null,
+        customerPhone: cust?.phone || '',
+        branchId: (typeof activeBranch !== 'undefined' && activeBranch?.id) ? String(activeBranch.id) : '',
         credit: providerId === 'credit' ? readCreditInfo() : null,
         status: isOnline ? 'pending' : 'paid'
     };
@@ -4564,6 +4701,8 @@ function openEmployeeModal() {
 // ============================================================
 function renderReports() {
     renderEmployeeRank();
+    // Sotuvlar tafsiloti jadvali (sana/mijoz/tovar/summa/sotuvchi/foyda/KPI)
+    if (typeof renderSalesDetail === 'function') renderSalesDetail();
     setTimeout(() => { initMonthChart(); initIncomeChart(); }, 50);
 }
 
@@ -4585,8 +4724,44 @@ function renderEmployeeRank() {
   </tr>`).join('');
 }
 
+/* Har bir sotuv tafsiloti: sana/kimga/tovar/summa/kim sotdi/foyda/KPI. Har qator alohida. */
+function renderSalesDetail() {
+    const el = document.getElementById('salesDetailBody');
+    if (!el) return;
+    const rows = [];
+    [...salesHistory].filter(isPaidSale).reverse().slice(0, 200).forEach(s => {
+        (s.items || []).forEach(it => {
+            const qty = Number(it.qty) || 0, price = Number(it.price) || 0, cost = Number(it.cost) || 0;
+            const line = price * qty;
+            const share = (Number(s.subtotal) || 0) > 0 ? line / (Number(s.subtotal) || 1) : 0;
+            const p = Math.round((price - cost) * qty - (Number(s.discAmt) || 0) * share);
+            const k = p > 0 ? Math.round(p * (Number(systemSettings.kpiPercent) || 0) / 100) : 0;
+            rows.push(`<tr><td>${escapeHTML(s.date || '')} ${escapeHTML(s.time || '')}</td><td>${escapeHTML(s.customer || '')}</td><td>${escapeHTML(it.name || '')} ×${qty}</td><td style="font-weight:700">${fmt(line)}</td><td>${escapeHTML(s.cashier || '')}</td><td style="font-weight:700;color:${p < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(p)}</td><td style="font-weight:700;color:var(--warning)">${fmt(k)}</td></tr>`);
+        });
+    });
+    el.innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Hali savdo yo\'q</td></tr>';
+}
+
 function loadReport() { showNotif('info', 'Filtrlandi!', 'Hisobot yangilandi'); renderReports(); }
-function exportReport(type) { showNotif('success', 'Export!', type.toUpperCase() + ' yuklanmoqda...'); }
+function exportReport(type) {
+    try {
+        const rows = [['Sana', 'Kimga', 'Tovar', 'Soni', 'Summa', 'Kim sotdi', 'Foyda', 'KPI']];
+        salesHistory.filter(isPaidSale).forEach(s => (s.items || []).forEach(it => {
+            const qty = Number(it.qty) || 0, price = Number(it.price) || 0, cost = Number(it.cost) || 0;
+            const line = price * qty;
+            const share = (Number(s.subtotal) || 0) > 0 ? line / (Number(s.subtotal) || 1) : 0;
+            const p = Math.round((price - cost) * qty - (Number(s.discAmt) || 0) * share);
+            const k = p > 0 ? Math.round(p * (Number(systemSettings.kpiPercent) || 0) / 100) : 0;
+            rows.push([`${s.date || ''} ${s.time || ''}`, s.customer || '', it.name || '', qty, line, s.cashier || '', p, k]);
+        }));
+        const csv = '﻿' + rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join(String.fromCharCode(13, 10));
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = 'sotuv-hisoboti.csv';
+        a.click();
+        showNotif('success', 'Export!', 'CSV yuklandi');
+    } catch (e) { showNotif('error', 'Xato', 'Export bo\'lmadi'); }
+}
 
 // ============================================================
 // SMS
@@ -4746,6 +4921,7 @@ function loadSettings() {
     setVal('clickPhone', systemSettings.clickPhone || '');
     setVal('taxRate', systemSettings.taxRate ?? 12);
     setVal('barcodeTimeout', systemSettings.barcodeTimeout ?? 50);
+    setVal('kpiPercent', systemSettings.kpiPercent ?? 0);
     setChecked('soundEnabled', systemSettings.soundEnabled ?? true);
     setChecked('autoPrint', systemSettings.autoPrint ?? true);
     // Brending: logotip va kompaniya nomi butun interfeysga qo'llaniladi
@@ -4769,12 +4945,18 @@ function saveSettings() {
     systemSettings.clickPhone = cleanText(getVal('clickPhone'), 40);
     systemSettings.taxRate = parseFloat(getVal('taxRate')) || 0;
     systemSettings.barcodeTimeout = parseInt(getVal('barcodeTimeout')) || 50;
+    systemSettings.kpiPercent = Math.max(0, Math.min(100, parseFloat(getVal('kpiPercent')) || 0));
     systemSettings.soundEnabled = getChecked('soundEnabled');
     systemSettings.autoPrint = getChecked('autoPrint');
 
     localStorage.setItem('tp_settings', JSON.stringify(systemSettings));
+    salesHistory = salesHistory.map(normalizeSale).filter(Boolean);
+    localStorage.setItem('tp_sales', JSON.stringify(salesHistory));
     scheduleSyncWithBackend(); // sozlamalar bazaga yoziladi
     applyBranding();           // logotip/nom darhol barcha joyga qo'llaniladi
+    renderReports();
+    loadDashboard();
+    if (typeof renderEmployees === 'function') renderEmployees();
 
     addLog('Sozlama', 'Tizim sozlamalari saqlandi');
     playSuccess();
@@ -4847,6 +5029,16 @@ function exportData() {
     if (!requireRole('admin')) return;
     const data = {
         products, customers, salesHistory, logs,
+        branches,
+        cashFlow,
+        contracts,
+        settings: systemSettings,
+        categories: CATEGORIES,
+        discounts: readLocalJSON('tp_discounts', []),
+        smsHistory: readLocalJSON('tp_sms_history', []),
+        salaryRecords: readLocalJSON('tp_salary_records', []),
+        salaryHistory: readLocalJSON('tp_salary_history', []),
+        securityLog: readLocalJSON('tp_security_log', []),
         exportDate: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -4884,13 +5076,24 @@ function importData(input) {
                 if (!Array.isArray(data.customers)) throw new Error('Invalid customers');
                 customers = data.customers.map(normalizeCustomer).filter(c => c.name && c.phone);
             }
-            if (data.salesHistory) salesHistory = Array.isArray(data.salesHistory) ? data.salesHistory : [];
+            const importedSales = data.salesHistory || data.sales;
+            if (importedSales) salesHistory = Array.isArray(importedSales) ? importedSales.map(normalizeSale).filter(Boolean) : [];
             if (data.logs) logs = Array.isArray(data.logs) ? data.logs.map(l => ({
                 time: cleanText(l?.time, 40),
                 user: cleanText(l?.user, 120),
                 action: cleanText(l?.action, 80),
                 detail: cleanText(l?.detail, 240),
             })) : [];
+            if (Array.isArray(data.branches)) branches = data.branches.map(normalizeBranch).filter(Boolean);
+            if (Array.isArray(data.cashFlow) || Array.isArray(data.expenses)) cashFlow = (data.cashFlow || data.expenses).map(normalizeCashFlow).filter(Boolean);
+            if (Array.isArray(data.contracts)) contracts = data.contracts.map(normalizeContract).filter(c => c && c.customer);
+            if (data.settings && typeof data.settings === 'object') systemSettings = { ...systemSettings, ...data.settings };
+            if (Array.isArray(data.categories)) CATEGORIES = data.categories.map(c => cleanText(c, 60)).filter(Boolean);
+            if (Array.isArray(data.discounts)) localStorage.setItem('tp_discounts', JSON.stringify(data.discounts));
+            if (Array.isArray(data.smsHistory)) localStorage.setItem('tp_sms_history', JSON.stringify(data.smsHistory));
+            if (Array.isArray(data.salaryRecords)) localStorage.setItem('tp_salary_records', JSON.stringify(data.salaryRecords));
+            if (Array.isArray(data.salaryHistory)) localStorage.setItem('tp_salary_history', JSON.stringify(data.salaryHistory));
+            if (Array.isArray(data.securityLog)) localStorage.setItem('tp_security_log', JSON.stringify(data.securityLog));
             saveToStorage();
             alert("Ma'lumotlar muvaffaqiyatli tiklandi! Tizim qayta yuklanadi.");
             location.reload();
@@ -6540,17 +6743,22 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 }
 
 async function apiRequest(path, options) {
+    // Barcha himoyalangan /api chaqiriqlariga avtomatik token (polling/create 401 bo'lmasligi uchun)
+    const opts = Object.assign({}, options || {});
+    opts.headers = authHeaders(opts.headers || {});
     let res;
     try {
-        res = await fetchWithTimeout(path, options, API_TIMEOUT_MS);
+        res = await fetchWithTimeout(path, opts, API_TIMEOUT_MS);
     } catch (e) {
-        if (e?.name === 'AbortError') {
+        const nm = (e && e.name) || '';
+        if (nm === 'AbortError') {
             throw new Error('Server javob bermadi (vaqt tugadi) — qayta urinib ko\'ring');
         }
         throw new Error('Serverga ulanib bo\'lmadi — internet aloqasini tekshiring');
     }
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.message || `Server xatosi (${res.status})`);
+    let data = null;
+    try { data = await res.json(); } catch (_) { data = null; }
+    if (!res.ok) throw new Error((data && data.message) || ('Server xatosi (' + res.status + ')'));
     return data;
 }
 
@@ -6921,7 +7129,7 @@ const PaymentGateway = {
             await syncWithBackend();
             const data = await apiRequest('/api/payments/create', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     saleId: sale.id,
                     provider: providerId,
@@ -7550,7 +7758,7 @@ const Contracts = {
     importFromSales() {
         if (!requireRole('admin')) return;
         const existing = new Set(contracts.filter(c => c.saleId != null).map(c => Number(c.saleId)));
-        const candidates = salesHistory.filter(s => s && Number(s.total) > 0 && !existing.has(Number(s.id)));
+        const candidates = salesHistory.filter(s => isPaidSale(s) && Number(s.total) > 0 && !existing.has(Number(s.id)));
         if (!candidates.length) {
             showNotif('info', 'Yangi yozuv yo\'q', 'Barcha savdo cheklari uchun shartnoma allaqachon tuzilgan');
             return;
@@ -8472,10 +8680,11 @@ const Assistant = (() => {
     /** Lokal (oflayn) ko'rsatkichlar — javob bilan birga ko'rsatiladi. */
     function localStats() {
         const today = new Date().toISOString().slice(0, 10);
-        const todaySales = (salesHistory || []).filter(s => s && String(s.date || '').startsWith(today));
+        const paidSales = (salesHistory || []).filter(isPaidSale);
+        const todaySales = paidSales.filter(s => s && String(s.date || '').startsWith(today));
         return {
             mahsulot_soni: products.length,
-            savdo_soni: (salesHistory || []).length,
+            savdo_soni: paidSales.length,
             bugungi_daromad_som: todaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
             mijoz_soni: customers.length,
         };
@@ -8562,50 +8771,52 @@ const Assistant = (() => {
                         .map(m => ({ role: m.role, content: m.text }))
                 })
             });
-            const data = await res.json().catch(() => null);
+            let data = null;
+            try { data = await res.json(); } catch (_) { data = null; }
 
-            if (res.status === 401) {
-                handleSessionExpired();
-                history.push({ role: 'error', text: 'Sessiya tugadi. Qaytadan kiring.' });
-                return;
-            }
-            if (res.status === 403) {
-                history.push({ role: 'error', text: 'Ruxsat yo\'q. Faqat admin AI yordamchidan foydalanadi.' });
+            if (res.status === 401 || res.status === 403) {
+                try { handleSessionExpired(); } catch (_) { }
+                history.push({ role: 'error', text: 'Ruxsat yo\'q. Faqat admin AI yordamchidan foydalanadi — qaytadan kiring.' });
                 return;
             }
             if (res.status === 429) {
-                history.push({ role: 'error', text: data?.message || 'Savollar chegarasi oshib ketdi — birozdan so\'ng urinib ko\'ring.' });
+                history.push({ role: 'error', text: (data && data.message) || 'Savollar chegarasi oshib ketdi — birozdan so\'ng urinib ko\'ring.' });
                 return;
             }
-            if (!res.ok || !data?.answer) {
-                history.push({ role: 'error', text: data?.message || 'Serverdan javob olinmadi. Keyinroq qayta urinib ko\'ring.' });
+            if (!res.ok || !(data && data.answer)) {
+                history.push({ role: 'error', text: (data && data.message) || 'Serverdan javob olinmadi. Keyinroq qayta urinib ko\'ring.' });
                 return;
             }
 
             history.push({ role: 'assistant', text: data.answer, source: data.source });
             renderStats(data.stats);
         } catch (e) {
-            console.error('AI so\'rovida xatolik:', e);
-            history.push({ role: 'error', text: 'Serverga ulanib bo\'lmadi (oflayn rejim).' });
+            try { console.error('AI so\'rovida xatolik:', e); } catch (_) { }
+            try { history.push({ role: 'error', text: 'Serverga ulanib bo\'lmadi (oflayn rejim).' }); } catch (_) { }
         } finally {
             busy = false;
-            setBadge(serverOnline ? 'Server bilan bog\'langan' : 'Oflayn rejim', serverOnline ? 'badge-green' : '');
-            render();
+            try { setBadge(serverOnline ? 'Server bilan bog\'langan' : 'Oflayn rejim', serverOnline ? 'badge-green' : ''); } catch (e) { }
+            try { render(); } catch (e) { console.error(e); }
         }
     }
 
     function sendFromInput() {
-        const field = document.getElementById('ai-input');
-        send(field ? field.value : '');
+        try {
+            const field = document.getElementById('ai-input');
+            send(field ? field.value : '');
+        } catch (e) { console.error(e); }
     }
 
     function askQuick(btn) {
-        send(btn?.textContent || '');
+        try {
+            let t = '';
+            try { t = btn ? btn.textContent : ''; } catch (_) { t = ''; }
+            send(t || '');
+        } catch (e) { try { console.error(e); } catch (_) { } }
     }
 
     function reset() {
-        history.length = 0;
-        render();
+        try { history.length = 0; render(); } catch (e) { console.error(e); }
     }
 
     /** Sahifa ochilganda sozlanadi (matn maydonidagi Enter tugmasi). */
@@ -8710,7 +8921,103 @@ function openProfileModal() {
     const roleLabelEl = document.getElementById('profileModalRoleLabel');
     if (roleLabelEl) roleLabelEl.textContent = ROLES[role] || 'Xaridor';
 
+    // ── Login (telefon)ni o'zgartirish bo'limi — faqat xodimlar uchun ──
+    const isStaff = !!role && role !== 'customer';
+    const phoneSection = document.getElementById('profilePhoneSection');
+    if (phoneSection) phoneSection.style.display = isStaff ? '' : 'none';
+    const curPhoneEl = document.getElementById('profileCurrentPhone');
+    if (curPhoneEl) {
+        curPhoneEl.textContent = currentUser.phone && currentUser.phone !== currentUser.login
+            ? `${currentUser.phone} (login: ${currentUser.login})`
+            : (currentUser.login || '—');
+    }
+    const phoneInput = document.getElementById('profileNewPhone');
+    if (phoneInput) {
+        phoneInput.value = '';
+        if (currentUser.phone && currentUser.phone !== currentUser.login) {
+            phoneInput.placeholder = currentUser.phone;
+        }
+    }
+    const phonePass = document.getElementById('profilePhonePass');
+    if (phonePass) phonePass.value = '';
+
     openModal('profileModal');
+}
+
+/**
+ * Xodim O'ZI login (telefon) raqamini almashtiradi.
+ * Yangi raqam serverda saqlanadi va Boshliq panelida ko'rinadi.
+ */
+async function changeMyPhone() {
+    if (!currentUser) { playError(); showNotif('error', 'Xato!', 'Avval tizimga kiring'); return; }
+    const rawPhone = document.getElementById('profileNewPhone')?.value || '';
+    const pass = sanitizePassword(document.getElementById('profilePhonePass')?.value);
+    const phone = (typeof normalizePhoneUz === 'function') ? normalizePhoneUz(rawPhone) : '';
+
+    if (!phone) {
+        playError();
+        showNotif('error', 'Telefon xato', "To'liq raqam kiriting: +998 90 123 45 67");
+        document.getElementById('profileNewPhone')?.focus();
+        return;
+    }
+    if (!pass) {
+        playError();
+        showNotif('error', 'Parol kerak', 'Tasdiqlash uchun joriy parolingizni kiriting');
+        document.getElementById('profilePhonePass')?.focus();
+        return;
+    }
+    if (!staffToken) {
+        showNotif('error', 'Sessiya yo\'q', 'Qayta kiring');
+        return;
+    }
+
+    const btn = document.getElementById('profilePhoneSave');
+    const oldLabel = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saqlanmoqda...';
+    }
+    try {
+        const res = await fetch('/api/auth/change-phone', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ currentPassword: pass, newPhone: phone })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            playError();
+            showNotif('error', 'Xatolik', data.message || "Raqamni o'zgartirib bo'lmadi");
+            return;
+        }
+        // Login o'zgargani uchun server yangi token beradi — eskisi kuchini yo'qotadi.
+        if (data.token) setStaffToken(data.token);
+        if (data.user) {
+            currentUser.login = cleanText(data.user.login, 120) || currentUser.login;
+            currentUser.phone = cleanText(data.user.phone, 40) || phone;
+        } else {
+            currentUser.phone = phone;
+        }
+        const loginEl = document.getElementById('profileModalLogin');
+        if (loginEl) loginEl.textContent = currentUser.login;
+        const curPhoneEl = document.getElementById('profileCurrentPhone');
+        if (curPhoneEl) curPhoneEl.textContent = currentUser.phone;
+        const phonePass = document.getElementById('profilePhonePass');
+        if (phonePass) phonePass.value = '';
+        securityLog('phone-changed', 'medium',
+            `Login (telefon) almashtirildi: ${currentUser.login}`);
+        addLog('Profil', `Login (telefon) yangilandi: ${currentUser.name}`);
+        playSuccess();
+        showNotif('success', 'Yangilandi',
+            data.message || 'Login (telefon) yangilandi — Boshliq buni panelida ko\'radi');
+        setTimeout(() => closeModal('profileModal'), 1000);
+    } catch (e) {
+        showNotif('error', 'Serverga ulanib bo\'lmadi', 'Internet yoki server holatini tekshiring');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = oldLabel;
+        }
+    }
 }
 
 // ============================================================
@@ -8978,8 +9285,8 @@ const Branches = {
             const prodCount = products.filter(p => String(p.branchId || '') === String(b.id)).length;
             const stockValue = products.filter(p => String(p.branchId || '') === String(b.id))
                 .reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.stock) || 0), 0);
-            const soldCount = salesHistory.filter(s => String(s.branchId || '') === String(b.id)).length;
-            const soldTotal = salesHistory.filter(s => String(s.branchId || '') === String(b.id))
+            const soldCount = salesHistory.filter(s => isPaidSale(s) && String(s.branchId || '') === String(b.id)).length;
+            const soldTotal = salesHistory.filter(s => isPaidSale(s) && String(s.branchId || '') === String(b.id))
                 .reduce((s, x) => s + (Number(x.total) || 0), 0);
             const isMain = b.isMain ? '<span class="branch-main-tag"><i class="fas fa-star"></i> Asosiy</span>' : '';
             return '<tr>' +
@@ -9301,7 +9608,7 @@ const CashFlow = {
         const el = document.getElementById('cfFilterBranch');
         const branch = el ? el.value : '';
         return salesHistory
-            .filter(s => String(s.status) === 'paid' && (!branch || String(s.branchId || '') === String(branch)) && this.saleInRange(s))
+            .filter(s => isPaidSale(s) && (!branch || String(s.branchId || '') === String(branch)) && this.saleInRange(s))
             .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
     },
 
@@ -9378,7 +9685,7 @@ const CashFlow = {
         const rows = branches.map(b => {
             const bid = String(b.id);
             const revenue = salesHistory
-                .filter(s => String(s.status) === 'paid' && String(s.branchId || '') === bid && this.saleInRange(s))
+                .filter(s => isPaidSale(s) && String(s.branchId || '') === bid && this.saleInRange(s))
                 .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
             const t = cashFlowTotals(cashFlowOfBranch(bid).filter(c => this.inRange(c.date)));
             const net = revenue + t.kirim - t.chiqim - t.harajat;

@@ -4,3 +4,5 @@ pg8000
 pymysql
 boto3
 flask-cors
+# Xodim parollari xazinasi (Fernet) — STAFF_PASSWORD_VAULT uchun
+cryptography

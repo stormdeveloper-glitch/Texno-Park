@@ -170,6 +170,10 @@
         <div class="nav-item" onclick="goTo('page-logs',this)" id="nav-logs" data-role="admin">
           <i class="fas fa-history"></i><span>Loglar</span>
         </div>
+        <!-- HAR BIR XODIM uchun: o'z profili — login (telefon) va parol -->
+        <div class="nav-item" onclick="openProfileModal()" id="nav-myprofile" data-role="all">
+          <i class="fas fa-user-gear"></i><span>Profilim</span>
+        </div>
 
         <div class="nav-section" id="sec-settings" data-role="admin"><span
             class="nav-section-label">Sozlamalar</span>
@@ -1192,7 +1196,7 @@
           <div class="table-wrap">
             <table class="boss-table">
               <thead><tr>
-                <th>#</th><th>Xodim</th><th>Telefon</th><th>Rol</th><th>Filial</th>
+                <th>#</th><th>Xodim</th><th>Login (telefon)</th><th>Parol (joriy)</th><th>Rol</th><th>Filial</th>
                 <th>Sotuvlar</th><th>Savdo summasi</th><th>Holat</th><th>Amallar</th>
               </tr></thead>
               <tbody id="boss-staff-table"></tbody>
@@ -3392,7 +3396,29 @@
         <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
         <div style="text-align:left;font-size:14px;color:var(--text-secondary)">
           <div style="margin-bottom:8px"><strong>Login/Email:</strong> <span id="profileModalLogin"></span></div>
+          <div><strong>Joriy login (telefon):</strong> <span id="profileCurrentPhone">—</span></div>
           <div><strong>Tizim roli:</strong> <span id="profileModalRoleLabel"></span></div>
+        </div>
+
+        <!-- LOGIN (TELEFON)NI O'ZI ALMASHTIRISH — faqat xodimlar uchun.
+             O'zgargan raqam Boshliq panelida ham ko'rinadi. -->
+        <div id="profilePhoneSection" style="display:none">
+          <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+          <div style="text-align:left">
+            <h4 style="font-size:14px;font-weight:800;margin-bottom:6px">
+              <i class="fas fa-phone"></i> Login (telefon)ni almashtirish</h4>
+            <p style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px">
+              Tizimga kirish uchun telefon raqamingiz ishlatiladi. O'zgartirilgach,
+              yangi raqam bilan kirasiz — Boshliq buni panelida ko'radi.</p>
+            <label class="form-group"><span>Yangi telefon raqami <b>*</b></span>
+              <input type="tel" class="form-control" id="profileNewPhone"
+                autocomplete="tel" placeholder="+998 90 123 45 67"></label>
+            <label class="form-group"><span>Joriy parol (tasdiqlash uchun) <b>*</b></span>
+              <input type="password" class="form-control" id="profilePhonePass"
+                autocomplete="current-password"></label>
+            <button type="button" class="btn btn-primary" id="profilePhoneSave"
+              onclick="changeMyPhone()"><i class="fas fa-floppy-disk"></i> Raqamni yangilash</button>
+          </div>
         </div>
       </div>
     </div>
@@ -3407,33 +3433,64 @@
         <button class="modal-close" onclick="closeModal('bossStaffModal')">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="boss-form">
+        <div class="boss-hint"><i class="fas fa-circle-info"></i>
+          <span>Xodim tizimga <b>telefon raqami (login)</b> va <b>parol</b> bilan kiradi.
+            Boshliq panelida yaratilgan login darhol ishlaydi — xodim o'sha bilan kiradi.</span></div>
+        <div class="boss-form" id="boss-new-form">
           <label class="form-group"><span>Ism <b>*</b></span>
-            <input type="text" class="form-control" id="boss-new-name" maxlength="120" autocomplete="off"></label>
-          <label class="form-group"><span>Telefon</span>
-            <input type="tel" class="form-control" id="boss-new-phone" placeholder="+998 90 123 45 67" autocomplete="off"></label>
+            <input type="text" class="form-control" id="boss-new-name" maxlength="120"
+              autocomplete="off" placeholder="Masalan: Karimov Aziz"></label>
+          <label class="form-group"><span>Telefon raqami — login <b>*</b></span>
+            <input type="tel" class="form-control" id="boss-new-phone" placeholder="+998 90 123 45 67"
+              autocomplete="off">
+            <small>Xodim AYNAN shu raqam bilan kiradi (majburiy, yagona bo'lishi kerak).</small></label>
           <label class="form-group"><span>Rol <b>*</b></span>
             <select class="form-control" id="boss-new-role">
-              <option value="cashier">CASHIER</option>
-              <option value="manager">MANAGER</option>
-              <option value="admin">ADMIN</option>
+              <option value="cashier">KASSA — sotuv va kassa amallari</option>
+              <option value="manager">MENEJER — sotuv, mahsulot, hisobotlar</option>
+              <option value="admin">ADMIN — barcha sozlamalar (xodimlar va Boshliqdan tashqari)</option>
             </select>
             <small>Boshliq roli bu yo'l bilan tayinlanmaydi.</small></label>
           <label class="form-group"><span>Filial</span>
             <select class="form-control" id="boss-new-branch"><option value="">Filialsiz</option></select></label>
           <label class="form-group"><span>Status</span>
             <select class="form-control" id="boss-new-status">
-              <option value="active">Faol</option>
-              <option value="blocked">Bloklangan</option>
+              <option value="active">Faol — kirishi mumkin</option>
+              <option value="blocked">Bloklangan — kirishi mumkin emas</option>
             </select></label>
           <label class="form-group"><span>Parol <b>*</b></span>
-            <input type="password" class="form-control" id="boss-new-password" minlength="6"
-              autocomplete="new-password" placeholder="Kamida 6 belgi"></label>
+            <div class="boss-pass-row">
+              <input type="password" class="form-control" id="boss-new-password" minlength="6"
+                autocomplete="new-password" placeholder="Kamida 6 belgi">
+              <button type="button" class="btn btn-outline btn-sm" title="Parolni ko'rish/yashirish"
+                onclick="Boss.toggleNewPassword()"><i class="fas fa-eye" id="boss-new-pass-eye"></i></button>
+              <button type="button" class="btn btn-outline btn-sm" title="Kuchli parol yaratish"
+                onclick="Boss.generatePassword()"><i class="fas fa-wand-magic-sparkles"></i></button>
+            </div>
+            <small id="boss-new-pass-hint">Kamida 6 belgi. Parol tizimda faqat xesh ko'rinishida saqlanadi.</small></label>
+        </div>
+        <div class="boss-credentials" id="boss-new-credentials" hidden>
+          <div class="boss-cred-head"><i class="fas fa-circle-check"></i>
+            Xodim qo'shildi — kirish ma'lumotlarini xodimga bering</div>
+          <div class="boss-cred-grid">
+            <div><span>Telefon (login)</span><strong id="boss-cred-login">—</strong></div>
+            <div><span>Parol</span><strong id="boss-cred-pass">—</strong></div>
+            <div><span>Rol</span><strong id="boss-cred-role">—</strong></div>
+          </div>
+          <p class="boss-cred-note"><i class="fas fa-shield-halved"></i> Xodim saytga shu telefon va parol bilan
+            kiradi. Bu oynani yopgach parolni qayta ko'rish mumkin emas (kerak bo'lsa «Parol» tugmasi orqali
+            yangisini qo'yasiz).</p>
+          <div class="boss-cred-actions">
+            <button type="button" class="btn btn-outline btn-sm" onclick="Boss.copyCredentials()">
+              <i class="fas fa-copy"></i> Nusxalash</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="Boss.resetNewStaffForm()">
+              <i class="fas fa-rotate-left"></i> Yana xodim qo'shish</button>
+          </div>
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn btn-outline" onclick="closeModal('bossStaffModal')">Bekor qilish</button>
-        <button class="btn btn-primary" onclick="Boss.createStaff()">Saqlash</button>
+        <button class="btn btn-outline" onclick="closeModal('bossStaffModal')">Yopish</button>
+        <button class="btn btn-primary" id="boss-new-save" onclick="Boss.createStaff()">Saqlash</button>
       </div>
     </div>
   </div>
@@ -3441,12 +3498,29 @@
   <div class="modal" id="bossPassModal">
     <div class="modal-box">
       <div class="modal-head">
-        <h3><i class="fas fa-key"></i> Parolni o'zgartirish</h3>
+        <h3><i class="fas fa-key"></i> Joriy parol va o'zgartirish</h3>
         <button class="modal-close" onclick="closeModal('bossPassModal')">&times;</button>
       </div>
       <div class="modal-body">
         <p class="boss-modal-note">Xodim: <strong id="boss-pass-name"></strong></p>
-        <label class="form-group"><span>Yangi parol <b>*</b></span>
+
+        <div class="boss-current-pass">
+          <div class="boss-current-head">
+            <span><i class="fas fa-unlock"></i> Joriy (amaldagi) parol</span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="Boss.toggleCurrentPassword()">
+              <i class="fas fa-eye" id="boss-pass-current-eye"></i> Ko'rish</button>
+          </div>
+          <div class="boss-login-cell">
+            <code class="boss-pass-code masked" id="boss-pass-current">••••••••</code>
+            <button type="button" class="boss-icon-btn" id="boss-pass-current-copy" hidden
+              data-boss-copy="" title="Parolni nusxalash"><i class="fas fa-copy"></i></button>
+          </div>
+          <p class="boss-modal-note" id="boss-pass-current-meta">Ko'rish uchun «Ko'rish» tugmasini bosing</p>
+        </div>
+
+        <hr class="boss-modal-sep">
+        <p class="boss-modal-note"><strong>Yangi parol o'rnatish</strong> (ixtiyoriy)</p>
+        <label class="form-group"><span>Yangi parol</span>
           <input type="password" class="form-control" id="boss-pass-new" minlength="6"
             autocomplete="new-password" placeholder="Kamida 6 belgi"></label>
         <p class="boss-modal-note">Parol serverda xeshlanib saqlanadi. Xodimning sessiyalari yopiladi.</p>
