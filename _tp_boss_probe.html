@@ -15,7 +15,11 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
   <link rel="stylesheet" href="style.css?v=5.10.1">
-  <link rel="stylesheet" href="boss.css?v=2.1.0">
+  <link rel="stylesheet" href="boss.css?v=1.0.0">
+  <link rel="stylesheet" href="boss.css?v=1.0.0">
+  <link rel="stylesheet" href="boss.css?v=1.0.0">
+  <link rel="stylesheet" href="boss.css?v=1.0.0">
+  <link rel="stylesheet" href="boss.css?v=1.0.0">
 </head>
 
 <body>
@@ -52,7 +56,7 @@
             aria-describedby="loginPhoneError">
           <span class="phone-prefix" aria-hidden="true">+998</span>
           <i class="fas fa-mobile-screen input-icon"></i>
-     ?   </div>
+        </div>
         <p class="login-error" id="loginPhoneError" role="alert" aria-live="polite"></p>
       </div>
       <div class="form-group">
@@ -100,55 +104,55 @@
         <div class="nav-item" onclick="goTo('page-dashboard',this)" data-role="admin,cashier,manager">
           <i class="fas fa-th-large"></i><span>Dashboard</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="manager,cashier">
+        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="admin,cashier,manager">
           <i class="fas fa-cash-register"></i><span>Kassa (POS)</span>
         </div>
 
-        <div class="nav-section" id="sec-data" data-role="admin,manager,cashier"><span
+        <div class="nav-section" id="sec-data" data-role="admin,cashier"><span
             class="nav-section-label">Ma'lumotlar</span></div>
-        <div class="nav-item" onclick="goTo('page-products',this)" id="nav-products" data-role="admin,manager,cashier">
+        <div class="nav-item" onclick="goTo('page-products',this)" id="nav-products" data-role="admin">
           <i class="fas fa-tv"></i><span>Mahsulotlar</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-categories',this)" id="nav-categories" data-role="admin,manager">
+        <div class="nav-item" onclick="goTo('page-categories',this)" id="nav-categories" data-role="admin">
           <i class="fas fa-folder-open"></i><span>Kategoriyalar</span>
         </div>
         <div class="nav-item" onclick="goTo('page-warehouse',this)" id="nav-warehouse" data-role="admin,manager">
           <i class="fas fa-warehouse"></i><span>Ombor</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers" data-role="admin,manager,cashier">
+        <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers" data-role="admin,cashier">
           <i class="fas fa-users"></i><span>Mijozlar</span>
           <span class="nav-badge" id="navCustomersBadge">0</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-branches',this)" id="nav-branches" data-role="admin,manager">
+        <div class="nav-item" onclick="goTo('page-branches',this)" id="nav-branches" data-role="admin,manager,cashier">
           <i class="fas fa-map-location-dot"></i><span>Filiallar</span>
           <span class="nav-badge" id="navBranchesBadge">0</span>
         </div>
         <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
           <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
-        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin" style="width:100%">
+        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin,manager" style="width:100%">
           <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees">
             <i class="fas fa-id-badge"></i><span>Xodimlar</span>
             <i class="fas fa-chevron-down submenu-arrow" style="margin-left:auto;transition:transform 0.2s"></i>
           </div>
           <div class="nav-submenu" id="employees-submenu">
-            <div class="nav-item submenu-item" data-role="admin"
+            <div class="nav-item submenu-item"
               onclick="goTo('page-employees',this); setTimeout(openEmployeeModal, 150);">
               <i class="fas fa-user-plus"></i><span>Ro'yxatdan o'tish</span>
             </div>
-            <div class="nav-item submenu-item" data-role="admin" onclick="doLogout()">
+            <div class="nav-item submenu-item" onclick="doLogout()">
               <i class="fas fa-sign-in-alt"></i><span>Kirish</span>
             </div>
-            <div class="nav-item submenu-item" data-role="admin" onclick="goTo('page-settings',this)">
+            <div class="nav-item submenu-item" onclick="goTo('page-settings',this)">
               <i class="fas fa-cog"></i><span>Sozlama</span>
             </div>
-            <div class="nav-item submenu-item" data-role="admin" onclick="openProfileModal()">
+            <div class="nav-item submenu-item" onclick="openProfileModal()">
               <i class="fas fa-user-circle"></i><span>Profil</span>
             </div>
           </div>
         </div>
         <div class="nav-item" onclick="goTo('page-contracts',this)" id="nav-contracts"
-          data-role="admin">
+          data-role="admin,manager,cashier">
           <i class="fas fa-file-signature"></i><span>Shartnomalar</span>
           <span class="nav-badge" id="navContractsBadge">0</span>
         </div>
@@ -171,11 +175,94 @@
           <i class="fas fa-history"></i><span>Loglar</span>
         </div>
 
-        <div class="nav-section" id="sec-settings" data-role="admin"><span
-            class="nav-section-label">Sozlamalar</span>
+        <div class="nav-section" id="sec-settings" data-role="admin"><span class="nav-section-label">Sozlama</span>
         </div>
         <div class="nav-item" onclick="goTo('page-settings',this)" id="nav-settings" data-role="admin">
           <i class="fas fa-cog"></i><span>Sozlamalar</span>
+        </div>
+
+        <!-- ===== BOSHLIQ (faqat Boshliq roli) ===== -->
+        <div class="nav-section boss-only" data-role="boss"><span class="nav-section-label">Boshliq</span></div>
+        <div class="nav-item boss-only" onclick="goTo('page-boss',this)" id="nav-boss" data-role="boss">
+          <i class="fas fa-crown"></i><span>Boshliq Dashboard</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossStaff',this)" id="nav-bossStaff" data-role="boss">
+          <i class="fas fa-users-gear"></i><span>Xodimlar</span>
+          <span class="nav-badge" id="navBossStaffBadge">0</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossStaffSales',this)" id="nav-bossStaffSales" data-role="boss">
+          <i class="fas fa-receipt"></i><span>Xodim savdosi</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossProducts',this)" id="nav-bossProducts" data-role="boss">
+          <i class="fas fa-boxes-stacked"></i><span>Mahsulotlar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossBranches',this)" id="nav-bossBranches" data-role="boss">
+          <i class="fas fa-chart-column"></i><span>Filiallar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossFinance',this)" id="nav-bossFinance" data-role="boss">
+          <i class="fas fa-sack-dollar"></i><span>Moliya</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossReports',this)" id="nav-bossReports" data-role="boss">
+          <i class="fas fa-file-invoice-dollar"></i><span>Hisobotlar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossAudit',this)" id="nav-bossAudit" data-role="boss">
+          <i class="fas fa-clipboard-list"></i><span>Amallar jurnali</span>
+        </div>
+
+        <!-- ===== BOSHLIQ (faqat Boshliq roli) ===== -->
+        <div class="nav-section boss-only" data-role="boss"><span class="nav-section-label">Boshliq</span></div>
+        <div class="nav-item boss-only" onclick="goTo('page-boss',this)" id="nav-boss" data-role="boss">
+          <i class="fas fa-crown"></i><span>Boshliq Dashboard</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossStaff',this)" id="nav-bossStaff" data-role="boss">
+          <i class="fas fa-users-gear"></i><span>Xodimlar</span>
+          <span class="nav-badge" id="navBossStaffBadge">0</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossStaffSales',this)" id="nav-bossStaffSales" data-role="boss">
+          <i class="fas fa-receipt"></i><span>Xodim savdosi</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossProducts',this)" id="nav-bossProducts" data-role="boss">
+          <i class="fas fa-boxes-stacked"></i><span>Mahsulotlar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossBranches',this)" id="nav-bossBranches" data-role="boss">
+          <i class="fas fa-chart-column"></i><span>Filiallar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossFinance',this)" id="nav-bossFinance" data-role="boss">
+          <i class="fas fa-sack-dollar"></i><span>Moliya</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossReports',this)" id="nav-bossReports" data-role="boss">
+          <i class="fas fa-file-invoice-dollar"></i><span>Hisobotlar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossAudit',this)" id="nav-bossAudit" data-role="boss">
+          <i class="fas fa-clipboard-list"></i><span>Amallar jurnali</span>
+        </div>
+
+        <!-- ===== BOSHLIQ (faqat Boshliq roli) ===== -->
+        <div class="nav-section boss-only" data-role="boss"><span class="nav-section-label">Boshliq</span></div>
+        <div class="nav-item boss-only" onclick="goTo('page-boss',this)" id="nav-boss" data-role="boss">
+          <i class="fas fa-crown"></i><span>Boshliq Dashboard</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossStaff',this)" id="nav-bossStaff" data-role="boss">
+          <i class="fas fa-users-gear"></i><span>Xodimlar</span>
+          <span class="nav-badge" id="navBossStaffBadge">0</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossStaffSales',this)" id="nav-bossStaffSales" data-role="boss">
+          <i class="fas fa-receipt"></i><span>Xodim savdosi</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossProducts',this)" id="nav-bossProducts" data-role="boss">
+          <i class="fas fa-boxes-stacked"></i><span>Mahsulotlar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossBranches',this)" id="nav-bossBranches" data-role="boss">
+          <i class="fas fa-chart-column"></i><span>Filiallar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossFinance',this)" id="nav-bossFinance" data-role="boss">
+          <i class="fas fa-sack-dollar"></i><span>Moliya</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossReports',this)" id="nav-bossReports" data-role="boss">
+          <i class="fas fa-file-invoice-dollar"></i><span>Hisobotlar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossAudit',this)" id="nav-bossAudit" data-role="boss">
+          <i class="fas fa-clipboard-list"></i><span>Amallar jurnali</span>
         </div>
 
         <!-- ===== BOSHLIQ (faqat Boshliq roli) ===== -->
@@ -219,7 +306,7 @@
     </div>
 
     <!-- SIDEBAR DRAWER OVERLAY (faqat mobil — tashqariga bosilganda drawer yopiladi) -->
-    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true" onclick="resetSidebar()"></div>
+    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
 
     <!-- TOPBAR -->
     <div class="topbar">
@@ -360,7 +447,7 @@
             <div class="panel">
               <div class="panel-header">
                 <h3><i class="fas fa-clock" style="color:var(--accent)"></i> Oxirgi Sotuvlar</h3>
-                <button class="btn btn-outline btn-sm" onclick="if(requireRole('boss','manager','cashier'))goTo('page-pos',document.getElementById('navPos'))">+
+                <button class="btn btn-outline btn-sm" onclick="goTo('page-pos',document.getElementById('navPos'))">+
                   Yangi</button>
               </div>
               <div class="panel-body" style="padding:0">
@@ -1203,29 +1290,12 @@
 
       <div class="page" id="page-bossStaffSales">
         <div class="boss-page-head">
-          <div><h2><i class="fas fa-receipt"></i> Xodim savdosi</h2>
-            <p>Qaysi xodim qancha va nima sotgani — haqiqiy savdo yozuvlari</p></div>
-          <div class="boss-period" id="boss-sales-period"></div>
+          <div><h2><i class="fas fa-receipt"></i> <span id="boss-sales-title">Xodim savdosi</span></h2>
+            <p>Kim qancha va nima sotganini ko'rsatadi</p></div>
+          <button class="btn btn-outline" onclick="goTo('page-bossStaff',document.getElementById('nav-bossStaff'))">
+            <i class="fas fa-arrow-left"></i> Xodimlar</button>
         </div>
-        <div class="boss-filterbar" id="boss-sales-filters">
-          <input type="date" class="form-control boss-date" id="boss-sales-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-sales-to" aria-label="Sanagacha">
-          <select class="form-control" id="boss-sales-branch" aria-label="Filial">
-            <option value="">Barcha filiallar</option>
-          </select>
-          <input type="search" class="form-control boss-search" id="boss-sales-search"
-            placeholder="🔍 Xodim ismi..." autocomplete="off">
-          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i></button>
-        </div>
-        <div id="boss-sales-overview"></div>
-        <div id="boss-sales-detail" style="display:none">
-          <div class="boss-page-head">
-            <div><h2><i class="fas fa-receipt"></i> <span id="boss-sales-title">Xodim savdosi</span></h2>
-              <p>Cheklar va mahsulotlar</p></div>
-            <button class="btn btn-outline" id="boss-sales-back"><i class="fas fa-arrow-left"></i> Umumiy ko'rinish</button>
-          </div>
-          <div id="boss-sales-box"></div>
-        </div>
+        <div id="boss-sales-box"></div>
       </div>
 
       <div class="page" id="page-bossProducts">
@@ -1263,24 +1333,7 @@
             <p>Savdo, kirim, chiqim, xarajat va sof natija</p></div>
           <div class="boss-period" id="boss-finance-period"></div>
         </div>
-        <div class="boss-filterbar" id="boss-finance-filters">
-          <input type="date" class="form-control boss-date" id="boss-finance-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-finance-to" aria-label="Sanagacha">
-          <select class="form-control" id="boss-finance-branch" aria-label="Filial">
-            <option value="">Barcha filiallar</option>
-          </select>
-        </div>
         <div id="boss-finance-box"></div>
-        <div class="boss-charts-grid">
-          <div class="boss-panel">
-            <div class="boss-panel-head"><h3><i class="fas fa-money-bill-transfer"></i> Kirim / chiqim (6 oy)</h3></div>
-            <div class="boss-panel-body boss-chart-body"><canvas id="bossFlowChart"></canvas></div>
-          </div>
-          <div class="boss-panel">
-            <div class="boss-panel-head"><h3><i class="fas fa-chart-line"></i> Oylik savdo va foyda</h3></div>
-            <div class="boss-panel-body boss-chart-body"><canvas id="bossMonthlyChart"></canvas></div>
-          </div>
-        </div>
       </div>
 
       <div class="page" id="page-bossReports">
@@ -1290,8 +1343,6 @@
           <div class="boss-period" id="boss-reports-period"></div>
         </div>
         <div class="boss-toolbar">
-          <input type="date" class="form-control boss-date" id="boss-report-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-report-to" aria-label="Sanagacha">
           <input type="search" class="form-control boss-search" id="boss-report-staff"
             placeholder="Xodim ismi..." autocomplete="off">
           <input type="search" class="form-control boss-search" id="boss-report-product"
@@ -1306,17 +1357,131 @@
       <div class="page" id="page-bossAudit">
         <div class="boss-page-head">
           <div><h2><i class="fas fa-clipboard-list"></i> Amallar jurnali</h2>
-            <p>Tizimdagi real amallar — xodimlar, savdo, xavfsizlik (parol yozilmaydi)</p></div>
+            <p>Boshliq tomonidan qilingan muhim amallar (parol yozilmaydi)</p></div>
           <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i> Yangilash</button>
         </div>
-        <div class="boss-filterbar">
-          <input type="search" class="form-control boss-search" id="boss-audit-search"
-            placeholder="🔍 Amal, xodim yoki modul bo'yicha qidirish..." autocomplete="off">
-          <div class="boss-view-chips">
-            <button class="boss-chip active" data-boss-audit-src="">Barchasi</button>
-            <button class="boss-chip" data-boss-audit-src="audit">Boshliq amallari</button>
-            <button class="boss-chip" data-boss-audit-src="security">Xavfsizlik hodisalari</button>
+        <div id="boss-audit-box"></div>
+      </div>
+
+
+      <!-- ===== BOSH.LIQ BO'LIMLARI (faqat boshlq roli) ===== -->
+      <div class="page" id="page-boss">
+        <div id="boss-dashboard"></div>
+      </div>
+
+      <div class="page" id="page-bossStaff">
+        <div class="boss-page-head">
+          <div><h2><i class="fas fa-users-gear"></i> Xodimlar nazorati</h2>
+            <p>Barcha xodimlar, reytingi va boshqaruvi</p></div>
+          <div class="boss-period" id="boss-staff-period"></div>
+        </div>
+        <div class="boss-toolbar">
+          <input type="search" class="form-control boss-search" id="boss-staff-search"
+            placeholder="🔍 Ism, telefon yoki rol bo'yicha qidirish..." autocomplete="off">
+          <select class="form-control" id="boss-staff-role" aria-label="Rol filtri">
+            <option value="">Barcha rollar</option>
+            <option value="boss">Boshliq</option>
+            <option value="admin">Admin</option>
+            <option value="manager">Menejer</option>
+            <option value="cashier">Kassa</option>
+          </select>
+          <select class="form-control" id="boss-staff-sort" aria-label="Saralash">
+            <option value="total">Savdo summasi</option>
+            <option value="sales">Savdo soni</option>
+            <option value="units">Sotilgan dona</option>
+            <option value="profit">Foyda</option>
+            <option value="avgCheck">O'rtacha chek</option>
+            <option value="name">Ism</option>
+          </select>
+          <span class="boss-count" id="boss-staff-count"></span>
+          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i></button>
+          <button class="btn btn-outline" data-boss-ownpass><i class="fas fa-key"></i> Parolimni o'zgartirish</button>
+          <button class="btn btn-primary" data-boss-add><i class="fas fa-user-plus"></i> Xodim qo'shish</button>
+        </div>
+        <div class="boss-panel">
+          <div class="table-wrap">
+            <table class="boss-table">
+              <thead><tr>
+                <th>#</th><th>Xodim</th><th>Telefon</th><th>Rol</th><th>Filial</th>
+                <th>Sotuvlar</th><th>Savdo summasi</th><th>Holat</th><th>Amallar</th>
+              </tr></thead>
+              <tbody id="boss-staff-table"></tbody>
+            </table>
           </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-bossStaffSales">
+        <div class="boss-page-head">
+          <div><h2><i class="fas fa-receipt"></i> <span id="boss-sales-title">Xodim savdosi</span></h2>
+            <p>Kim qancha va nima sotganini ko'rsatadi</p></div>
+          <button class="btn btn-outline" onclick="goTo('page-bossStaff',document.getElementById('nav-bossStaff'))">
+            <i class="fas fa-arrow-left"></i> Xodimlar</button>
+        </div>
+        <div id="boss-sales-box"></div>
+      </div>
+
+      <div class="page" id="page-bossProducts">
+        <div class="boss-page-head">
+          <div><h2><i class="fas fa-boxes-stacked"></i> Mahsulotlar nazorati</h2>
+            <p>Mahsulotlar, top sotuvchilar va kam qoldiqlar</p></div>
+          <div class="boss-period" id="boss-products-period"></div>
+        </div>
+        <div class="boss-toolbar">
+          <input type="search" class="form-control boss-search" id="boss-product-search"
+            placeholder="🔍 Mahsulot nomi, brend yoki barkod..." autocomplete="off">
+          <select class="form-control" id="boss-product-cat" aria-label="Kategoriya"></select>
+          <div class="boss-view-chips">
+            <button class="boss-chip active" data-boss-view="all">Barchasi</button>
+            <button class="boss-chip" data-boss-view="top">Top mahsulotlar</button>
+            <button class="boss-chip" data-boss-view="low">Kam qolganlar</button>
+          </div>
+          <span class="boss-count" id="boss-products-count"></span>
+        </div>
+        <div id="boss-products-box"></div>
+      </div>
+
+      <div class="page" id="page-bossBranches">
+        <div class="boss-page-head">
+          <div><h2><i class="fas fa-chart-column"></i> Filiallar solishtirish</h2>
+            <p>Qaysi filial yaxshi ishlayapti?</p></div>
+          <div class="boss-period" id="boss-branches-period"></div>
+        </div>
+        <div id="boss-branches-box"></div>
+      </div>
+
+      <div class="page" id="page-bossFinance">
+        <div class="boss-page-head">
+          <div><h2><i class="fas fa-sack-dollar"></i> Moliyaviy nazorat</h2>
+            <p>Savdo, kirim, chiqim, xarajat va sof natija</p></div>
+          <div class="boss-period" id="boss-finance-period"></div>
+        </div>
+        <div id="boss-finance-box"></div>
+      </div>
+
+      <div class="page" id="page-bossReports">
+        <div class="boss-page-head">
+          <div><h2><i class="fas fa-file-invoice-dollar"></i> Boshliq hisobotlari</h2>
+            <p>Sana, filial, xodim, mahsulot va kategoriya filtrlari</p></div>
+          <div class="boss-period" id="boss-reports-period"></div>
+        </div>
+        <div class="boss-toolbar">
+          <input type="search" class="form-control boss-search" id="boss-report-staff"
+            placeholder="Xodim ismi..." autocomplete="off">
+          <input type="search" class="form-control boss-search" id="boss-report-product"
+            placeholder="Mahsulot nomi..." autocomplete="off">
+          <select class="form-control" id="boss-report-branch"><option value="">Barcha filiallar</option></select>
+          <select class="form-control" id="boss-report-cat"><option value="">Barcha kategoriyalar</option></select>
+          <button class="btn btn-outline" data-boss-export><i class="fas fa-file-csv"></i> CSV eksport</button>
+        </div>
+        <div id="boss-reports-box"></div>
+      </div>
+
+      <div class="page" id="page-bossAudit">
+        <div class="boss-page-head">
+          <div><h2><i class="fas fa-clipboard-list"></i> Amallar jurnali</h2>
+            <p>Boshliq tomonidan qilingan muhim amallar (parol yozilmaydi)</p></div>
+          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i> Yangilash</button>
         </div>
         <div id="boss-audit-box"></div>
       </div>
@@ -3482,37 +3647,6 @@
     </div>
   </div>
 
-  <!-- ===== BOSHLIQ DETAIL MODALLARI (cheklar, mahsulot, filial) ===== -->
-  <div class="modal" id="bossReceiptsModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3><i class="fas fa-receipt"></i> <span id="boss-receipts-title">Xodim savdosi</span></h3>
-        <button class="modal-close" onclick="closeModal('bossReceiptsModal')">&times;</button>
-      </div>
-      <div class="modal-body" id="boss-receipts-body"><i class="fas fa-spinner fa-spin"></i></div>
-    </div>
-  </div>
-
-  <div class="modal" id="bossProductModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3><i class="fas fa-box-open"></i> Mahsulot ma'lumoti</h3>
-        <button class="modal-close" onclick="closeModal('bossProductModal')">&times;</button>
-      </div>
-      <div class="modal-body" id="boss-product-body"></div>
-    </div>
-  </div>
-
-  <div class="modal" id="bossBranchModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3><i class="fas fa-store"></i> <span id="boss-branch-modal-title">Filial ma'lumoti</span></h3>
-        <button class="modal-close" onclick="closeModal('bossBranchModal')">&times;</button>
-      </div>
-      <div class="modal-body" id="boss-branch-body"></div>
-    </div>
-  </div>
-
   <!-- ===== REPORT MODAL ===== -->
   <div class="modal-overlay" id="reportModal">
     <div class="modal" style="max-width:480px">
@@ -3564,8 +3698,12 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.8-bossnav"></script>
-  <script src="boss.js?v=2.1.0"></script>
+  <script src="scripts.js?v=1.4.6-navfix"></script>
+  <script src="boss.js?v=1.0.0"></script>
+  <script src="boss.js?v=1.0.0"></script>
+  <script src="boss.js?v=1.0.0"></script>
+  <script src="boss.js?v=1.0.0"></script>
+  <script src="boss.js?v=1.0.0"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {
@@ -3581,6 +3719,7 @@
       upd();
     })();
   </script>
+<script src="_tp_boss_probe_inject.js"></script>
 </body>
 
 </html>

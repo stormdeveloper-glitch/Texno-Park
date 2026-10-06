@@ -678,7 +678,40 @@ db_manager.init_db()
 # Xavfsizlik qoidasi (darsliklardan): autentifikatsiya va avtorizatsiya faqat
 # serverda hal qilinadi. Shuning uchun muhim API'lar endi imzolangan token
 # talab qiladi: baza sinxronizatsiyasi, AI yordamchi va fayl yuklash.
-STAFF_ROLES = ('admin', 'cashier', 'manager')
+# Rol iyerarxiyasi — BOSHLIQ butun biznesni boshqaradi:
+#   BOSHLIQ > ADMIN > MANAGER > CASHIER
+# `rank` qiymati katta bo'lgan ro'l pastdagini o'z ichiga oladi.
+# `require_staff()` bo'sh ro'llar bilan chaqirilganda STAFF_ROLES ishlatiladi.
+STAFF_ROLES = ('boss', 'admin', 'manager', 'cashier')
+ROLE_RANK = {'boss': 40, 'admin': 30, 'manager': 20, 'cashier': 10}
+# Eski kodda `customer` roli ham bor (ommaviy do'kon uchun) — u ichki tizimga kirmaydi.
+_RANK_ALIASES = {'rahbariyat': 40, 'boss': 40, 'admin': 30, 'administrator': 30,
+                 'manager': 20, 'menejer': 20, 'cashier': 10, 'kassa': 10}
+
+
+def role_rank(role):
+    """Rolning iyerarxiya darajasini qaytaradi (noma'lum rol → 0)."""
+    key = str(role or '').strip().lower()
+    if key in ROLE_RANK:
+        return ROLE_RANK[key]
+    return _RANK_ALIASES.get(key, 0)
+
+
+def role_contains(allowed, role):
+    """`role` roli `allowed` ro'llaridan birining yoki undan yuqorimi.
+
+    Masalan: role_contains(('admin',), 'boss') → True (Boshliq admin imkoniyatlariga ega).
+    `allowed` bo'sh bo'lsa — barcha ichki rollar o'tadi (eski @require_staff() semantikasi).
+    """
+    if not allowed:
+        return role_rank(role) > 0
+    mine = role_rank(role)
+    if mine <= 0:
+        return False
+    # Ro'l ro'yxati ichida eng past chegarani belgilaydi.
+    return mine >= min(role_rank(r) for r in allowed)
+
+
 TOKEN_TTL_HOURS = max(1, min(72, int(os.getenv('API_TOKEN_TTL_HOURS', '12') or 12)))
 LOGIN_MAX_ATTEMPTS = max(3, min(30, int(os.getenv('LOGIN_MAX_ATTEMPTS', '8') or 8)))
 LOGIN_WINDOW_SECONDS = 300
@@ -686,6 +719,15 @@ LOGIN_WINDOW_SECONDS = 300
 _AUTH_SECRET = ''
 _login_attempts = {}
 _login_lock = threading.Lock()
+
+
+def _first_env(*names):
+    """Bir nechta muhit o'zgaruvchilaridagi birinchi to'ldirilgan qiymatni qaytaradi."""
+    for name in names:
+        value = (os.getenv(name) or '').strip()
+        if value:
+            return value
+    return ''
 
 
 def hash_password(password, salt):
@@ -819,6 +861,112 @@ def _ensure_staff_fields(staff):
     return staff, changed
 
 
+# ============================================================
+# BOSHLIQ (RAHBARIYAT) AKOUNTI — loyihaning eng yuqori roli
+# ============================================================
+# Boshliq butun biznesni ko'radi va boshqaradi: xodimlar nazorati,
+# reyting, mahsulot/filial tahlili, moliya va hisobotlar.
+#
+# Xavfsizlik qoidalari:
+#  • Parol hech qachon kodga yozilmaydi — `BOSS_DEFAULT_PASSWORD` orqali
+#    .env dan olinadi (yoki `python _tp_create_boss.py` skripti orqali).
+#  • Bazada FAQAT SHA-256 xesh saqlanadi (sha256(salt + '::' + parol)).
+#  • Boshliq akounti oddiy "xodim qo'shish" formasidan YARATILMAYDI:
+#    /api/boss/staff endpoint'i rol-variantlarida BOSHLIQ ni taklif qilmaydi.
+#    Faqat shu migratsiya yoki yuqori darajadagi CLI skripti orqali yaratiladi.
+BOSS_LOGIN = 'boss'
+BOSS_PHONE = '+998901234554'
+BOSS_NAME = 'Boshliq'
+MAX_AUDIT_LOG = 400
+
+
+def _next_staff_id(staff):
+    """Xodimlar ro'yxatida band bo'lmagan eng kichik id."""
+    used = set()
+    for item in staff:
+        if isinstance(item, dict):
+            try:
+                used.add(int(item.get('id') or 0))
+            except (TypeError, ValueError):
+                pass
+    nxt = 1
+    while nxt in used:
+        nxt += 1
+    return nxt
+
+
+def _boss_seeded(staff):
+    """Bazada Boshliq akounti allaqachon bormi?"""
+    for item in staff:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get('role', '')).strip().lower() == 'boss':
+            return True
+        if str(item.get('login', '')).strip().lower() == BOSS_LOGIN:
+            return True
+    return False
+
+
+_boss_seed_in_progress = False
+
+
+def ensure_boss_account():
+    """Boshliq akountini idempotent yaratadi (migratsiya).
+
+    Xavfsizlik: parol `.env` dan olinadi; hech qayerda ochiq matn saqlanmaydi.
+    `.env` da `BOSS_DEFAULT_PASSWORD` berilmagan bo'lsa, akount yaratilMAYDI —
+    aks holda tasodifiy/noo'rin parol bilan xodim paydo bo'lardi. Bunday
+    holatda aniq ogohlantirish chiqadi va akountni keyin CLI orqali yaratish
+    mumkin (`python _tp_create_boss.py`).
+    """
+    global _boss_seed_in_progress
+    # `load_staff()` ham shu funksiyani chaqiradi — qayta kirishni to'xtayamiz,
+    # aks holda zanjir bo'lib, bir xil akount bir necha marta yoziladi.
+    if _boss_seed_in_progress:
+        return None
+    _boss_seed_in_progress = True
+    try:
+        return _ensure_boss_account_locked()
+    finally:
+        _boss_seed_in_progress = False
+
+
+def _ensure_boss_account_locked():
+    staff = load_staff()
+    if _boss_seeded(staff):
+        return None
+
+    password = (os.getenv('BOSS_DEFAULT_PASSWORD') or '').strip()
+    if not password:
+        print('[SECURITY] BOSS_DEFAULT_PASSWORD .env\'da yo\'q — Boshliq akounti yaratilmadi.\n'
+              '           Boshliq parolini .env ga yozing yoki `python _tp_create_boss.py` ishga tushiring.')
+        return None
+
+    salt = make_salt('tp-bss-')
+    account = {
+        'id': _next_staff_id(staff),
+        'login': BOSS_LOGIN,
+        'phone': BOSS_PHONE,
+        'salt': salt,
+        'passHash': hash_password(password, salt),
+        'name': (os.getenv('BOSS_DISPLAY_NAME') or '').strip() or BOSS_NAME,
+        'role': 'boss',
+        'status': 'active',
+        'mustChange': False,
+        'branchId': '',
+        'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+    }
+    staff.append(account)
+    try:
+        db_manager.save_keys({'staff_users': staff})
+    except Exception as e:
+        print(f'[SECURITY] Boshliq akountini saqlab bo\'lmadi: {e}')
+        return None
+    print(f'[SECURITY] Boshliq akounti yaratildi (telefon: {BOSS_PHONE}, rol: boshlq).')
+    return account
+
+
 def load_staff():
     """Xodimlar ro'yxatini qaytaradi; bo'lmasa .env asosida seed qiladi."""
     try:
@@ -834,9 +982,15 @@ def load_staff():
                 db_manager.save_keys({'staff_users': staff})
             except Exception as e:
                 print(f'[SECURITY] Xodim yozuvlarini yangilab bo\'lmadi: {e}')
+        # Boshliq akounti mavjudligini ta'minlaydi (idempotent migratsiya).
+        # Parol FAQAT xesh ko'rinishida saqlanadi.
+        if not _boss_seeded(staff):
+            ensure_boss_account()
         return staff
 
-    password = (os.getenv('STAFF_DEFAULT_PASSWORD') or '').strip() or _DEFAULT_PASSWORD
+    password = _first_env('STAFF_DEFAULT_PASSWORD', 'TP_STAFF_PASSWORD', 'BOSS_DEFAULT_PASSWORD')
+    if not password:
+        password = _DEFAULT_PASSWORD
     seeded = []
     for idx, item in enumerate(_DEFAULT_STAFF, start=1):
         salt = item['salt'] if password == _DEFAULT_PASSWORD else make_salt('tp-' + item['role'][:3] + '-')
@@ -1092,8 +1246,10 @@ def require_staff(*roles):
                                     f'Tokensiz kirish urinishi: {request.path}')
                 return jsonify({'status': 'error', 'code': 'unauthorized',
                                 'message': 'Avtorizatsiya talab qilinadi'}), 401
+            # Rol iyerarxiyasi: BOSHLIQ > ADMIN > MANAGER > CASHIER.
+            # `customer` kabi ichki tizimga kirmaydigan rollar hech qachon o'tmaydi.
             allowed = roles or STAFF_ROLES
-            if payload.get('role') not in allowed:
+            if not role_contains(allowed, payload.get('role')):
                 server_security_log('access-denied', 'high',
                                     f'Ruxsat yo\'q: {payload.get("role")} -> {request.path}',
                                     payload.get('name', '—'))
@@ -1188,6 +1344,22 @@ def auth_session():
     return jsonify({'status': 'success', 'user': {
         'login': payload.get('sub'), 'name': payload.get('name'), 'role': payload.get('role'),
     }, 'exp': payload.get('exp')})
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    """Joriy sessiyani server tomondan yopadi (chiqish).
+
+    Klient tokenini o'chirishi yetarli emas — token yaroqli bo'lib qolishi
+    mumkin, shuning uchun server sessiya reyestridan ham o'chiradi.
+    """
+    payload = current_staff()
+    if not payload:
+        return jsonify({'status': 'success', 'message': 'Sessiya yopilgan'}), 200
+    jti = str(payload.get('jti') or '')
+    if jti:
+        revoke_session(jti)
+    server_security_log('logout', 'low',
+                        f'Chiqish: {payload.get("role")}', payload.get('name', '—'))
+    return jsonify({'status': 'success', 'message': 'Chiqildi'})
 
 
 @app.route('/api/auth/change-password', methods=['POST'])
@@ -1207,12 +1379,15 @@ def auth_change_password():
         return jsonify({'status': 'error', 'message': 'Yangi parol kamida 6 belgidan iborat bo\'lishi kerak'}), 400
 
     is_self = str(payload.get('sub', '')).lower() == target_login.lower()
-    if not is_self and payload.get('role') != 'admin':
+    # Rol iyerarxiyasi: Boshliq ham boshqa xodim parolini o'zgartira oladi
+    # (admin kabi), lekin pastroq rol hech qachon.
+    if not is_self and role_rank(payload.get('role')) < role_rank('admin'):
         server_security_log('password-change-denied', 'high',
                             f'Boshqa xodim parolini o\'zgartirishga urinish: {target_login}',
                             payload.get('name', '—'))
         return jsonify({'status': 'error', 'code': 'forbidden',
-                        'message': 'Faqat administrator boshqa xodim parolini o\'zgartira oladi'}), 403
+                        'message': 'Faqat administrator yoki boshliq boshqa xodim '
+                                   'parolini o\'zgartira oladi'}), 403
 
     staff = load_staff()
     target = None
@@ -1352,10 +1527,965 @@ def auth_staff_list():
     ]})
 
 
+# ============================================================
+# BOSHLIQ BOSHQARUVI — executive dashboard + xodimlar nazorati
+# ============================================================
+# Bu bo'limdagi barcha endpoint'lar FAQAT BOSHLIQ roliga ochiq
+# (`@require_staff('boss')`). Server tomoni tekshiradi — frontend'dagi
+# `if (role === 'boss')` yashirishiga tayanib qolmaymiz.
+#
+# Barcha statistika MAVJUD bazadagi haqiqiy savdo (`sales`), mahsulot
+# (`products`), filial (`branches`) va kirim/chiqim (`cashFlow`) yozuvlaridan
+# hisoblanadi. Namuna/demo qiymatlar ishlatilmaydi: ma'lumot bo'lmasa — 0.
+# ============================================================
+
+def audit_log(action, target='', detail='', actor=''):
+    """Boshliqning muhim amallarini jurnalga yozadi.
+
+    Parol hech qachon yozilmaydi: `detail` ga faqat xodim login/rol kabi
+    ochiq ma'lumotlar beriladi. Jurnal `audit_log` kaliti ostida saqlanadi.
+    """
+    try:
+        data = db_manager.get_all() or {}
+        events = data.get('audit_log')
+        if not isinstance(events, list):
+            events = []
+        events.insert(0, {
+            'time': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+            'actor': str(actor or '')[:120],
+            'action': str(action)[:60],
+            'target': str(target)[:120],
+            'detail': str(detail)[:200],
+            'ip': get_client_ip(),
+        })
+        db_manager.save_keys({'audit_log': events[:MAX_AUDIT_LOG]})
+    except Exception as e:
+        print(f'[AUDIT-LOG-ERROR] {e}')
+
+
+def _num(value, default=0.0):
+    """Xavfsiz raqamga aylantirish (None/NaN/noto'g'ri satr → default)."""
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    if result != result:
+        return default
+    return result
+
+
+def store_settings():
+    data = db_manager.get_all() or {}
+    settings = data.get('settings')
+    return settings if isinstance(settings, dict) else {}
+
+
+def low_stock_threshold():
+    """Kam qolgan mahsulot chegarasi (boshqa modullardagi kabi 5)."""
+    return max(1, int(_num(store_settings().get('lowStockThreshold'), 5.0)))
+
+
+# ── Sana va filtr yordamchilari ─────────────────────────────────
+# Savdo yozuvlari `date` maydoni `toLocaleDateString('uz-UZ')` ko'rinishida
+# saqlanadi — O'zbekistonda bu "DD.MM.YYYY" (masalan 05.10.2026).
+# Eski yozuvlar boshqa formatlarda bo'lishi mumkin, shuning uchun ajratgich
+# bo'yicha aniqlanadi: `.` → kun-oldinda, `-`/`/` → ISO yoki MM/DD/YYYY.
+def parse_business_date(raw):
+    """Sana satrini `datetime` ga aylantiradi; aniqlanmasa None."""
+    text = str(raw or '').strip()
+    if not text:
+        return None
+    nums = re.findall(r'\d+', text)
+    if len(nums) >= 3:
+        four = [n for n in nums if len(n) == 4]
+        if four:
+            year = int(four[0])
+            rest = [int(n) for n in nums if len(n) != 4]
+            a, b = rest[0], rest[1]
+            # (oy, kun) juftligi to'g'ri qurilishi kerak:
+            #  • "05.10.2026" (uz-UZ, nuqta bilan) → oy=10(b), kun=05(a)
+            #  • "2026-10-05" (ISO, 4 xonali sana birinchi) → oy=10(a), kun=05(b)
+            #  • "10/05/2026" (US) → oy=10(a), kun=05(b)
+            # Noto'g'ri talqin qilinishi mumkin bo'lgan holat uchun
+            # zaxira variant ham sinab ko'riladi.
+            dot_form = '.' in text and '-' not in text and '/' not in text
+            primary = (b, a) if dot_form else (a, b)
+            for month, day in (primary, (primary[1], primary[0])):
+                if 1 <= month <= 12 and 1 <= day <= 31:
+                    try:
+                        return datetime(year, month, day)
+                    except ValueError:
+                        continue
+        else:
+            d, m, y = int(nums[0]), int(nums[1]), int(nums[2])
+            if y < 100:
+                y += 2000
+            try:
+                return datetime(y, m, d)
+            except ValueError:
+                pass
+    for fmt in ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(text[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def period_bounds(period, ref=None):
+    """`period` uchun (start, end) sanalar.
+
+    Qo'llab-quvvatlanadi: 'day'/'today', 'week', 'month', '7d', '30d', 'all'.
+    """
+    ref = ref or datetime.now()
+    key = str(period or 'all').strip().lower()
+    if key in ('day', 'today'):
+        return ref.replace(hour=0, minute=0, second=0, microsecond=0), ref
+    if key == 'week':
+        start = ref - timedelta(days=ref.weekday())
+        return start.replace(hour=0, minute=0, second=0, microsecond=0), ref
+    if key == 'month':
+        start = ref.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return start, ref
+    if key == '7d':
+        return (ref - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0), ref
+    if key == '30d':
+        return (ref - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0), ref
+    return None, None
+
+
+# Boshliq modullarida qabul qilinadigan davr kalitlari.
+PERIOD_CHOICES = ('day', 'today', 'week', 'month', 'all', '7d', '30d')
+
+
+def normalize_period(raw):
+    """So'rovdagi davr parametrini tasdiqlangan qiymatga keltiradi ('all' standart)."""
+    key = str(raw or 'all').strip().lower()
+    return key if key in PERIOD_CHOICES else 'all'
+
+
+def custom_period_range(args):
+    """`from`/`to` sana parametrlaridan (start, end) datetime juftligi.
+
+    Ikkala parametr ixtiyoriy: faqat `from` bo'lsa end=hozir, faqat `to`
+    bo'lsa start=to-30 kun. Sana aniqlanmasa (None, None) qaytadi.
+    """
+    args = args or {}
+    raw_from = (args.get('from') or args.get('fromDate') or '').strip()
+    raw_to = (args.get('to') or args.get('toDate') or '').strip()
+    start = parse_business_date(raw_from) if raw_from else None
+    end = parse_business_date(raw_to) if raw_to else None
+    if not (start or end):
+        return None, None
+    if start and not end:
+        end = datetime.now()
+    if end and not start:
+        start = end - timedelta(days=30)
+    if start:
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    if end:
+        end = end.replace(hour=23, minute=59, second=59, microsecond=0)
+    return start, end
+
+
+def in_period(raw, period, rng=None):
+    """Savdo yozuvi tanlangan davrga mos keladimi?
+
+    `rng` — (start, end) ko'rinishidagi aniq oraliq (custom sana filtri).
+    """
+    if rng is not None:
+        start, end = rng
+        if not (start or end):
+            return True
+        dt = parse_business_date(raw)
+        if not dt:
+            return False
+        if start and dt < start:
+            return False
+        if end and dt > end:
+            return False
+        return True
+    if str(period or 'all').lower() in ('all', ''):
+        return True
+    dt = parse_business_date(raw)
+    if not dt:
+        return False
+    start, end = period_bounds(period)
+    if not start:
+        return True
+    return start <= dt <= (end + timedelta(days=1))
+
+
+def sales_in_period(store, period, rng=None):
+    """Tanlangan davrdagi haqiqiy savdo yozuvlari."""
+    rows = store.get('sales') or []
+    if not isinstance(rows, list):
+        return []
+    return [s for s in rows if isinstance(s, dict) and in_period(s.get('date'), period, rng)]
+
+
+def boss_scope(store, args):
+    """Boshliq endpointlari uchun davr + custom sana + filial filtri.
+
+    Qaytaradi: (period, rng, scoped_sales).
+    """
+    period = normalize_period((args or {}).get('period'))
+    rng = custom_period_range(args)
+    scoped = sales_in_period(store, period, rng)
+    branch_filter = str((args or {}).get('branchId') or '').strip()
+    return period, rng, scoped
+
+
+# ── Foyda hisoboti ─────────────────────────────────────────────
+# Xuddi frontend'dagi mantiq: (sotuv narxi - tan narxi) * dona, chegirmaning
+# tegishli ulushi ayiriladi. `cost` maydoni yo'q bo'lsa — 0 (tasodifiy marja
+# emas, haqiqiy ma'lumot yo'qligi ko'rsatiladi).
+def sale_profit(sale):
+    if not isinstance(sale, dict):
+        return 0.0
+    raw = sale.get('profit')
+    if raw not in (None, ''):
+        return _num(raw)
+    items = sale.get('items')
+    if not isinstance(items, list):
+        return 0.0
+    subtotal = 0.0
+    lines = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        price = _num(item.get('price'))
+        qty = _num(item.get('qty'))
+        cost = _num(item.get('cost'))
+        line = price * qty
+        subtotal += line
+        lines.append((price, qty, cost, line))
+    disc = _num(sale.get('discAmt'))
+    profit = 0.0
+    for price, qty, cost, line in lines:
+        share = (line / subtotal) if subtotal > 0 else 0.0
+        profit += (price - cost) * qty - disc * share
+    return round(profit, 2)
+
+
+def sale_units(sale):
+    """Chekdagi mahsulot donasi."""
+    if not isinstance(sale, dict):
+        return 0.0
+    total = 0.0
+    for item in sale.get('items') or []:
+        if isinstance(item, dict):
+            total += _num(item.get('qty'))
+    return total
+
+
+def sale_branch(sale, products_by_id):
+    """Savdo qaysi filialga tegishli (savdodan, aks holda mahsulotdan)."""
+    direct = str(sale.get('branchId') or '').strip()
+    if direct:
+        return direct
+    ids = set()
+    for item in sale.get('items') or []:
+        if isinstance(item, dict) and item.get('id') is not None:
+            ids.add(item.get('id'))
+    branches = set()
+    for pid in ids:
+        product = products_by_id.get(pid)
+        if product and product.get('branchId'):
+            branches.add(str(product['branchId']))
+    # Barcha mahsulot bitta filialda bo'lsa — savdo o'shandan.
+    return branches.pop() if len(branches) == 1 else ''
+
+
+def products_index(store):
+    """id → mahsulot lug'ati (branches_key shaklida)."""
+    index = {}
+    for product in store.get('products') or []:
+        if isinstance(product, dict) and product.get('id') is not None:
+            index[product['id']] = product
+    return index
+
+
+def branches_index(store):
+    """id → filial lug'ati."""
+    index = {}
+    for branch in store.get('branches') or []:
+        if isinstance(branch, dict):
+            index[str(branch.get('id', ''))] = branch
+    return index
+
+
+def unique_staff(staff):
+    """Xodimlarni ism bo'yicha birlashtiradi (alias loginlarni olib tashlaydi).
+
+    Bazada bir xodim uchun ikki yozuv bo'lishi mumkin: `admin` va
+    `admin@texnopark.uz` (eski username loginlari bilan moslik uchun).
+    Ularning ismi bir xil — reytingda esa ikki marta ko'rinardi va
+    "jami xodimlar" soni sun'iy oshardi.
+
+    Qaytaradi: har bir xodim uchun BITTА asosiy yozuv (telefoni bor,
+    login'ida '@' yo'q).
+    """
+    primaries = {}
+    for user in staff:
+        if not isinstance(user, dict):
+            continue
+        name = str(user.get('name', '')).strip().lower()
+        if not name:
+            continue
+        current = primaries.get(name)
+        if current is None:
+            primaries[name] = user
+            continue
+        # Yaxshiroq yozuvni tanlaymiz: telefonli va '@'siz login ustun.
+        def score(u):
+            return (1 if str(u.get('phone') or '').strip() else 0,
+                    0 if '@' in str(u.get('login', '')) else 1)
+        if score(user) > score(current):
+            primaries[name] = user
+    return list(primaries.values())
+
+
+def staff_public_view(user, stats=None):
+    """Xodim yozuvini ochiq maydonlarga aylantiradi (parol/xash YO'Q)."""
+    stats = stats or {}
+    return {
+        'id': user.get('id'),
+        'name': str(user.get('name', ''))[:120],
+        'login': str(user.get('login', ''))[:120],
+        'phone': str(user.get('phone', ''))[:40],
+        'role': str(user.get('role', ''))[:30],
+        'roleRank': role_rank(user.get('role')),
+        'status': str(user.get('status') or 'active')[:30],
+        'branchId': str(user.get('branchId') or '')[:40],
+        'mustChange': bool(user.get('mustChange')),
+        'createdAt': str(user.get('createdAt') or '')[:30],
+        'updatedAt': str(user.get('updatedAt') or '—')[:30],
+        'lastSeen': str(user.get('lastSeen') or '')[:30],
+        'sales': stats.get('sales', 0),
+        'units': stats.get('units', 0),
+        'total': stats.get('total', 0.0),
+        'profit': stats.get('profit', 0.0),
+        'avgCheck': stats.get('avgCheck', 0.0),
+    }
+
+
+def employee_metrics(sales, cashier_name):
+    """Bitta xodimning haqiqiy savdo ko'rsatkichlari (nom bo'yicha)."""
+    name = str(cashier_name or '').strip().lower()
+    mine = [s for s in sales if str(s.get('cashier', '')).strip().lower() == name]
+    total = sum(_num(s.get('total')) for s in mine)
+    profit = sum(sale_profit(s) for s in mine)
+    units = sum(sale_units(s) for s in mine)
+    count = len(mine)
+    return {
+        'sales': count,
+        'units': units,
+        'total': round(total, 2),
+        'profit': round(profit, 2),
+        'avgCheck': round(total / count, 2) if count else 0.0,
+    }
+
+
+def last_seen_by_login(login):
+    """Xodimning oxirgi faollik vaqti (sessiya reyestridan)."""
+    target = str(login or '').strip().lower()
+    if not target:
+        return ''
+    best = ''
+    for row in load_sessions():
+        if str(row.get('login', '')).strip().lower() != target:
+            continue
+        stamp = str(row.get('lastSeen') or '')
+        if stamp > best:
+            best = stamp
+    return best
+
+
+# ============================================================
+# 1) BOSHQLIQ DASHBOARD — umumiy biznes holati
+# ============================================================
+@app.route('/api/boss/overview', methods=['GET'])
+@require_staff('boss')
+def boss_overview():
+    """Boshliq dashboardi uchun barcha KPI — faqat haqiqiy bazadagi ma'lumot.
+
+    Hisobotlar: bugungi savdo/buyurtmalar, umumiy savdo va foyda, mahsulot
+    va kam qolganlar soni, mijozlar, xodimlar (jami/faol), filiallar (jami/faol).
+    """
+    store = db_manager.get_all() or {}
+    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
+    products = [p for p in (store.get('products') or []) if isinstance(p, dict)]
+    customers = [c for c in (store.get('customers') or []) if isinstance(c, dict)]
+    branches = [b for b in (store.get('branches') or []) if isinstance(b, dict)]
+    staff = unique_staff(load_staff())
+
+    def totals(rows):
+        return {
+            'sales': len(rows),
+            'units': sum(sale_units(s) for s in rows),
+            'total': round(sum(_num(s.get('total')) for s in rows), 2),
+            'profit': round(sum(sale_profit(s) for s in rows), 2),
+        }
+
+    today_stats = totals(sales_in_period(store, 'day'))
+    week_stats = totals(sales_in_period(store, 'week'))
+    month_stats = totals(sales_in_period(store, 'month'))
+    all_stats = totals(sales)
+
+    threshold = low_stock_threshold()
+    low = [p for p in products if _num(p.get('stock')) < threshold]
+    internal = [u for u in staff if role_rank(u.get('role')) > 0]
+    active = [u for u in internal
+              if str(u.get('status') or 'active').strip().lower() in ('active', '')]
+
+    return jsonify({
+        'status': 'success',
+        'generatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        'lowStockThreshold': threshold,
+        'kpi': {
+            'todaySales': today_stats['total'],
+            'todayOrders': today_stats['sales'],
+            'todayUnits': today_stats['units'],
+            'todayProfit': today_stats['profit'],
+            'weekSales': week_stats['total'],
+            'weekOrders': week_stats['sales'],
+            'monthSales': month_stats['total'],
+            'monthOrders': month_stats['sales'],
+            'totalSales': all_stats['total'],
+            'totalOrders': all_stats['sales'],
+            'totalUnits': all_stats['units'],
+            'totalProfit': all_stats['profit'],
+            'products': len(products),
+            'lowStock': len(low),
+            'customers': len(customers),
+            'staff': len(internal),
+            'staffActive': len(active),
+            'branches': len(branches),
+            'branchesActive': len([b for b in branches
+                                   if str(b.get('status') or 'active').strip().lower()
+                                   in ('active', '', 'open')]),
+        },
+        'signals': {
+            'hasSales': bool(sales),
+            'hasProducts': bool(products),
+            'lowStockNames': [str(p.get('name', ''))[:60] for p in low[:5]],
+        },
+    })
+
+
+# ============================================================
+# 1b) BOSHLIQ DASHBOARD — REAL CHARTLAR (time-series agregatsiya)
+# ============================================================
+@app.route('/api/boss/charts', methods=['GET'])
+@require_staff('boss')
+def boss_charts():
+    """Boshliq dashboard chartlari uchun REAL agregatsiya.
+
+    Barcha qatorlar haqiqiy `sales` va `cashFlow` yozuvlaridan hisoblanadi;
+    biror davrda ma'lumot bo'lmasa 0 (yoki bo'sh qator) qaytariladi —
+    ko'r-ko'rona qiymatlar ishlatilmaydi.
+    """
+    store = db_manager.get_all() or {}
+    period, rng, scoped = boss_scope(store, request.args)
+    products_by_id = products_index(store)
+    branches = branches_index(store)
+
+    branch_filter = str(request.args.get('branchId') or '').strip()
+    if branch_filter:
+        scoped = [s for s in scoped if sale_branch(s, products_by_id) == branch_filter]
+
+    now = datetime.now()
+
+    # 1) So'nggi 14 kun — kunlik savdo (bo'sh kunlar 0 bilan to'ldiriladi)
+    by_day = {}
+    for s in scoped:
+        dt = parse_business_date(s.get('date'))
+        if not dt:
+            continue
+        key = dt.strftime('%Y-%m-%d')
+        row = by_day.setdefault(key, {'revenue': 0.0, 'orders': 0, 'units': 0.0})
+        row['revenue'] += _num(s.get('total'))
+        row['orders'] += 1
+        row['units'] += sale_units(s)
+    daily = []
+    for i in range(13, -1, -1):
+        day = now - timedelta(days=i)
+        key = day.strftime('%Y-%m-%d')
+        r = by_day.get(key, {'revenue': 0.0, 'orders': 0, 'units': 0.0})
+        daily.append({
+            'label': day.strftime('%d.%m'),
+            'date': day.strftime('%d.%m.%Y'),
+            'revenue': round(r['revenue'], 2),
+            'orders': r['orders'],
+            'units': round(r['units'], 2),
+        })
+
+    # 2) So'nggi 8 hafta
+    weekly = []
+    for i in range(7, -1, -1):
+        week_start = (now - timedelta(days=now.weekday() + i * 7))\
+            .replace(hour=0, minute=0, second=0, microsecond=0)
+        week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
+        rev = 0.0
+        cnt = 0
+        for s in scoped:
+            dt = parse_business_date(s.get('date'))
+            if dt and week_start <= dt <= week_end:
+                rev += _num(s.get('total'))
+                cnt += 1
+        weekly.append({'label': week_start.strftime('%d.%m'),
+                       'revenue': round(rev, 2), 'orders': cnt})
+
+    # 3) So'nggi 6 oy (foyda bilan)
+    monthly = []
+    for i in range(5, -1, -1):
+        y, m = now.year, now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        start = datetime(y, m, 1)
+        if m == 12:
+            end = datetime(y + 1, 1, 1) - timedelta(seconds=1)
+        else:
+            end = datetime(y, m + 1, 1) - timedelta(seconds=1)
+        rev = 0.0
+        profit = 0.0
+        cnt = 0
+        for s in scoped:
+            dt = parse_business_date(s.get('date'))
+            if dt and start <= dt <= end:
+                rev += _num(s.get('total'))
+                profit += sale_profit(s)
+                cnt += 1
+        monthly.append({'label': start.strftime('%m.%y'),
+                        'revenue': round(rev, 2), 'profit': round(profit, 2),
+                        'orders': cnt})
+# ============================================================
+# 4) To'lov turlari bo'yicha (ushbu davrda)
+    pay_buckets = {}
+    for s in scoped:
+        key = str(s.get('pay') or s.get('provider') or 'Naqd')[:40].strip() or 'Naqd'
+        row = pay_buckets.setdefault(key, {'orders': 0, 'amount': 0.0})
+        row['orders'] += 1
+        row['amount'] += _num(s.get('total'))
+    payments = {
+        'labels': list(pay_buckets.keys()),
+        'orders': [row['orders'] for row in pay_buckets.values()],
+        'amounts': [round(row['amount'], 2) for row in pay_buckets.values()],
+    }
+
+    # 5) Filiallar bo'yicha savdo (ushbu davrda)
+    branch_buckets = {}
+    for s in scoped:
+        bid = sale_branch(s, products_by_id)
+        if not bid:
+            continue
+        row = branch_buckets.setdefault(bid, {'revenue': 0.0, 'sales': 0})
+        row['revenue'] += _num(s.get('total'))
+        row['sales'] += 1
+    branch_rows = []
+    for bid, branch in branches.items():
+        row = branch_buckets.get(bid, {'revenue': 0.0, 'sales': 0})
+        branch_rows.append({
+            'label': str(branch.get('name') or bid)[:60],
+            'revenue': round(row['revenue'], 2),
+            'sales': row['sales'],
+        })
+    branch_rows.sort(key=lambda r: -r['revenue'])
+    branchSales = {
+        'labels': [r['label'] for r in branch_rows],
+        'values': [r['revenue'] for r in branch_rows],
+        'orders': [r['sales'] for r in branch_rows],
+    }
+
+    # 6) Kirim/chiqim — so'nggi 6 oy (cashFlow'dan real)
+    cash_flow = [c for c in (store.get('cashFlow') or store.get('expenses') or [])
+                 if isinstance(c, dict)]
+    if branch_filter:
+        cash_flow = [c for c in cash_flow if str(c.get('branchId') or '') == branch_filter]
+    flow = {'labels': [], 'kirim': [], 'chiqim': []}
+    for i in range(5, -1, -1):
+        y, m = now.year, now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        start = datetime(y, m, 1)
+        if m == 12:
+            end = datetime(y + 1, 1, 1) - timedelta(seconds=1)
+        else:
+            end = datetime(y, m + 1, 1) - timedelta(seconds=1)
+        inflow = 0.0
+        outflow = 0.0
+        for record in cash_flow:
+            dt = parse_business_date(record.get('date'))
+            if dt and start <= dt <= end:
+                key = str(record.get('type') or 'chiqim').strip().lower()
+                amt = _num(record.get('amount'))
+                if key == 'kirim':
+                    inflow += amt
+                else:
+                    outflow += amt
+        flow['labels'].append(start.strftime('%m.%y'))
+        flow['kirim'].append(round(inflow, 2))
+        flow['chiqim'].append(round(outflow, 2))
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'hasData': bool(scoped),
+        'daily': daily,
+        'weekly': weekly,
+        'monthly': monthly,
+        'payments': payments,
+        'branchSales': branchSales,
+        'flow': flow,
+    })
+# 2) XODIMLAR RO'YXATI + REYTINGI
+# ============================================================
+@app.route('/api/boss/staff', methods=['GET'])
+@require_staff('boss')
+def boss_staff_list():
+    """Barcha xodimlar, ularning haqiqiy savdo ko'rsatkichlari va reytingi.
+
+    Query: period (day|week|month|all), q (ism/telefon/role qidirish),
+           role, branchId, sort, order, limit, offset.
+    """
+    store = db_manager.get_all() or {}
+    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
+    staff = unique_staff(load_staff())
+    branches = branches_index(store)
+    period = normalize_period(request.args.get('period'))
+    rng = custom_period_range(request.args)
+    scoped = sales_in_period(store, period, rng)
+
+    query = str(request.args.get('q') or '').strip().lower()
+    role_filter = str(request.args.get('role') or '').strip().lower()
+    branch_filter = str(request.args.get('branchId') or '').strip()
+
+    rows = []
+    for user in staff:
+        role = str(user.get('role', '')).strip().lower()
+        if role_rank(role) <= 0:
+            continue  # `customer` kabi ichki rollar xodim hisoblanmaydi
+        if query:
+            haystack = ' '.join([
+                str(user.get('name', '')), str(user.get('login', '')),
+                str(user.get('phone', '')), role,
+            ]).lower()
+            if query not in haystack:
+                continue
+        if role_filter and role != role_filter:
+            continue
+        if branch_filter and str(user.get('branchId') or '') != branch_filter:
+            continue
+        view = staff_public_view(user, employee_metrics(scoped, user.get('name')))
+        view['branchName'] = str((branches.get(str(user.get('branchId') or '')) or {})
+                                 .get('name', '') or '')[:80]
+        view['lastSeen'] = last_seen_by_login(user.get('login')) or view['lastSeen']
+        rows.append(view)
+
+    sort_key = str(request.args.get('sort') or 'total').strip()
+    reverse = str(request.args.get('order') or 'desc').strip().lower() != 'asc'
+    if sort_key == 'sales':
+        rows.sort(key=lambda r: (r['sales'], r['total']), reverse=reverse)
+    elif sort_key == 'units':
+        rows.sort(key=lambda r: r['units'], reverse=reverse)
+    elif sort_key == 'profit':
+        rows.sort(key=lambda r: r['profit'], reverse=reverse)
+    elif sort_key == 'avgCheck':
+        rows.sort(key=lambda r: r['avgCheck'], reverse=reverse)
+    elif sort_key == 'name':
+        rows.sort(key=lambda r: r['name'].lower(), reverse=reverse)
+    elif sort_key == 'role':
+        rows.sort(key=lambda r: (r['roleRank'], r['name'].lower()), reverse=reverse)
+    else:
+        rows.sort(key=lambda r: (r['total'], r['sales']), reverse=reverse)
+    # Reyting raqami — saralash natijasidan kelib chiqadi.
+    for index, row in enumerate(rows, start=1):
+        row['rank'] = index
+
+    total = len(rows)
+    try:
+        limit = max(1, min(500, int(request.args.get('limit') or 100)))
+        offset = max(0, int(request.args.get('offset') or 0))
+    except (TypeError, ValueError):
+        limit, offset = 100, 0
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'total': total,
+        'offset': offset,
+        'limit': limit,
+        'staff': rows[offset:offset + limit],
+    })
+
+@app.route('/api/boss/staff/<int:staff_id>/sales', methods=['GET'])
+@require_staff('boss')
+def boss_staff_sales(staff_id):
+    """Xodim savdolari: har bir chek qatorlari mahsulot/qty/narx/jami bilan."""
+    store = db_manager.get_all() or {}
+    staff = unique_staff(load_staff())
+    target = next((u for u in staff
+                   if isinstance(u, dict) and _num(u.get('id'), -1) == staff_id), None)
+    if not target:
+        return jsonify({'status': 'error', 'message': 'Xodim topilmadi'}), 404
+
+    name = str(target.get('name', '')).strip()
+    period = normalize_period(request.args.get('period'))
+    rng = custom_period_range(request.args)
+    branches = branches_index(store)
+    products_by_id = products_index(store)
+
+    scoped = sales_in_period(store, period, rng)
+    mine = [s for s in scoped
+            if str(s.get('cashier', '')).strip().lower() == name.strip().lower()]
+    mine.sort(key=lambda s: (parse_business_date(s.get('date')) or datetime.min,
+                             str(s.get('time') or '')), reverse=True)
+
+    receipts = []
+    for sale in mine:
+        branch_id = sale_branch(sale, products_by_id)
+        lines = []
+        for item in sale.get('items') or []:
+            if not isinstance(item, dict):
+                continue
+            price = _num(item.get('price'))
+            qty = _num(item.get('qty'))
+            product = products_by_id.get(item.get('id')) or {}
+            lines.append({
+                'name': str(item.get('name') or product.get('name') or '')[:120],
+                'qty': qty,
+                'price': round(price, 2),
+                'total': round(price * qty, 2),
+                'cat': str(item.get('cat') or product.get('cat') or '')[:60],
+            })
+        receipts.append({
+            'saleId': sale.get('id'),
+            'date': str(sale.get('date') or '')[:30],
+            'time': str(sale.get('time') or '')[:30],
+            'total': round(_num(sale.get('total')), 2),
+            'profit': sale_profit(sale),
+            'pay': str(sale.get('pay') or '')[:40],
+            'customer': str(sale.get('customer') or '')[:120],
+            'branchId': branch_id,
+            'branchName': str((branches.get(branch_id) or {}).get('name', '') or '')[:80],
+            'items': lines,
+        })
+
+    try:
+        limit = max(1, min(500, int(request.args.get('limit') or 100)))
+        offset = max(0, int(request.args.get('offset') or 0))
+    except (TypeError, ValueError):
+        limit, offset = 100, 0
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'staff': staff_public_view(target, employee_metrics(scoped, name)),
+        'total': len(receipts),
+        'offset': offset,
+        'limit': limit,
+        'receipts': receipts[offset:offset + limit],
+    })
+def _actor_name():
+    """Hozirgi Boshliq foydalanuvchisining ochiq ismi (jurnal uchun)."""
+    return str(getattr(request, 'staff', {}).get('name', '—'))
+
+
+# Boshliq orqali qo'shilishi mumkin bo'lgan rollar.
+# BOSHLIQ ataylab yo'q: u faqat yuqori darajadagi migratsiya/CLI orqali
+# yaratiladi, shu bilan biror xodim o'zini Boshliqga oshirib qeta olmaydi.
+BOSS_ASSIGNABLE_ROLES = ('admin', 'manager', 'cashier')
+STAFF_STATUSES = ('active', 'blocked', 'inactive')
+# Kiritiladigan maydonlardagi taqiqlangan belgilar (SQL/XSS himoyasi).
+_BOSS_TEXT_FORBIDDEN = re.compile(r'[<>;\x00]|(--)|(/\*)')
+
+
+def _clean_boss_text(value, limit=120):
+    """Matn maydonini tozalaydi va uzunligini cheklaydi."""
+    text = str(value or '').strip()
+    text = _BOSS_TEXT_FORBIDDEN.sub('', text)
+    return re.sub(r'\s+', ' ', text)[:limit].strip()
+
+
+def _validate_password(raw, min_len=6):
+    """Parolni tekshiradi; xato bo'lsa (xabar, None) qaytaradi."""
+    password = str(raw or '')
+    if len(password) < min_len:
+        return None, f'Parol kamida {min_len} belgidan iborat bo\'lishi kerak'
+    if len(password) > 200:
+        return None, 'Parol juda uzun'
+    return password, None
+
+
+def _staff_id_exists(staff, staff_id):
+    return any(isinstance(u, dict) and _num(u.get('id'), -1) == staff_id for u in staff)
+
+
+@app.route('/api/boss/staff', methods=['POST'])
+@require_staff('boss')
+def boss_staff_create():
+    """Yangi xodim qo'shish.
+
+    Rol variantlari FAQAT admin/manager/cashier — BOSHLIQ bu yo'l bilan
+    yaratilmaydi. Parol FAQAT xesh ko'rinishida saqlanadi.
+    """
+    body = request.get_json(silent=True) or {}
+    name = _clean_boss_text(body.get('name'), 120)
+    phone = normalize_phone(body.get('phone'))
+    role = str(body.get('role') or '').strip().lower()
+    branch_id = str(body.get('branchId') or '').strip()[:40]
+    status = str(body.get('status') or 'active').strip().lower()
+
+    if not name:
+        return json_error('Xodim ismi majburiy')
+    if role not in BOSS_ASSIGNABLE_ROLES:
+        return json_error('Rol noto\'g\'ri. Ruxsat etilgan rollar: '
+                          + ', '.join(r.upper() for r in BOSS_ASSIGNABLE_ROLES))
+    if status not in STAFF_STATUSES:
+        status = 'active'
+    password, error = _validate_password(body.get('password'))
+    if error:
+        return json_error(error)
+    if phone and not re.fullmatch(r'\+998\d{9}', phone):
+        return json_error('Telefon +998 va 9 raqamli formatda bo\'lishi kerak')
+
+    staff = load_staff()
+    if phone and find_staff_by_phone(phone):
+        return json_error('Bu telefon raqami band', 409)
+    if any(str(u.get('name', '')).strip().lower() == name.lower() for u in staff):
+        return json_error('Bunday xodim allaqachon mavjud', 409)
+
+    salt = make_salt('tp-' + role[:3] + '-')
+    account = {
+        'id': _next_staff_id(staff),
+        'login': (os.getenv('BOSS_STAFF_LOGIN_PREFIX') or 'user') + str(_next_staff_id(staff)),
+        'phone': phone,
+        'salt': salt,
+        'passHash': hash_password(password, salt),
+        'name': name,
+        'role': role,
+        'status': status,
+        'branchId': branch_id,
+        'mustChange': False,
+        'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+    }
+    staff.append(account)
+    try:
+        db_manager.save_keys({'staff_users': staff})
+    except Exception as e:
+        print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
+        return jsonify({'status': 'error', 'message': 'Xodimni saqlab bo\'lmadi'}), 500
+
+    audit_log('staff-create', name,
+              f'rol={role} status={status}' + (f' filial={branch_id}' if branch_id else ''),
+              _actor_name())
+    return jsonify({'status': 'success', 'message': 'Xodim qo\'shildi',
+                    'staff': staff_public_view(account)}), 201
+
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
 
+@app.route('/api/boss/staff/<int:staff_id>', methods=['PUT'])
+@require_staff('boss')
+def boss_staff_update(staff_id):
+    """Xodimni tahrirlash: ism, telefon, rol, filial va holat (bloklash).
+
+    Himoyalar:
+      • Boshliq o'zini hech qachon bloklay olmaydi;
+      • rol faqat admin/manager/cashier orasida o'zgartiriladi;
+      • parol serverda xeshlanadi va jurnalga YOZILMAYDI.
+    """
+    body = request.get_json(silent=True) or {}
+    staff = load_staff()
+    target = next((u for u in staff
+                   if isinstance(u, dict) and _num(u.get('id'), -1) == staff_id), None)
+    if not target:
+        return json_error('Xodim topilmadi', 404)
+
+    actor_login = str(getattr(request, 'staff', {}).get('sub', '') or '').strip().lower()
+    is_self = str(target.get('login', '')).strip().lower() == actor_login
+    changes = []
+
+    if 'name' in body:
+        name = _clean_boss_text(body.get('name'), 120)
+        if not name:
+            return json_error('Ism bo\'sh bo\'lmaydi')
+        if any(str(u.get('name', '')).strip().lower() == name.lower()
+               and _num(u.get('id'), -1) != staff_id for u in staff):
+            return json_error('Bunday ismli xodim allaqachon mavjud', 409)
+        if name != target.get('name'):
+            changes.append('ism')
+        target['name'] = name
+
+    if 'phone' in body:
+        phone = normalize_phone(body.get('phone'))
+        if phone:
+            clash = find_staff_by_phone(phone)
+            if clash and _num(clash.get('id'), -1) != staff_id:
+                return json_error('Bu telefon raqami band', 409)
+        if phone != target.get('phone'):
+            changes.append('telefon')
+        target['phone'] = phone
+
+    if 'branchId' in body:
+        target['branchId'] = str(body.get('branchId') or '').strip()[:40]
+        changes.append('filial')
+
+    if 'role' in body:
+        role = str(body.get('role') or '').strip().lower()
+        if role != str(target.get('role', '')).strip().lower():
+            if role not in BOSS_ASSIGNABLE_ROLES:
+                return json_error('Boshliq roli tayinlanmaydi. Ruxsat etilgan rollar: '
+                                  + ', '.join(r.upper() for r in BOSS_ASSIGNABLE_ROLES))
+            changes.append('rol')
+        target['role'] = role
+
+    if 'status' in body:
+        status = str(body.get('status') or 'active').strip().lower()
+        if status not in STAFF_STATUSES:
+            return json_error('Holat noto\'g\'ri')
+        if status != str(target.get('status') or 'active').strip().lower():
+            if is_self and status != 'active':
+                # Ruxsat xatosi — 403 (400 emas).
+                return json_error('O\'z akountingizni bloklay olmaysiz', 403)
+            changes.append('holat')
+        target['status'] = status
+
+    if body.get('password'):
+        password, error = _validate_password(body.get('password'))
+        if error:
+            return json_error(error)
+        salt = make_salt('tp-' + str(target.get('role', 'usr'))[:3] + '-')
+        target['salt'] = salt
+        target['passHash'] = hash_password(password, salt)
+        target['mustChange'] = False
+        changes.append('parol')
+        revoke_login_sessions(str(target.get('login', '')))
+
+    if not changes:
+        return jsonify({'status': 'success', 'message': 'O\'zgarish yo\'q',
+                        'staff': staff_public_view(target)})
+
+    target['updatedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    try:
+        db_manager.save_keys({'staff_users': staff})
+    except Exception as e:
+        print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
+        return json_error('Saqlab bo\'lmadi', 500)
+
+    audit_log('staff-update', str(target.get('name', '')),
+              'o\'zgarishlar: ' + ', '.join(changes), _actor_name())
+    if 'status' in changes:
+        server_security_log('staff-status-change', 'medium',
+                            f'{target.get("name")}: holat → {target.get("status")}',
+                            _actor_name())
+    return jsonify({'status': 'success', 'message': 'Xodim yangilandi',
+                    'changed': changes, 'staff': staff_public_view(target)})
 @app.route('/robots.txt')
 def serve_robots():
     """Qidiruv botlari uchun: boshqaruv va API yo'llari indekslanmasin."""
@@ -1364,7 +2494,592 @@ def serve_robots():
             'Disallow: /api/\n'
             'Disallow: /uploads/\n'
             'Crawl-delay: 10\n')
-    return app.response_class(body, mimetype='text/plain')
+    return body
+
+@app.route('/api/boss/staff/<int:staff_id>', methods=['DELETE'])
+@require_staff('boss')
+def boss_staff_delete(staff_id):
+    """Xodim akountini o'chirish — qat'iy himoyalar bilan.
+
+    Rad etiladi:
+      • o'z akountini o'chirish;
+      • oxirgi faol BOSHLIQ akountini o'chirish;
+      • o'zidan yuqori yoki teng roldagi akountni o'chirish.
+
+    Frontend tasdiqlash oynasini ko'rsatadi, lekin qaror QAYTADA serverda
+    tekshiriladi — frontend tekshiruvi ishlatilmaydi.
+    """
+    staff = load_staff()
+    target = next((u for u in staff
+                   if isinstance(u, dict) and _num(u.get('id'), -1) == staff_id), None)
+    if not target:
+        return json_error('Xodim topilmadi', 404)
+
+    actor = getattr(request, 'staff', {}) or {}
+    actor_login = str(actor.get('sub', '') or '').strip().lower()
+    target_login = str(target.get('login', '')).strip().lower()
+
+    if target_login and target_login == actor_login:
+        return json_error('O\'z akountingizni o\'chira olmaysiz', 403)
+
+    target_role = str(target.get('role', '')).strip().lower()
+    actor_role = str(actor.get('role', '')).strip().lower()
+    if role_rank(actor_role) <= role_rank(target_role):
+        return json_error('Bu akountni o\'chirish uchun yetarli huquq yo\'q', 403)
+
+    if target_role == 'boss':
+        others = [u for u in staff
+                  if isinstance(u, dict)
+                  and str(u.get('role', '')).strip().lower() == 'boss'
+                  and _num(u.get('id'), -1) != staff_id]
+        if not others:
+            return json_error('Oxirgi Boshliq akountini o\'chirib bo\'lmaydi', 409)
+
+    remaining = [u for u in staff
+                 if not (isinstance(u, dict) and _num(u.get('id'), -1) == staff_id)]
+    try:
+        db_manager.save_keys({'staff_users': remaining})
+    except Exception as e:
+        print(f'[BOSS] Xodimni o\'chirib bo\'lmadi: {e}')
+        return json_error('O\'chirib bo\'lmadi', 500)
+
+    # O'chirilgan akountning sessiyalari darhol bekor qilinadi.
+    revoke_login_sessions(target_login)
+    audit_log('staff-delete', str(target.get('name', '')),
+              f'rol={target_role}', _actor_name())
+    server_security_log('staff-deleted', 'high',
+                        f'Akount o\'chirildi: {target.get("name")} ({target_role})',
+                        _actor_name())
+    return jsonify({'status': 'success',
+                    'message': f'"{target.get("name")}" akounti o\'chirildi'})
+
+
+# ============================================================
+# 4) MAHSULOTLAR NAZORATI + TOP MAHSULOTLAR + KAM QOLGANLAR
+# ============================================================
+def _product_sales_rollup(scoped, products_by_id):
+    """Sotilganlik: mahsulot nomi → dona, tushum, filiallar, xodimlar."""
+    units, amount, per_branch, per_staff = {}, {}, {}, {}
+    for sale in scoped:
+        branch_id = sale_branch(sale, products_by_id)
+        cashier = str(sale.get('cashier') or '—').strip() or '—'
+        for item in sale.get('items') or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get('name') or '').strip()
+            qty = _num(item.get('qty'))
+            units[name] = units.get(name, 0.0) + qty
+            amount[name] = amount.get(name, 0.0) + _num(item.get('price')) * qty
+            if branch_id:
+                per_branch.setdefault(name, {})
+                per_branch[name][branch_id] = per_branch[name].get(branch_id, 0.0) + qty
+            per_staff.setdefault(name, {})
+            per_staff[name][cashier] = per_staff[name].get(cashier, 0.0) + qty
+    return units, amount, per_branch, per_staff
+
+
+@app.route('/api/boss/products', methods=['GET'])
+@require_staff('boss')
+def boss_products():
+    """Mahsulotlar tahlili: to'liq ma'lumot, top mahsulotlar, kam qoldi.
+
+    Query: period, view ('all'|'top'|'low'), q, cat, branchId, limit, offset.
+    """
+    store = db_manager.get_all() or {}
+    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
+    products = [p for p in (store.get('products') or []) if isinstance(p, dict)]
+    branches = branches_index(store)
+    products_by_id = products_index(store)
+    period = normalize_period(request.args.get('period'))
+    rng = custom_period_range(request.args)
+    scoped = sales_in_period(store, period, rng)
+    sold_units, sold_amount, per_branch, per_staff = _product_sales_rollup(scoped, products_by_id)
+    threshold = low_stock_threshold()
+
+    rows = []
+    for product in products:
+        name = str(product.get('name', '')).strip()
+        branch_id = str(product.get('branchId') or '')
+        stock = _num(product.get('stock'))
+        price = _num(product.get('price'))
+        rows.append({
+            'id': product.get('id'),
+            'name': name,
+            'cat': str(product.get('cat') or '')[:60],
+            'brand': str(product.get('brand') or '')[:60],
+            'barcode': str(product.get('barcode') or '')[:40],
+            'price': round(price, 2),
+            'cost': round(_num(product.get('cost')), 2),
+            'stock': stock,
+            'stockValue': round(price * stock, 2),
+            'branchId': branch_id,
+            'branchName': str((branches.get(branch_id) or {}).get('name', '') or '')[:80],
+            'status': str(product.get('status') or ('active' if stock > 0 else 'out'))[:30],
+            'soldUnits': sold_units.get(name, 0.0),
+            'soldAmount': round(sold_amount.get(name, 0.0), 2),
+            'soldBranches': [
+                {'branchId': b, 'branchName': str((branches.get(b) or {}).get('name', '') or '')[:80],
+                 'units': u}
+                for b, u in (per_branch.get(name) or {}).items()
+            ],
+            'soldBy': [{'staff': s, 'units': u} for s, u in
+                       sorted((per_staff.get(name) or {}).items(), key=lambda kv: -kv[1])],
+        })
+
+    view = str(request.args.get('view') or 'all').strip().lower()
+    query = str(request.args.get('q') or '').strip().lower()
+    cat_filter = str(request.args.get('cat') or '').strip().lower()
+    branch_filter = str(request.args.get('branchId') or '').strip()
+
+    if view == 'low':
+        rows = [r for r in rows if r['stock'] < threshold]
+    elif view == 'top':
+        rows = [r for r in rows if r['soldUnits'] > 0]
+    if query:
+        rows = [r for r in rows
+                if query in r['name'].lower() or query in r['cat'].lower()
+                or query in r['brand'].lower() or query in r['barcode'].lower()]
+    if cat_filter:
+        rows = [r for r in rows if r['cat'].lower() == cat_filter]
+    if branch_filter:
+        rows = [r for r in rows if r['branchId'] == branch_filter]
+
+    rows.sort(key=lambda r: (r['stock'] if view == 'low'
+                             else (r['soldUnits'], r['soldAmount'])), reverse=(view != 'low'))
+
+    try:
+        limit = max(1, min(500, int(request.args.get('limit') or 100)))
+        offset = max(0, int(request.args.get('offset') or 0))
+    except (TypeError, ValueError):
+        limit, offset = 100, 0
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'view': view,
+        'lowStockThreshold': threshold,
+        'total': len(rows),
+        'offset': offset,
+        'limit': limit,
+        'categories': sorted({str(p.get('cat') or '')[:60] for p in products
+                              if str(p.get('cat') or '').strip()}),
+        'products': rows[offset:offset + limit],
+    })
+
+
+# ============================================================
+# 5) FILIALLAR — umumiy holat va o'zaro solishtirish
+# ============================================================
+@app.route('/api/boss/branches', methods=['GET'])
+@require_staff('boss')
+def boss_branches():
+    """Har bir filial: xodimlar, savdo, mahsulotlar, qoldiq va foyda.
+
+    Savdo filiali chekdagi mahsulotlarning `branchId` sidan aniqlanadi
+    (barcha mahsulot bitta filialda bo'lsa). Savdo yozuvida `branchId`
+    maydoni bo'lsa — u ustunlik qiladi.
+    """
+    store = db_manager.get_all() or {}
+    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
+    products = [p for p in (store.get('products') or []) if isinstance(p, dict)]
+    branches = [b for b in (store.get('branches') or []) if isinstance(b, dict)]
+    staff = unique_staff(load_staff())
+    period = normalize_period(request.args.get('period'))
+    rng = custom_period_range(request.args)
+    scoped = sales_in_period(store, period, rng)
+    products_by_id = products_index(store)
+    # Bugun va oy — tanlangan davrdan qat'iy nazar, haqiqiy barcha savdodan.
+    today_sales = sales_in_period(store, 'day')
+    month_sales = sales_in_period(store, 'month')
+
+    rollup = {}
+    today_rollup = {}
+    month_rollup = {}
+    for sale in scoped:
+        bid = sale_branch(sale, products_by_id)
+        if not bid:
+            continue
+        row = rollup.setdefault(bid, {'sales': 0, 'total': 0.0, 'units': 0.0, 'profit': 0.0})
+        row['sales'] += 1
+        row['total'] += _num(sale.get('total'))
+        row['units'] += sale_units(sale)
+        row['profit'] += sale_profit(sale)
+    for sale in today_sales:
+        bid = sale_branch(sale, products_by_id)
+        if not bid:
+            continue
+        row = today_rollup.setdefault(bid, {'sales': 0, 'total': 0.0})
+        row['sales'] += 1
+        row['total'] += _num(sale.get('total'))
+    for sale in month_sales:
+        bid = sale_branch(sale, products_by_id)
+        if not bid:
+            continue
+        row = month_rollup.setdefault(bid, {'sales': 0, 'total': 0.0})
+        row['sales'] += 1
+        row['total'] += _num(sale.get('total'))
+
+    rows = []
+    for branch in branches:
+        bid = str(branch.get('id', ''))
+        stats = rollup.get(bid, {'sales': 0, 'total': 0.0, 'units': 0.0, 'profit': 0.0})
+        branch_products = [p for p in products if str(p.get('branchId') or '') == bid]
+        branch_staff = [u for u in staff
+                        if str(u.get('branchId') or '') == bid and role_rank(u.get('role')) > 0]
+        stock_units = sum(_num(p.get('stock')) for p in branch_products)
+        stock_value = sum(_num(p.get('price')) * _num(p.get('stock')) for p in branch_products)
+        rows.append({
+            'id': bid,
+            'name': str(branch.get('name') or '')[:120],
+            'address': str(branch.get('address') or branch.get('addr') or '')[:200],
+            'status': str(branch.get('status') or 'active')[:30],
+            'phone': str(branch.get('phone') or '')[:40],
+            'staffCount': len(branch_staff),
+            'staffActive': len([u for u in branch_staff
+                                if str(u.get('status') or 'active').lower() in ('active', '')]),
+            'productCount': len(branch_products),
+            'stockUnits': stock_units,
+            'stockValue': round(stock_value, 2),
+            'sales': stats['sales'],
+            'units': stats['units'],
+            'revenue': round(stats['total'], 2),
+            'profit': round(stats['profit'], 2),
+            'todaySales': round(today_rollup.get(bid, {}).get('total', 0.0), 2),
+            'todayOrders': today_rollup.get(bid, {}).get('sales', 0),
+            'monthSales': round(month_rollup.get(bid, {}).get('total', 0.0), 2),
+            'monthOrders': month_rollup.get(bid, {}).get('sales', 0),
+            'avgCheck': round(stats['total'] / stats['sales'], 2) if stats['sales'] else 0.0,
+        })
+
+    # Savdo bo'yicha kamayib borish — "qaysi filial yaxshi ishlayapti?".
+    rows.sort(key=lambda r: (r['revenue'], r['sales']), reverse=True)
+    for index, row in enumerate(rows, start=1):
+        row['rank'] = index
+
+    # Savdosi bo'lmagan mahsulot/mahsulotga bog'liq bo'lmagan savdo — "Umumiy".
+    unattributed = sum(_num(s.get('total')) for s in scoped if not sale_branch(s, products_by_id))
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'branches': rows,
+        'unattributedRevenue': round(unattributed, 2),
+    })
+
+
+# ============================================================
+# 6) MOLIYAVIY NAZORAT — savdo, kirim, chiqim, harajat, sof natija
+# ============================================================
+@app.route('/api/boss/finance', methods=['GET'])
+@require_staff('boss')
+def boss_finance():
+    """Moliyaviy umumiy ko'rinish.
+
+    Savdo va foyda — haqiqiy savdo yozuvlaridan; kirim/chiqim/harajat —
+    mavjud `cashFlow` yozuvlaridan (yangi moliyaviy tizim yaratilmaydi).
+    """
+    store = db_manager.get_all() or {}
+    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
+    period = normalize_period(request.args.get('period'))
+    rng = custom_period_range(request.args)
+    branch_filter = str(request.args.get('branchId') or '').strip()
+    scoped = sales_in_period(store, period, rng)
+
+    cash_flow = [c for c in (store.get('cashFlow') or store.get('expenses') or [])
+                 if isinstance(c, dict)]
+    scoped_flow = [c for c in cash_flow if in_period(c.get('date'), period)]
+    if branch_filter:
+        scoped_flow = [c for c in scoped_flow
+                       if str(c.get('branchId') or '') == branch_filter]
+
+    buckets = {'kirim': 0.0, 'chiqim': 0.0, 'harajat': 0.0}
+    for record in scoped_flow:
+        key = str(record.get('type') or 'chiqim').strip().lower()
+        if key in buckets:
+            buckets[key] += _num(record.get('amount'))
+
+    revenue = sum(_num(s.get('total')) for s in scoped)
+    profit = sum(sale_profit(s) for s in scoped)
+    # Sof natija: foyda − (chiqim + harajat). Kirim alohida hisoblanadi,
+    # chunki u pul oqimining tarafi, foyda emas.
+    net = profit - buckets['chiqim'] - buckets['harajat']
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'branchId': branch_filter,
+        'finance': {
+            'revenue': round(revenue, 2),
+            'orders': len(scoped),
+            'grossProfit': round(profit, 2),
+            'kirim': round(buckets['kirim'], 2),
+            'chiqim': round(buckets['chiqim'], 2),
+            'harajat': round(buckets['harajat'], 2),
+            'net': round(net, 2),
+            'flowRecords': len(scoped_flow),
+            # Foyda faqat mahsulotlarda `cost` (tan narx) mavjud bo'lsa
+            # haqiqiy hisoblanadi — aks holda UI "ma'lumot yo'q" deb ko'rsatadi.
+            'hasCostData': any(
+                _num((item or {}).get('cost')) > 0
+                for sale in scoped for item in (sale.get('items') or [])
+                if isinstance(item, dict)
+            ),
+        },
+    })
+
+
+# ============================================================
+# 7) HISOBOTLAR — filtrlar + CSV eksport
+# ============================================================
+def _csv_cell(value):
+    """CSV uchun xavfsiz katak (formulaga aylantirilishiga qarshi himoya)."""
+    text = str(value if value is not None else '')
+    if text[:1] in ('=', '+', '-', '@', '\t', '\r'):
+        text = "'" + text
+    return '"' + text.replace('"', '""') + '"'
+
+
+def _boss_report_rows(store, args):
+    """Hisobot filtrlarini qo'llab, chek qatorlarini tayyorlaydi."""
+    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
+    period = normalize_period(args.get('period'))
+    rng = custom_period_range(args)
+    branch_filter = str(args.get('branchId') or '').strip()
+    staff_filter = str(args.get('staffName') or '').strip().lower()
+    product_filter = str(args.get('productName') or '').strip().lower()
+    cat_filter = str(args.get('cat') or '').strip().lower()
+    products_by_id = products_index(store)
+    branches = branches_index(store)
+
+    rows = []
+    for sale in sales_in_period(store, period, rng):
+        if staff_filter and str(sale.get('cashier', '')).strip().lower() != staff_filter:
+            continue
+        bid = sale_branch(sale, products_by_id)
+        if branch_filter and bid != branch_filter:
+            continue
+        items = [i for i in (sale.get('items') or []) if isinstance(i, dict)]
+        if product_filter or cat_filter:
+            matched = []
+            for item in items:
+                product = products_by_id.get(item.get('id')) or {}
+                name = str(item.get('name') or product.get('name') or '').strip().lower()
+                cat = str(item.get('cat') or product.get('cat') or '').strip().lower()
+                if product_filter and product_filter not in name:
+                    continue
+                if cat_filter and cat != cat_filter:
+                    continue
+                matched.append(item)
+            if not matched:
+                continue
+        else:
+            matched = items
+        rows.append({
+            'saleId': sale.get('id'),
+            'date': str(sale.get('date') or ''),
+            'time': str(sale.get('time') or ''),
+            'staff': str(sale.get('cashier') or ''),
+            'branchId': bid,
+            'branchName': str((branches.get(bid) or {}).get('name', '') or ''),
+            'customer': str(sale.get('customer') or ''),
+            'items': sum(_num(i.get('qty')) for i in matched),
+            'total': round(_num(sale.get('total')), 2),
+            'profit': sale_profit(sale),
+            'pay': str(sale.get('pay') or ''),
+        })
+    rows.sort(key=lambda r: (r['date'], str(r['time'])), reverse=True)
+    return period, rows
+
+
+@app.route('/api/boss/reports', methods=['GET'])
+@require_staff('boss')
+def boss_reports():
+    """Boshliq hisobotlari: sana, filial, xodim, mahsulot va kategoriya filtrlari.
+
+    Query: period, branchId, staffName, productName, cat,
+           format ('json'|'csv'), limit, offset.
+    """
+    store = db_manager.get_all() or {}
+    period, rows = _boss_report_rows(store, request.args)
+
+    if str(request.args.get('format') or 'json').strip().lower() == 'csv':
+        header = ['Chek', 'Sana', 'Vaqt', 'Xodim', 'Filial', 'Mijoz',
+                  'Dona', "Savdo (so'm)", "Foyda (so'm)", "To'lov"]
+        keys = ('saleId', 'date', 'time', 'staff', 'branchName',
+                'customer', 'items', 'total', 'profit', 'pay')
+        lines = [','.join(_csv_cell(h) for h in header)]
+        lines += [','.join(_csv_cell(r.get(k)) for k in keys) for r in rows]
+        stamp = datetime.now().strftime('%Y%m%d-%H%M')
+        return app.response_class(
+            '\ufeff' + '\n'.join(lines),  # BOM — Excel uchun UTF-8
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition':
+                     f'attachment; filename="boss-report-{stamp}.csv"'})
+
+    try:
+        limit = max(1, min(1000, int(request.args.get('limit') or 100)))
+        offset = max(0, int(request.args.get('offset') or 0))
+    except (TypeError, ValueError):
+        limit, offset = 100, 0
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'total': len(rows),
+        'offset': offset,
+        'limit': limit,
+        'summary': {
+            'revenue': round(sum(r['total'] for r in rows), 2),
+            'profit': round(sum(r['profit'] for r in rows), 2),
+            'units': round(sum(r['items'] for r in rows), 2),
+            'orders': len(rows),
+        },
+        'rows': rows[offset:offset + limit],
+    })
+
+
+# ============================================================
+# 8) AUDIT LOG — Boshliq amalari jurnali
+# ============================================================
+@app.route('/api/boss/audit', methods=['GET'])
+@require_staff('boss')
+def boss_audit():
+    """Boshliq amallar jurnali — `audit_log` + `serverSecurityLog` birlashtirilgan.
+
+    `audit_log` — Boshliqning muhim amallari (xodim CRUD, parol);
+    `serverSecurityLog` — butun tizimdagi xavfsizlik hodisalari (login,
+    kirish urinishlari, ruxsat tekshiruvlari). Parol/token hech qachon
+    yozilmaydi. Query: q (qidiruv), source ('audit'|'security'|''), limit.
+    """
+    store = db_manager.get_all() or {}
+    audit_events = store.get('audit_log')
+    audit_events = audit_events if isinstance(audit_events, list) else []
+    security_events = store.get('serverSecurityLog')
+    security_events = security_events if isinstance(security_events, list) else []
+
+    # Yagona shaklga keltirish (kim, qachon, modul, nima, holat).
+    events = []
+    for e in audit_events:
+        if isinstance(e, dict):
+            events.append({
+                'time': str(e.get('time') or ''),
+                'actor': str(e.get('actor') or '')[:120],
+                'action': str(e.get('action') or '')[:60],
+                'target': str(e.get('target') or '')[:120],
+                'detail': str(e.get('detail') or '')[:240],
+                'module': 'Boshliq',
+                'level': 'info',
+                'source': 'audit',
+                'ip': str(e.get('ip') or '')[:60],
+            })
+    for e in security_events:
+        if isinstance(e, dict):
+            events.append({
+                'time': str(e.get('time') or ''),
+                'actor': str(e.get('user') or '')[:120],
+                'action': str(e.get('type') or '')[:60],
+                'target': '',
+                'detail': str(e.get('message') or '')[:240],
+                'module': _security_module_label(str(e.get('type') or '')),
+                'level': str(e.get('level') or 'low')[:20],
+                'source': 'security',
+                'ip': str(e.get('ip') or '')[:60],
+            })
+
+    events.sort(reverse=True, key=lambda r: (r['time'] or '', r['ip'] or ''))
+
+    query = str(request.args.get('q') or '').strip().lower()
+    source = str(request.args.get('source') or '').strip().lower()
+    if source in ('audit', 'security'):
+        events = [e for e in events if e['source'] == source]
+    if query:
+        events = [e for e in events if query in (
+            f"{e['actor']} {e['action']} {e['target']} {e['detail']} {e['module']}").lower()]
+
+    try:
+        limit = max(1, min(400, int(request.args.get('limit') or 150)))
+    except (TypeError, ValueError):
+        limit = 150
+
+    return jsonify({'status': 'success', 'total': len(events),
+                    'sources': {'audit': len(audit_events), 'security': len(security_events)},
+                    'events': events[:limit]})
+
+
+def _security_module_label(event_type):
+    """Xavfsizlik hodisasi turidan modul nomini chiqaradi."""
+    text = str(event_type or '')
+    if 'login' in text or 'logout' in text or 'password' in text or 'session' in text:
+        return 'Autentifikatsiya'
+    if 'access' in text or 'denied' in text or 'required' in text:
+        return 'Ruxsat'
+    if 'sync' in text or 'data' in text:
+        return 'Sinxronizatsiya'
+    if 'fiscal' in text:
+        return 'Fiskal chek'
+    if 'payment' in text or 'pay' in text:
+        return "To'lovlar"
+    if 'captcha' in text:
+        return 'Himoya (CAPTCHA)'
+    if 'rate' in text:
+        return 'Himoya (rate-limit)'
+    return 'Xavfsizlik'
+
+
+# ============================================================
+# 9) BOSHLIQ — O'Z PAROLINI O'ZgartIRISH
+# ============================================================
+# Eski `/api/auth/change-password` endpoint'i Boshliq uchun ham ishlaydi,
+# lekin bu — aniq "o'z parolim" oqimi: jihat yo'q, eski parol talab qilinadi.
+@app.route('/api/boss/password', methods=['POST'])
+@require_staff('boss')
+def boss_change_password():
+    """Boshliq o'z parolini o'zgartiradi (eski parol talab qilinadi)."""
+    body = request.get_json(silent=True) or {}
+    payload = getattr(request, 'staff', {}) or {}
+    login = str(payload.get('sub', '')).strip()
+
+    current = str(body.get('currentPassword') or '')[:200]
+    new_password, error = _validate_password(body.get('newPassword'))
+    if error:
+        return json_error(error)
+    confirm = str(body.get('confirmPassword') or '')[:200]
+    if confirm and confirm != new_password:
+        return json_error('Parollar mos kelmadi')
+    if new_password == current:
+        return json_error('Yangi parol joriy parol bilan bir xil bo\'lmasligi kerak')
+
+    staff = load_staff()
+    target = next((u for u in staff
+                   if isinstance(u, dict)
+                   and str(u.get('login', '')).lower() == login.lower()), None)
+    if not target:
+        return json_error('Akount topilmadi', 404)
+    if not hmac.compare_digest(hash_password(current, str(target.get('salt', ''))),
+                               str(target.get('passHash', ''))):
+        server_security_log('password-change-failed', 'medium',
+                            'Joriy parol xato', payload.get('name', '—'))
+        return json_error('Joriy parol xato', 401)
+
+    salt = make_salt('tp-' + str(target.get('role', 'usr'))[:3] + '-')
+    target['salt'] = salt
+    target['passHash'] = hash_password(new_password, salt)
+    target['mustChange'] = False
+    target['updatedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    try:
+        db_manager.save_keys({'staff_users': staff})
+    except Exception:
+        return json_error('Parolni saqlab bo\'lmadi', 500)
+
+    # JURNALGA PAROL YOZILMAYDI — faqat amal nomi.
+    audit_log('password-change-own', str(target.get('name', '')),
+              'o\'z parolini yangiladi', _actor_name())
+    server_security_log('password-changed', 'medium', 'Boshliq paroli yangilandi',
+                        payload.get('name', '—'))
+    # Parol o'zgargani uchun eski sessiyalar yopiladi.
+    revoke_login_sessions(login)
+    return jsonify({'status': 'success',
+                    'message': 'Parolingiz yangilandi. Qayta kiring.'})
 
 
 @app.route('/api/health', methods=['GET'])
@@ -1938,12 +3653,59 @@ def sync_data():
     try:
         apply_image_keep(clean.get('products') or [])
         apply_fiscal_keep(clean.get('sales') or [])
+        old_store = db_manager.get_all() or {}
+        audit_sync_changes(old_store, clean,
+                           str(getattr(request, 'staff', {}).get('name', '—')))
         db_manager.save_keys(clean)
         return jsonify({'status': 'success', 'message': 'Ma\'lumotlar muvaffaqiyatli saqlandi',
                         'savedKeys': sorted(clean.keys())})
     except Exception as e:
         print(f'[ERROR] /api/sync: {e}')
         return json_error('Ma\'lumotni saqlashda xatolik', 500)
+
+
+def audit_sync_changes(old_store, clean, actor):
+    """Sinxronizatsiyadagi muhim o'zgarishlarni amallar jurnaliga yozadi.
+
+    • Yangi savdo   → `sale-create` (kassir real amali — bank/kassa cheki);
+    • Mahsulot o'zgarganda (qoldiq/narx) → `product-update`.
+    Parol, token yoki shaxsiy ma'lumotlar jurnalga YOZILMAYDI.
+    """
+    try:
+        old_sales = [s for s in (old_store.get('sales') or []) if isinstance(s, dict)]
+        old_ids = {str(s.get('id')) for s in old_sales}
+        for sale in (clean.get('sales') or []):
+            if not isinstance(sale, dict):
+                continue
+            sid = str(sale.get('id'))
+            if sid in old_ids or _num(sale.get('total')) <= 0:
+                continue
+            cashier = str(sale.get('cashier') or actor or '—')[:120]
+            pay = str(sale.get('pay') or sale.get('provider') or '')[:30]
+            audit_log('sale-create', f"Chek #{sid}",
+                      f"{_num(sale.get('total'))} so'm · {pay}", cashier)
+
+        old_products = {str(p.get('id')): p
+                        for p in (old_store.get('products') or []) if isinstance(p, dict)}
+        for product in (clean.get('products') or []):
+            if not isinstance(product, dict):
+                continue
+            pid = str(product.get('id'))
+            old = old_products.get(pid)
+            if not old:
+                continue
+            old_stock = _num(old.get('stock'))
+            new_stock = _num(product.get('stock'))
+            old_price = _num(old.get('price'))
+            new_price = _num(product.get('price'))
+            if old_stock != new_stock or old_price != new_price:
+                from_stock = f"qoldiq: {old_stock}→{new_stock}" if old_stock != new_stock else ''
+                from_price = f"narx: {old_price}→{new_price}" if old_price != new_price else ''
+                audit_log('product-update', str(product.get('name') or pid)[:120],
+                          ' '.join(x for x in (from_stock, from_price) if x),
+                          str(actor or '—')[:120])
+    except Exception as e:
+        print(f'[AUDIT-SYNC-ERROR] {e}')
 
 
 # ============================================================
@@ -3338,6 +5100,12 @@ def assistant_chat():
 
 if __name__ == '__main__':
     debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    # Boshliq (rahbariyat) akountini idempotent yaratadi — parol FAQAT xesh
+    # ko'rinishida saqlanadi, manba `.env` dagi BOSS_DEFAULT_PASSWORD dan olinadi.
+    try:
+        ensure_boss_account()
+    except Exception as _boss_err:  # pragma: no cover
+        print(f'[SECURITY] Boshliq akountini tekshirishda xato: {_boss_err}')
     # Sayt domeni (SITE_DOMAIN) bo'lsa — Turnstile widgetiga qo'shishni fonda boshlaymiz
     start_domain_sync()
     turnstile_mode = 'ochirilgan'

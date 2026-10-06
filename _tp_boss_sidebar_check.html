@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>BOSHLIQ sidebar tekshiruvi (vaqtinchalik probe)</title>
+  <style>
+    html, body { margin: 0; }
+    iframe { width: 1366px; height: 900px; border: 0; display: block; }
+  </style>
+</head>
+
+<body>
+  <iframe id="f" src="index.html"></iframe>
+  <pre id="tp-results" style="display:none"></pre>
+  <script>
+    // BOSHLIQ/rollar uchun REAL login (doLogin) orqali sidebar menyusini tekshiradi.
+    // Parol faqat URL fragmentidan olinadi — faylda ochiq parol SAQLANMAYDI.
+    (async () => {
+      const HASH = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const PW = HASH.get('pw') || '';
+      const PHONE_DIGITS = HASH.get('digits') || '901234554';
+      const ROLE = HASH.get('role') || 'boss';
+      const out = { role: ROLE, checks: [], sidebar: [], active: {}, header: {}, activePage: [] };
+      const add = (ok, msg) => out.checks.push((ok ? 'PASS ' : 'FAIL ') + msg);
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const f = document.getElementById('f');
+      await new Promise((res, rej) => { f.addEventListener('load', res, { once: true }); setTimeout(() => rej(new Error('iframe load timeout')), 30000); });
+      const win = f.contentWindow, doc = f.contentDocument;
+      // iframe hujjati tayyor bo'lguncha kutamiz
+      let ready = false;
+      for (let i = 0; i < 100 && !ready; i++) {
+        try {
+          if (f.contentWindow && f.contentDocument && f.contentDocument.querySelector && f.contentDocument.querySelector('#loginPage')) ready = true;
+        } catch (e) { }
+        if (!ready) await sleep(150);
+      }
+      if (!ready) throw new Error('iframe tayyor emas (win=' + !!f.contentWindow + ' doc=' + !!f.contentDocument + ')');
+      for (let i = 0; i < 100 && !f.contentDocument.querySelector('#loginPage .login-box'); i++) await sleep(100);
+      await sleep(1200);
+      const win2 = f.contentWindow, doc2 = f.contentDocument;
+      if (!win2 || !doc2) throw new Error('iframe kontenti ochilmadi');
+      void win2;
+      const q = s => doc2.querySelector(s);
+      const phone = q('#loginPhone'), pass = q('#loginPass');
+      const inputEvent = new win2.Event('input', { bubbles: true });
+      if (!phone || !pass) throw new Error('login elementlari topilmadi');
+      phone.value = ''; pass.value = '';
+      for (const ch of PHONE_DIGITS) { phone.value += ch; phone.dispatchEvent(inputEvent); }
+      pass.value = PW;
+      try { await win2.doLogin(); } catch (e) { out.error = String((e && e.message) || e); }
+      const appEl = doc2.getElementById('app');
+      for (let i = 0; i < 80 && appEl.style.display !== 'block'; i++) await sleep(200);
+      await sleep(1800);
+
+      const visible = [];
+      doc2.querySelectorAll('#sidebar .nav-item').forEach(el => {
+        const label = ((el.querySelector(':scope > span:not(.nav-badge)') || el.querySelector('span'))?.textContent || '').trim();
+        const disp = el.style.display;
+        const cs = win2.getComputedStyle(el);
+        if (disp !== 'none' && cs.display !== 'none' && cs.visibility !== 'hidden') visible.push(label);
+      });
+      out.sidebar = visible;
+      const activeNav = q('#sidebar .nav-item.active');
+      out.active = { id: activeNav ? activeNav.id : null, label: (activeNav && ((activeNav.querySelector('span') || {}).textContent || '').trim()) || '' };
+      out.header = { title: (q('#pageTitle') || {}).textContent || '', subtitle: (q('#pageSubtitle') || {}).textContent || '' };
+      out.roleShown = (q('#sideRole') || {}).textContent || '';
+      out.activePage = Array.from(doc2.querySelectorAll('.page.active')).map(p => p.id || '');
+
+      const BOSS_EXPECTED = ['Sozlamalar', 'Boshliq Dashboard', 'Xodimlar', 'Xodim savdosi', 'Mahsulotlar',
+        'Filiallar', 'Moliya', 'Hisobotlar', 'Amallar jurnali'];
+      const BOSS_FORBIDDEN = ['Dashboard', 'Kassa (POS)', 'Kategoriyalar', 'Ombor', 'Mijozlar',
+        'Kirim / Chiqim', 'Shartnomalar', 'AI Yordamchi', 'Chegirmalar', 'SMS Tizimi', 'Loglar'];
+      if (ROLE === 'boss') {
+        add(JSON.stringify(visible) === JSON.stringify(BOSS_EXPECTED),
+          "sidebar AYNAN talab qilingan 9 bo'lim: " + JSON.stringify(visible));
+        const forbidden = visible.filter(l => BOSS_FORBIDDEN.includes(l));
+        add(forbidden.length === 0, 'ortiqcha bo\'limlar yo\'q (chiqqani: ' + JSON.stringify(forbidden) + ')');
+        add(out.active.id === 'nav-boss', 'faol menyu: #' + out.active.id);
+        add(out.header.title === 'Boshliq Dashboard', 'header sarlavha: ' + out.header.title);
+        add(out.activePage.includes('page-boss'), 'ochiq sahifa: ' + out.activePage.join(','));
+      } else {
+        const leaked = visible.filter(l => ['Boshliq Dashboard', 'Amallar jurnali', 'Xodim savdosi', 'Boshliq'].includes(l));
+        add(leaked.length === 0, ROLE.toUpperCase() + ': BOSHLIQ bo\'limlari qolib ketmadi (' + JSON.stringify(leaked) + ')');
+        add(out.roleShown.length > 0, ROLE.toUpperCase() + ' roli aniqlandi: ' + out.roleShown);
+      }
+      document.getElementById('tp-results').textContent = JSON.stringify(out);
+    })().catch(e => {
+      document.getElementById('tp-results').textContent = JSON.stringify({ error: String((e && e.message) || e) });
+    });
+  </script>
+</body>
+
+</html>

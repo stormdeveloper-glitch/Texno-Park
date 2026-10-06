@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>wrap</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #111; }
+    iframe { display: block; border: 0; }
+  </style>
+</head>
+
+<body>
+  <iframe id="f"></iframe>
+  <pre id="tp-all" style="display:none"></pre>
+  <script>
+    (async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const p = new URLSearchParams(location.search);
+      const size = (p.get('only') || '390x844');
+      const wh = size.split('x');
+      const w = Number(wh[0]), h = Number(wh[1]);
+      const f = document.getElementById('f');
+      f.width = w; f.height = h;
+      f.addEventListener('load', () => {
+        try {
+          f.contentDocument.head.insertAdjacentHTML('beforeend',
+            '<style>*{scrollbar-width:none}*::-webkit-scrollbar{width:0;height:0;display:none}</style>');
+        } catch (e) { /* ignore */ }
+      }, { once: true });
+      f.src = '/_tp_probe.html?ip=' + size + '&t=' + Date.now();
+      await new Promise(res => { f.addEventListener('load', res, { once: true }); });
+      let raw = null;
+      for (let i = 0; i < 300; i++) {
+        await sleep(100);
+        try {
+          const el = f.contentDocument && f.contentDocument.getElementById('tp-results');
+          if (el && el.textContent) { raw = el.textContent; break; }
+        } catch (e) { /* ignore */ }
+      }
+      let inner = null;
+      try { inner = f.contentWindow ? f.contentWindow.innerWidth : null; } catch (e) { /* ignore */ }
+      document.getElementById('tp-all').textContent = JSON.stringify({ vpi: [w, h], inner: inner, raw: raw });
+    })().catch(e => {
+      document.getElementById('tp-all').textContent = JSON.stringify({ error: String((e && e.message) || e) });
+    });
+  </script>
+</body>
+
+</html>

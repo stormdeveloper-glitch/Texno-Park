@@ -2715,39 +2715,129 @@ tbody tr:last-child td {
     color: var(--text-secondary);
 }
 
+/* ── Product card stock color badges (Texno Park color system) ── */
+.product-card-stock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.product-card-stock .stock-qty { font-weight: 700; }
+.product-card-stock.stock-high .stock-qty { color: var(--success); }
+.product-card-stock.stock-low  .stock-qty { color: var(--warning); }
+.product-card-stock.stock-zero .stock-qty { color: var(--danger); }
+
+/* ── Out-of-stock card state ── */
+.product-card.out {
+  filter: grayscale(.65);
+  opacity: .72;
+  cursor: not-allowed !important;
+}
+.product-card.out::before {
+  content: 'Sotuvda yo\'q';
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
+  background: rgba(239, 68, 68, .95);
+  color: #fff;
+  padding: 3px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  border-radius: 999px;
+  text-transform: uppercase;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, .25);
+}
+.product-card.out .product-add-btn { opacity: .55; }
+
+/* ── Product add button: professional alignment fix ── */
 .product-add-btn {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 50%;
-    background: var(--primary);
-    color: #fff;
-    font-size: 18px;
-    font-weight: 800;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: all .2s ease;
-    box-shadow: 0 4px 10px rgba(249, 115, 22, 0.2);
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  color: #fff;
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  vertical-align: middle;
+  transition: transform .14s ease, box-shadow .14s ease, background .2s ease, opacity .14s ease;
+  box-shadow: 0 6px 14px rgba(249, 115, 22, 0.24);
+  touch-action: manipulation;
+  user-select: none;
 }
-
-.product-add-btn:hover {
-    transform: scale(1.12);
-    box-shadow: 0 14px 26px rgba(249, 115, 22, 0.25);
+.product-add-btn i {
+  font-size: 15px;
+  font-weight: 900;
+  font-style: normal;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  transform: none;
+  display: inline-block;
 }
-
-.product-add-btn:active {
-    transform: scale(.98);
+.product-add-btn:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 12px 22px rgba(249, 115, 22, 0.32);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
 }
-
+.product-add-btn:active:not(:disabled) {
+  transform: scale(.94);
+  box-shadow: 0 2px 6px rgba(249, 115, 22, 0.2);
+}
 .product-add-btn:focus {
-    outline: none;
-    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.14);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.16);
 }
+.product-add-btn:disabled {
+  background: var(--muted);
+  color: #fff;
+  opacity: .55;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+  box-shadow: none;
+}
+.product-add-btn.anim-press {
+  animation: pressPulse .24s ease-out;
+}
+@keyframes pressPulse {
+  0%   { box-shadow: 0 6px 14px rgba(249, 115, 22, 0.24); transform: scale(1); }
+  45%  { box-shadow: 0 4px 10px rgba(16, 185, 129, 0.35); transform: scale(.92); }
+  100% { box-shadow: 0 6px 14px rgba(249, 115, 22, 0.24); transform: scale(1); }
+}
+
+/* ── In cart badge ── */
+.in-cart-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  box-shadow: 0 4px 10px rgba(249, 115, 22, 0.3);
+}
+.product-card.in .in-cart-badge { display: inline-flex; }
 
 /* Cart pop-in bounce animation */
 @keyframes cartBounce {
@@ -3071,6 +3161,87 @@ textarea.form-control {
 select.form-control option {
     background: var(--card);
 }
+
+/* ============ BOSS MODALLAR UCHUN XUSUSIY FIX (ROOT CAUSE TUZATUV) ============ */
+/* Sabab: bossStaffModal, bossPassModal, bossOwnPassModal, bossReceiptsModal,
+   bossProductModal, bossBranchModal — bevosita <body> ichida class="modal" berilgan
+   va <div class="modal-overlay"> ichida emaslar; .modal uchun CSS default display:none yo'qligi
+   sabab ular har doim ko'rinib turadi (computedDisplay:flex). Ushbu scoped rule ularni
+   faqat .open class borligida ko'rsatadi (openModal / closeModal bilan toggle). */
+
+#bossStaffModal,
+#bossPassModal,
+#bossOwnPassModal,
+#bossReceiptsModal,
+#bossProductModal,
+#bossBranchModal {
+    display: none !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .65);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    padding: 20px;
+    overflow-y: auto;
+}
+
+#bossStaffModal.open,
+#bossPassModal.open,
+#bossOwnPassModal.open,
+#bossReceiptsModal.open,
+#bossProductModal.open,
+#bossBranchModal.open {
+    display: flex !important;
+    animation: fadeIn .2s ease;
+}
+
+/* Modal ichidagi .modal-box (boss modallari o'z ichiga .modal-box oladi) —
+   boshqa .modal-overlay ichidagi .modal bilan bir xil ko'rinishga keltirish */
+#bossStaffModal > .modal-box,
+#bossPassModal > .modal-box,
+#bossOwnPassModal > .modal-box,
+#bossReceiptsModal > .modal-box,
+#bossProductModal > .modal-box,
+#bossBranchModal > .modal-box {
+    background: var(--card);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-xl);
+    padding: 30px;
+    width: 520px;
+    max-width: 92vw;
+    max-height: 92vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .35);
+}
+
+/* Mobil moslashuvchanlik — kichik ekranlarda modal kengligi 95vw va padding 20px */
+@media (max-width: 768px) {
+    #bossStaffModal,
+    #bossPassModal,
+    #bossOwnPassModal,
+    #bossReceiptsModal,
+    #bossProductModal,
+    #bossBranchModal { padding: 12px; }
+    #bossStaffModal > .modal-box,
+    #bossPassModal > .modal-box,
+    #bossOwnPassModal > .modal-box,
+    #bossReceiptsModal > .modal-box,
+    #bossProductModal > .modal-box,
+    #bossBranchModal > .modal-box { padding: 20px; width: 95vw; }
+}
+
+@media (max-width: 480px) {
+    #bossStaffModal > .modal-box,
+    #bossPassModal > .modal-box,
+    #bossOwnPassModal > .modal-box,
+    #bossReceiptsModal > .modal-box,
+    #bossProductModal > .modal-box,
+    #bossBranchModal > .modal-box { padding: 16px 14px; max-height: 94vh; }
+}
+/* ============ END BOSS MODAL FIX ============ */
 
 /* ===== MODAL ===== */
 .modal-overlay {
@@ -3541,6 +3712,26 @@ body.modal-open {
 
 .menu-toggle i {
     pointer-events: none;
+    display: inline-block;
+    transition: transform .18s ease, opacity .12s ease;
+}
+
+.menu-toggle i.icon-pop {
+    animation: menu-icon-pop .24s ease;
+}
+
+@keyframes menu-icon-pop {
+    0% {
+        transform: scale(.65);
+        opacity: .5;
+    }
+    55% {
+        transform: scale(1.18);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
 /* Login sahifasida tugma ko'rinmaydi (do'kon rejimi qoidasi alohida) */
@@ -11223,6 +11414,11 @@ body.drawer-open {
         --sidebar-w: var(--sidebar-collapsed-w);
     }
 
+    /* Sidebar kengligi silliq o'zgaradi (ochilish/yopilish) */
+    .sidebar {
+        transition: width .3s cubic-bezier(.4, 0, .2, 1);
+    }
+
     /* ☰ tugma sidebar chekkasida turadi va holat almashganda siljiydi */
     .menu-toggle {
         left: calc(var(--sidebar-w) + 16px);
@@ -11341,6 +11537,11 @@ body.drawer-open {
     .sidebar-overlay.visible {
         opacity: 1;
         visibility: visible;
+    }
+
+    /* Mobil drawer ochiq bo'lganda orqa scroll qulflanadi */
+    body.sidebar-locked {
+        overflow: hidden;
     }
 }
 
@@ -11905,8 +12106,11 @@ body {
   }
   .nav-section { padding: 10px 16px 6px; }
 
+  /* Mobil: .admin-bottom-nav HTML'da mavjud emas (parallel tahrirda o'chirilgan),
+     shuning uchun drawer ochish uchun yagona mavjud ☰ toggle tugmasini qaytaramiz. */
   .menu-toggle {
-    display: none !important;
+    display: flex !important;
+    z-index: 960;
   }
 
   .admin-bottom-nav #bn-menu {
@@ -13075,7 +13279,7 @@ body {
     --hdr-ctrl: 40px;
     --hdr-pad-x: 10px;
   }
-  .menu-toggle { display: none !important; }
+  /* ≤480px: ☰ toggle ko'rinib turadi (≤768px qoidasiga qarang — drawer ochish yagona yo'li) */
   .topbar .page-title { padding-left: 0; font-size: 15px; }
   .page { padding: 10px !important; }
   .login-box { padding: 16px; gap: 12px; }

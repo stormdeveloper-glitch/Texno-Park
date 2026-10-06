@@ -715,11 +715,11 @@ const USERS = [
     { id: 1, login: 'admin', phone: '+998908480921', salt: 'tp-adm-9x2', passHash: '1a25159d411b5128ef8c163d5219159ae2e68a475028803916d231217d44b32a', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
     { id: 2, login: 'cashier', phone: '+998905450921', salt: 'tp-csh-4k7', passHash: 'c9ca5cfba8a78e3ecaf6e2f649954af302cbbc8bfd0cda66b5f952e24a571c67', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
     { id: 3, login: 'manager', phone: '+998902750921', salt: 'tp-mng-3z8', passHash: '1cd5bbc9db80f2c06d67eb639dc43dceb7e8c2d2862331cc05a7ded2a3b700f0', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 7, login: 'customer', phone: '', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 7, login: 'customer', phone: '', salt: 'tp-usr-6q1', passHash: 'c6829c1abecee2d0139933b5dfb14c9f2324290f583ed9aec94934a3558dc66b', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
     { id: 4, login: 'admin@texnopark.uz', salt: 'tp-adm-9x2', passHash: '1a25159d411b5128ef8c163d5219159ae2e68a475028803916d231217d44b32a', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
     { id: 5, login: 'cashier@texnopark.uz', salt: 'tp-csh-4k7', passHash: 'c9ca5cfba8a78e3ecaf6e2f649954af302cbbc8bfd0cda66b5f952e24a571c67', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
     { id: 6, login: 'manager@texnopark.uz', salt: 'tp-mng-3z8', passHash: '1cd5bbc9db80f2c06d67eb639dc43dceb7e8c2d2862331cc05a7ded2a3b700f0', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 8, login: 'customer@texnopark.uz', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 8, login: 'customer@texnopark.uz', salt: 'tp-usr-6q1', passHash: 'c6829c1abecee2d0139933b5dfb14c9f2324290f583ed9aec94934a3558dc66b', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
 ];
 const ROLES = { admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
 
@@ -730,8 +730,12 @@ const ROLES = { admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menej
 // ============================================================
 function phoneDigitsUz(value) {
     let digits = String(value || '').replace(/\D/g, '');
-    // "+998908480921" yoki "998908480921" paste qilinganda prefiksni olib tashlaymiz
-    if (digits.length >= 12 && digits.startsWith('998')) digits = digits.slice(3);
+    // "+998908480921" / "+998 90 123 45 54" / "998901234554" kabi prefiksli
+    // to'liq raqam ham 9 xonali lokal qismga keltiriladi. MUHIM: prefiksni
+    // KESISHDAN OLDIN olib tashlaymiz — aks holda sekin terilganda (harfma-harf)
+    // 10-belgidan keyin kesish noto'g'ri raqamga olib kelardi.
+    const prefixed = digits.startsWith('998') && digits.length > 9;
+    if (prefixed) digits = digits.slice(3);
     return digits.slice(0, 9);
 }
 
@@ -957,6 +961,13 @@ function findBaseUser(loginKey) {
 function verifyUserLogin(loginKey, password) {
     const base = findBaseUser(loginKey);
     if (!base) return { ok: false, reason: 'not-found' };
+
+    // Hisob holati: admin bloklagan (status != active) hisob OFLAYN rejimda
+    // ham kirmaydi — auth oqimi: 1) user 2) status 3) lock 4) parol 5) muvaffaqiyat.
+    const accStatus = String(base.status || 'active').trim().toLowerCase();
+    if (accStatus && accStatus !== 'active') {
+        return { ok: false, reason: 'account-blocked', user: base };
+    }
 
     const override = secureUserOverrides().find(u => String(u.login).toLowerCase() === base.login.toLowerCase());
     const salt = override?.salt || base.salt || 'tp-legacy';
@@ -1636,11 +1647,16 @@ let barcodeBuffer = '';
 let barcodeTimer = null;
 
 document.addEventListener('keypress', e => {
-    // Only in POS page, ignore when typing in inputs
+    // BARCODE SKANER FAQAT KASSA (POS) SAHIFASI OCHIQ BO'LGANDA ISHLAYDI.
+    // Login va boshqa sahifalarda Enter yoki boshqa tugmalar "barkod" sifatida
+    // qabul qilinmaydi — shu bois login sahifasida POS notification chiqmaydi
+    // ("Topilmadi! Barkod: Enter — mahsulot yo'q" kabi xatolik bo'lmaydi).
+    const pagePos = document.getElementById('page-pos');
+    if (!pagePos || !pagePos.classList.contains('active')) return;
+    // Matn maydonlarida yozish skaner hisoblanmaydi
     if (document.activeElement.tagName === 'TEXTAREA') return;
     if (document.activeElement.tagName === 'INPUT' &&
-        document.activeElement.id !== 'posSearch' &&
-        !document.getElementById('page-pos').classList.contains('active')) return;
+        document.activeElement.id !== 'posSearch') return;
 
     // Accumulate fast characters (barcode scanners send chars very quickly)
     barcodeBuffer += e.key;
@@ -1835,13 +1851,17 @@ async function doLogin() {
     }
 
     // ── Brute-force himoyasi (telefon raqami bo'yicha) ──
+    // MUHIM (ROOT CAUSE FIX): lokal (brauzer) lockout FAQAT noto'g'ri parol
+    // urinishlarini cheklashi kerak. To'g'ri telefon + parol eski (stale)
+    // `tp_login_guard` holatidan bloklanmaydi — haqiqiy tekshiruv
+    // attemptLogin() da o'tkaziladi; muvaffaqiyatda clearLoginFailures()
+    // barcha urlanishlarni tozalaydi, xato bo'lsa onLoginRejected() ->
+    // registerLoginFailure() lockoutni qayta qo'llaydi (5 xato urinish -> blok).
+    // Server xavfsizligi o'zgartirilmaydi: IP-ratelimit (429) va bloklangan
+    // hisob (403 account_blocked) xuddi avvalgidek ishlaydi.
     const guard = loginGuardStatus(phone);
     if (guard.locked) {
-        playError();
-        showNotif('error', 'Kirish bloklangan!',
-            `Juda ko'p noto'g'ri urinish. ${guard.minutes} daqiqadan keyin qayta urinib ko'ring.`);
-        securityLog('lockout', 'high', 'Bloklangan telefon raqamiga kirish urinishi');
-        return;
+        securityLog('lockout', 'high', 'Bloklangan telefon raqami uchun login tekshiruvi: ' + phone);
     }
 
     // Yuklanish holati: tugma o'chadi — ikki marta bosish duplicate request yubormaydi
@@ -1853,6 +1873,27 @@ async function doLogin() {
         // Turnstile tokeni bir martalik — muvaffaqiyatsiz urinishdan keyin
         // yangisini olish uchun widget'ni tozalaymiz.
         if (typeof TurnstileGate !== 'undefined' && !currentUser) TurnstileGate.reset();
+    }
+}
+
+/**
+ * Noto'g'ri login/parol urinishini qayd etadi va tegishli xabarni ko'rsatadi.
+ * Lokal lockout (tp_login_guard) faqat MANA SHU yerda — muvaffaqiyatsiz
+ * urinishlar uchun — qo'llanadi. Ma'lum miqdordagi xatodan so'ng
+ * registerLoginFailure() lockUntil ni o'rnatadi va keyingi xato urinishlar
+ * "Kirish bloklangan!" xabari bilan cheklanadi. To'g'ri parol bloklanmaydi.
+ */
+function onLoginRejected(loginKey) {
+    registerLoginFailure(loginKey);
+    playError();
+    const st = loginGuardStatus(loginKey);
+    if (st.locked) {
+        showNotif('error', 'Kirish bloklangan!',
+            `Juda ko'p noto'g'ri urinish. ${st.minutes} daqiqadan keyin qayta urinib ko'ring.`);
+        securityLog('lockout', 'high', 'Bloklangan telefon raqamiga kirish urinishi: ' +
+            String(loginKey || '').slice(0, 40));
+    } else {
+        showNotif('error', 'Xato!', `Login yoki parol noto'g'ri (${st.left} urinish qoldi)`);
     }
 }
 
@@ -1894,7 +1935,7 @@ async function attemptLogin(u, p) {
         serverOnline = true;
         clearLoginFailures(u);
         const local = findBaseUser(u);
-        const role = ['admin', 'cashier', 'manager', 'customer'].includes(server.user?.role)
+        const role = ['admin', 'cashier', 'manager', 'customer', 'boss'].includes(server.user?.role)
             ? server.user.role : 'customer';
         finishLogin({
             id: local?.id || Date.now(),
@@ -1913,14 +1954,7 @@ async function attemptLogin(u, p) {
     }
 
     if (server.invalid) {
-        const info = registerLoginFailure(u);
-        playError();
-        if (info.locked) {
-            showNotif('error', 'Hisob bloklandi!',
-                `${systemSettings.lockMinutes} daqiqa davomida kirish bloklandi`);
-        } else {
-            showNotif('error', 'Xato!', `Telefon raqami yoki parol noto'g'ri (${info.left} urinish qoldi)`);
-        }
+        onLoginRejected(u);
         return;
     }
 
@@ -1928,14 +1962,7 @@ async function attemptLogin(u, p) {
     console.warn('Server javob bermadi — oflayn tekshiruv ishlatiladi');
     const result = verifyUserLogin(u, p);
     if (!result.ok) {
-        const info = registerLoginFailure(u);
-        playError();
-        if (info.locked) {
-            showNotif('error', 'Hisob bloklandi!',
-                `${systemSettings.lockMinutes} daqiqa davomida kirish bloklandi`);
-        } else {
-            showNotif('error', 'Xato!', `Telefon raqami yoki parol noto'g'ri (${info.left} urinish qoldi)`);
-        }
+        onLoginRejected(u);
         return;
     }
 
@@ -1991,6 +2018,10 @@ function doLogout(force = false) {
     if (user && !force && !confirm('Tizimdan chiqmoqchimisiz?')) return;
     if (user) addLog('Chiqish', `${user.name} tizimdan chiqdi`);
     if (user) securityLog('logout', 'low', `${user.name} tizimdan chiqdi${force ? ' (majburiy)' : ''}`);
+    // Serverda sessiyani yopamiz (token hali borligida) — keyin lokal token o'chiriladi.
+    try {
+        fetch('/api/auth/logout', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }) }).catch(() => { });
+    } catch (e) { /* offline — lokal chiqish kifoya */ }
     // Server tokenini ham o'chiramiz (sessiya to'liq yopiladi)
     clearStaffToken();
     Security.endSession(force ? 'majburiy' : 'foydalanuvchi');
@@ -2282,7 +2313,13 @@ function syncSidebarToggleIcon() {
         ? sb.classList.contains('open')
         : !sb.classList.contains('collapsed');
     const icon = btn.querySelector('i');
-    if (icon) icon.className = expanded ? 'fas fa-xmark' : 'fas fa-bars';
+    if (icon) {
+        icon.className = expanded ? 'fas fa-xmark' : 'fas fa-bars';
+        // Yengil icon almashish animatsiyasi (takroran ishga tushadi)
+        icon.classList.remove('icon-pop');
+        void icon.getBoundingClientRect();
+        icon.classList.add('icon-pop');
+    }
     const label = expanded ? 'Menyuni yopish' : 'Menyuni ochish';
     btn.setAttribute('title', label);
     btn.setAttribute('aria-label', label);
@@ -2297,6 +2334,21 @@ function syncSidebarOverlay() {
     const show = sidebarIsMobile() && sb.classList.contains('open');
     overlay.classList.toggle('visible', show);
     overlay.setAttribute('aria-hidden', String(!show));
+    // Mobil drawer ochiq bo'lganda orqa scroll qulflanadi
+    document.body.classList.toggle('sidebar-locked', show);
+}
+
+/** Sidebarni majburiy yopish (overlay, Esc, sahifa almashinuvi). */
+function resetSidebar() {
+    const sb = document.getElementById('sidebar');
+    if (!sb) return;
+    if (sidebarIsMobile()) {
+        sb.classList.remove('open');
+    } else {
+        sb.classList.add('collapsed');
+    }
+    syncSidebarToggleIcon();
+    syncSidebarOverlay();
 }
 
 /** Sidebar tizimini ishga tayyorlaydi (bir marta chaqiriladi). */
@@ -4718,6 +4770,21 @@ document.addEventListener('keydown', e => {
     const tag = document.activeElement.tagName;
     const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
 
+    // LOGIN sahifasi ochiq bo'lsa faqat Enter (login submit) va Escape
+    // (oynalarni yopish) ishlaydi. F1/F2/F3/F8 va Ctrl+F — POS hotkeylari
+    // login sahifasida AKTIV EMAS (F3 kassaga, F2 checkoutga o'tmaydi).
+    const lp = document.getElementById('loginPage');
+    const loginVisible = !!lp && lp.style.display !== 'none';
+    if (loginVisible) {
+        if (e.key === 'Enter') { e.preventDefault(); doLogin(); return; }
+        if (e.key === 'Escape') {
+            hideSearchSuggestions();
+            const openModals = Array.from(document.querySelectorAll('.modal-overlay.open')).reverse();
+            if (openModals.length > 0) openModals.forEach(m => closeModal(m.id));
+        }
+        return;
+    }
+
     // F1 — Sayohat (xodimlar uchun qo'llanma) yoki Yordam oynasi
     if (e.key === 'F1') {
         e.preventDefault();
@@ -5465,6 +5532,22 @@ function clearLoginFailures(loginKey) {
         delete store[key];
         saveLoginGuardStore(store);
     }
+}
+
+/**
+ * Development/test uchun eski (stale) frontend lock holatini xavfsiz tozalaydi.
+ * PRODUCTION lockout mexanizmini o'chirmaydi — faqat `tp_login_guard` brauzer
+ * kalitini tozalaydi. Konsoldan chaqirish mumkin:
+ *   resetLoginLock('+998901234554')  — bitta telefon uchun
+ *   resetLoginLock()                 — barcha urlanishlar uchun
+ */
+function resetLoginLock(loginKey) {
+    const store = loginGuardStore();
+    const key = String(loginKey || '').toLowerCase();
+    if (key) delete store[key];
+    else Object.keys(store).forEach(k => delete store[k]);
+    saveLoginGuardStore(store);
+    return Object.keys(store).length;
 }
 
 // ── Sessiya boshqaruvi ────────────────────────────────────

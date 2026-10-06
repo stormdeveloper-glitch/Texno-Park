@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
   <link rel="stylesheet" href="style.css?v=5.10.1">
-  <link rel="stylesheet" href="boss.css?v=2.1.0">
+  <link rel="stylesheet" href="boss.css?v=1.0.1">
 </head>
 
 <body>
@@ -52,7 +52,7 @@
             aria-describedby="loginPhoneError">
           <span class="phone-prefix" aria-hidden="true">+998</span>
           <i class="fas fa-mobile-screen input-icon"></i>
-     ?   </div>
+        </div>
         <p class="login-error" id="loginPhoneError" role="alert" aria-live="polite"></p>
       </div>
       <div class="form-group">
@@ -171,10 +171,10 @@
           <i class="fas fa-history"></i><span>Loglar</span>
         </div>
 
-        <div class="nav-section" id="sec-settings" data-role="admin"><span
+        <div class="nav-section boss-visible" id="sec-settings" data-role="admin"><span
             class="nav-section-label">Sozlamalar</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-settings',this)" id="nav-settings" data-role="admin">
+        <div class="nav-item boss-visible" onclick="goTo('page-settings',this)" id="nav-settings" data-role="admin">
           <i class="fas fa-cog"></i><span>Sozlamalar</span>
         </div>
 
@@ -1203,29 +1203,12 @@
 
       <div class="page" id="page-bossStaffSales">
         <div class="boss-page-head">
-          <div><h2><i class="fas fa-receipt"></i> Xodim savdosi</h2>
-            <p>Qaysi xodim qancha va nima sotgani — haqiqiy savdo yozuvlari</p></div>
-          <div class="boss-period" id="boss-sales-period"></div>
+          <div><h2><i class="fas fa-receipt"></i> <span id="boss-sales-title">Xodim savdosi</span></h2>
+            <p>Kim qancha va nima sotganini ko'rsatadi</p></div>
+          <button class="btn btn-outline" onclick="goTo('page-bossStaff',document.getElementById('nav-bossStaff'))">
+            <i class="fas fa-arrow-left"></i> Xodimlar</button>
         </div>
-        <div class="boss-filterbar" id="boss-sales-filters">
-          <input type="date" class="form-control boss-date" id="boss-sales-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-sales-to" aria-label="Sanagacha">
-          <select class="form-control" id="boss-sales-branch" aria-label="Filial">
-            <option value="">Barcha filiallar</option>
-          </select>
-          <input type="search" class="form-control boss-search" id="boss-sales-search"
-            placeholder="🔍 Xodim ismi..." autocomplete="off">
-          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i></button>
-        </div>
-        <div id="boss-sales-overview"></div>
-        <div id="boss-sales-detail" style="display:none">
-          <div class="boss-page-head">
-            <div><h2><i class="fas fa-receipt"></i> <span id="boss-sales-title">Xodim savdosi</span></h2>
-              <p>Cheklar va mahsulotlar</p></div>
-            <button class="btn btn-outline" id="boss-sales-back"><i class="fas fa-arrow-left"></i> Umumiy ko'rinish</button>
-          </div>
-          <div id="boss-sales-box"></div>
-        </div>
+        <div id="boss-sales-box"></div>
       </div>
 
       <div class="page" id="page-bossProducts">
@@ -1263,24 +1246,7 @@
             <p>Savdo, kirim, chiqim, xarajat va sof natija</p></div>
           <div class="boss-period" id="boss-finance-period"></div>
         </div>
-        <div class="boss-filterbar" id="boss-finance-filters">
-          <input type="date" class="form-control boss-date" id="boss-finance-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-finance-to" aria-label="Sanagacha">
-          <select class="form-control" id="boss-finance-branch" aria-label="Filial">
-            <option value="">Barcha filiallar</option>
-          </select>
-        </div>
         <div id="boss-finance-box"></div>
-        <div class="boss-charts-grid">
-          <div class="boss-panel">
-            <div class="boss-panel-head"><h3><i class="fas fa-money-bill-transfer"></i> Kirim / chiqim (6 oy)</h3></div>
-            <div class="boss-panel-body boss-chart-body"><canvas id="bossFlowChart"></canvas></div>
-          </div>
-          <div class="boss-panel">
-            <div class="boss-panel-head"><h3><i class="fas fa-chart-line"></i> Oylik savdo va foyda</h3></div>
-            <div class="boss-panel-body boss-chart-body"><canvas id="bossMonthlyChart"></canvas></div>
-          </div>
-        </div>
       </div>
 
       <div class="page" id="page-bossReports">
@@ -1290,8 +1256,6 @@
           <div class="boss-period" id="boss-reports-period"></div>
         </div>
         <div class="boss-toolbar">
-          <input type="date" class="form-control boss-date" id="boss-report-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-report-to" aria-label="Sanagacha">
           <input type="search" class="form-control boss-search" id="boss-report-staff"
             placeholder="Xodim ismi..." autocomplete="off">
           <input type="search" class="form-control boss-search" id="boss-report-product"
@@ -1306,17 +1270,8 @@
       <div class="page" id="page-bossAudit">
         <div class="boss-page-head">
           <div><h2><i class="fas fa-clipboard-list"></i> Amallar jurnali</h2>
-            <p>Tizimdagi real amallar — xodimlar, savdo, xavfsizlik (parol yozilmaydi)</p></div>
+            <p>Boshliq tomonidan qilingan muhim amallar (parol yozilmaydi)</p></div>
           <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i> Yangilash</button>
-        </div>
-        <div class="boss-filterbar">
-          <input type="search" class="form-control boss-search" id="boss-audit-search"
-            placeholder="🔍 Amal, xodim yoki modul bo'yicha qidirish..." autocomplete="off">
-          <div class="boss-view-chips">
-            <button class="boss-chip active" data-boss-audit-src="">Barchasi</button>
-            <button class="boss-chip" data-boss-audit-src="audit">Boshliq amallari</button>
-            <button class="boss-chip" data-boss-audit-src="security">Xavfsizlik hodisalari</button>
-          </div>
         </div>
         <div id="boss-audit-box"></div>
       </div>
@@ -3482,37 +3437,6 @@
     </div>
   </div>
 
-  <!-- ===== BOSHLIQ DETAIL MODALLARI (cheklar, mahsulot, filial) ===== -->
-  <div class="modal" id="bossReceiptsModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3><i class="fas fa-receipt"></i> <span id="boss-receipts-title">Xodim savdosi</span></h3>
-        <button class="modal-close" onclick="closeModal('bossReceiptsModal')">&times;</button>
-      </div>
-      <div class="modal-body" id="boss-receipts-body"><i class="fas fa-spinner fa-spin"></i></div>
-    </div>
-  </div>
-
-  <div class="modal" id="bossProductModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3><i class="fas fa-box-open"></i> Mahsulot ma'lumoti</h3>
-        <button class="modal-close" onclick="closeModal('bossProductModal')">&times;</button>
-      </div>
-      <div class="modal-body" id="boss-product-body"></div>
-    </div>
-  </div>
-
-  <div class="modal" id="bossBranchModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3><i class="fas fa-store"></i> <span id="boss-branch-modal-title">Filial ma'lumoti</span></h3>
-        <button class="modal-close" onclick="closeModal('bossBranchModal')">&times;</button>
-      </div>
-      <div class="modal-body" id="boss-branch-body"></div>
-    </div>
-  </div>
-
   <!-- ===== REPORT MODAL ===== -->
   <div class="modal-overlay" id="reportModal">
     <div class="modal" style="max-width:480px">
@@ -3564,8 +3488,8 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.8-bossnav"></script>
-  <script src="boss.js?v=2.1.0"></script>
+  <script src="scripts.js?v=1.4.7-authfix"></script>
+  <script src="boss.js?v=1.0.2"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {
@@ -3581,6 +3505,7 @@
       upd();
     })();
   </script>
+<script src="_tp_boss_nav_inject.js"></script>
 </body>
 
 </html>

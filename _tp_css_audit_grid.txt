@@ -1,0 +1,140 @@
+/* line 1131 */
+.card, .panel {
+    box-sizing: border-box;
+}
+
+/* line 1143 */
+.page .panel, .page .stat-card, .page .chart-wrap, .page .table-wrap, .page .form-row, .page .form-col, .page .card {
+    transform: none;
+}
+
+/* line 1172 */
+.card:hover, .panel:hover, .stat-card:hover {
+    transform: translateY(-2px);
+}
+
+/* line 1194 */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 16px;
+}
+
+/* line 1274 */
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+}
+
+/* line 1280 */
+.grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 22px;
+}
+
+/* line 1286 */
+.panel {
+    overflow: hidden;
+}
+
+/* line 1292 */
+.panel-header {
+    padding: 22px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* line 1301 */
+.panel-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* line 1309 */
+.panel-body {
+    padding: 26px;
+}
+
+/* line 1426 */
+.table-wrap {
+    overflow-x: auto;
+}
+
+/* line 3245 */
+  @media(max-width:1024px)
+.grid-2, .grid-3 {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* line 3264 */
+  @media(max-width:900px)
+.grid-2, .grid-3 {
+    grid-template-columns: 1fr;
+}
+
+/* line 3277 */
+  @media(max-width:900px)
+.stat-grid {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* line 3324 */
+  @media (max-width: 768px)
+.stat-grid, .stats-grid {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* line 3380 */
+  @media(max-width:600px)
+.stat-grid, .stats-grid {
+    grid-template-columns: 1fr;
+}
+
+/* line 3385 */
+  @media(max-width:600px)
+.grid-2, .grid-3 {
+    grid-template-columns: 1fr;
+}
+
+/* line 3526 */
+  @media(max-width:480px)
+.stat-grid, .stats-grid {
+    grid-template-columns: 1fr;
+}
+
+/* line 11374 */
+  @media (max-width: 768px)
+#app:not(.market-mode) .panel-header {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 16px;
+}
+
+/* line 11377 */
+  @media (max-width: 768px)
+#app:not(.market-mode) .panel-header > :last-child:not(:only-child), #app:not(.market-mode) .panel-header input, #app:not(.market-mode) .panel-header select {
+    max-width: 100%;
+}
+
+/* line 11385 */
+  @media (max-width: 768px)
+.table-wrap {
+    max-width: 100%;
+}
+
+/* line 11392 */
+  @media (max-width: 480px)
+#app:not(.market-mode) .panel-body {
+    padding: 16px;
+}
+
+/* line 11395 */
+  @media (max-width: 480px)
+#app:not(.market-mode) .panel-header > div, #app:not(.market-mode) .panel-header input, #app:not(.market-mode) .panel-header select {
+    width: 100% !important;
+    min-width: 0 !important;
+}

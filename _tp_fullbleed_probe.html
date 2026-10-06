@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>full-bleed probe (vaqtinchalik)</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #111;
+    }
+
+    iframe {
+      display: block;
+      border: 0;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <iframe id="f"></iframe>
+  <pre id="tp-results" style="display:none"></pre>
+  <script>
+    (async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const p = new URLSearchParams(location.search);
+      const size = (p.get('only') || '1920x1080').split('x');
+      const W = Number(size[0]), H = Number(size[1]);
+      const f = document.getElementById('f');
+      f.width = W; f.height = H;
+      f.style.width = W + 'px';
+      f.style.height = H + 'px';
+      const loaded = new Promise(res => f.addEventListener('load', res, { once: true }));
+      f.src = 'index.html?probe=' + Date.now();
+      await loaded;
+      const win = f.contentWindow, doc = f.contentDocument;
+      for (let i = 0; i < 60 && !doc.querySelector('.login-box'); i++) await sleep(100);
+      await sleep(1200); // bootstrap + config
+
+      const lp = doc.getElementById('loginPage');
+      const app = doc.getElementById('app');
+      if (app) app.style.display = 'none';
+      if (lp) { lp.classList.add('active'); lp.style.display = 'grid'; }
+      await sleep(800); // fade-in tugashi
+
+      const docEl = doc.documentElement;
+      const box = (el, sel) => {
+        if (!el) return null;
+        const b = el.getBoundingClientRect(), cs = win.getComputedStyle(el);
+        return {
+          sel, l: +b.left.toFixed(2), t: +b.top.toFixed(2), w: +b.width.toFixed(2), h: +b.height.toFixed(2),
+          r: +b.right.toFixed(2), b: +b.bottom.toFixed(2),
+          width: cs.width, maxWidth: cs.maxWidth,
+          margin: cs.marginTop + ' ' + cs.marginRight + ' ' + cs.marginBottom + ' ' + cs.marginLeft,
+          padding: cs.paddingTop + ' ' + cs.paddingRight + ' ' + cs.paddingBottom + ' ' + cs.paddingLeft,
+          minHeight: cs.minHeight, display: cs.display,
+          bgImage: (cs.backgroundImage || '').slice(0, 46), bgSize: cs.backgroundSize,
+          bgPos: cs.backgroundPosition, bgRepeat: cs.backgroundRepeat
+        };
+      };
+      const who = (x, y) => { const el = doc.elementFromPoint(x, y); return el ? (el.id ? '#' + el.id : el.tagName + (typeof el.className === 'string' && el.className ? '.' + el.className.split(' ')[0] : '')) : 'null'; };
+      const inLp = (x, y) => { const el = doc.elementFromPoint(x, y); return !!(el && lp && lp.contains(el)); };
+      const pts = [[1, 1], [W - 2, 1], [1, Math.round(H / 2)], [W - 2, Math.round(H / 2)], [1, H - 2], [W - 2, H - 2]];
+
+      const lpR = lp.getBoundingClientRect();
+      const lbEl = doc.querySelector('.login-box');
+      const lbR = lbEl.getBoundingClientRect();
+      const iconEl = doc.querySelector('.login-logo .logo-icon');
+      const btnEl = doc.querySelector('#loginPage .btn-login');
+      const showEl = doc.querySelector('.login-showcase');
+      const snap = () => JSON.stringify([lbEl.getBoundingClientRect(), iconEl.getBoundingClientRect(), btnEl.getBoundingClientRect()]
+        .map(r => [r.left, r.top, r.width, r.height].map(v => +v.toFixed(2))));
+      const before = snap();
+
+      // Harakatlanuvchi elementlar (transform / animatsiya) tekshiruvi
+      const moving = [];
+      doc.querySelectorAll('#loginPage *').forEach(el => {
+        const cs = win.getComputedStyle(el);
+        if (cs.transform !== 'none' || (cs.animationName !== 'none' && cs.animationName.indexOf('loginFadeIn') === -1)) {
+          moving.push((el.id ? '#' + el.id : el.tagName + '.' + String(el.className).split(' ')[0]) + ' transform=' + cs.transform + ' anim=' + cs.animationName);
+        }
+      });
+
+      // Mouse harakati + focus (panel qimirlamasligi kerak)
+      for (const xy of [[W - 20, 10], [Math.round(W * 0.5), Math.round(H * 0.4)], [20, H - 20], [Math.round(W * 0.8), Math.round(H * 0.6)]]) {
+        const ev = new win.MouseEvent('mousemove', { bubbles: true, clientX: xy[0], clientY: xy[1] });
+        doc.dispatchEvent(ev);
+        lbEl.dispatchEvent(ev);
+      }
+      doc.getElementById('loginPass').focus();
+      doc.getElementById('loginUser').focus();
+      await sleep(600);
+      const after = snap();
+
+      const out = {
+        vp: [W, H], inner: [win.innerWidth, win.innerHeight], clientW: docEl.clientWidth,
+        scrollbarW: win.innerWidth - docEl.clientWidth, hOverflow: docEl.scrollWidth - docEl.clientWidth,
+        bodyW: +doc.body.getBoundingClientRect().width.toFixed(2),
+        leftGap: +lpR.left.toFixed(2),
+        rightGapClient: +(docEl.clientWidth - lpR.right).toFixed(2),
+        rightGapInner: +(win.innerWidth - lpR.right).toFixed(2),
+        panelRightGap: +(W - lbR.right).toFixed(2), panelLeftGap: +lbR.left.toFixed(2),
+        lpOverflow: { x: lp.scrollWidth - lp.clientWidth, y: lp.scrollHeight - lp.clientHeight },
+        vert: {
+          showcaseTop: +showEl.getBoundingClientRect().top.toFixed(1), lpTop: +lpR.top.toFixed(1),
+          lpScrollH: lp.scrollHeight, lpClientH: lp.clientHeight
+        },
+        loginPage: box(lp, '#loginPage'), showcase: box(showEl, '.login-showcase'),
+        loginBox: box(lbEl, '.login-box'), body: box(doc.body, 'body'),
+        corners: { inLp: pts.map(pt => inLp(pt[0], pt[1])), who: pts.map(pt => who(pt[0], pt[1])) },
+        stableOnHoverFocus: before === after, moving: moving.slice(0, 6), movingCount: moving.length
+      };
+      out.imgOk = await new Promise(res => {
+        const i = new win.Image();
+        i.onload = () => res(i.naturalWidth + 'x' + i.naturalHeight);
+        i.onerror = () => res('');
+        i.src = 'assets/texno-park-n1-exterior.jpg?p=1';
+      });
+      document.getElementById('tp-results').textContent = JSON.stringify(out);
+      document.title = 'TPRESULT ' + JSON.stringify(out);
+    })().catch(e => { document.title = 'TPERROR ' + String((e && e.message) || e); });
+  </script>
+</body>
+
+</html>

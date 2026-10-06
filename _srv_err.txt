@@ -1,0 +1,19 @@
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5099
+ * Running on http://172.18.180.94:5099
+Press CTRL+C to quit
+127.0.0.1 - - [05/Oct/2026 07:34:47] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:34:47] "GET /api/boss/overview HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:36:39] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:36:39] "GET /api/boss/staff?period=all&sort=total HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:37:17] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:37:17] "GET /api/boss/products?view=top&period=all HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:37:17] "GET /api/boss/products?view=low HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:37:51] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:37:51] "GET /api/boss/branches?period=all HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:37:51] "GET /api/boss/finance?period=all HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:38:05] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:38:05] "GET /api/boss/staff/2/sales?period=all&limit=3 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:38:30] "GET /_tp_boss_probe_frame.html?w=1440&h=900&pages=page-boss&themes=light&sidebar=collapsed HTTP/1.1" 200 -
+127.0.0.1 - - [05/Oct/2026 07:38:30] "GET /favicon.ico HTTP/1.1" 404 -

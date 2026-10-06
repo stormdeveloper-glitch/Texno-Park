@@ -1,0 +1,341 @@
+/* line 531 */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--sidebar-w);
+    display: flex;
+}
+
+/* line 548 */
+.sidebar-logo {
+    padding: 28px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+/* line 556 */
+.sidebar-logo .logo-sq {
+    width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* line 576 */
+.sidebar-logo small {
+    display: block;
+}
+
+/* line 582 */
+.sidebar-nav {
+    flex: 1;
+    padding: 16px 0;
+}
+
+/* line 677 */
+.sidebar-footer {
+    padding: 16px;
+}
+
+/* line 737 */
+.topbar, #app.market-mode .market-top {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--hdr-gap);
+}
+
+/* line 754 */
+.topbar {
+    position: fixed;
+    top: 0;
+    left: var(--sidebar-w);
+    right: 0;
+    padding: env(safe-area-inset-top, 0px) var(--hdr-pad-x) 0;
+}
+
+/* line 811 */
+.topbar-search {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 14px;
+    width: 260px;
+    flex: 0 1 260px;
+}
+
+/* line 831 */
+.topbar-search input {
+    width: 100%;
+    min-width: 0;
+}
+
+/* line 850 */
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--hdr-btn-gap);
+}
+
+/* line 931 */
+.topbar-clock {
+    min-width: 80px;
+}
+
+/* line 941 */
+.topbar .employee-login-btn {
+    min-height: var(--hdr-ctrl);
+    padding: 0 16px;
+    flex-shrink: 0;
+}
+
+/* line 956 */
+.topbar .employee-login-btn:hover {
+    transform: translateY(-1px);
+}
+
+/* line 964 */
+.topbar .employee-login-btn:active {
+    transform: translateY(0) scale(.98);
+}
+
+/* line 969 */
+.hotkeys-bar {
+    position: fixed;
+    bottom: 24px;
+    left: calc(var(--sidebar-w) + 24px);
+    display: flex;
+    gap: 8px;
+}
+
+/* line 1058 */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--sidebar-w);
+}
+
+/* line 1067 */
+.topbar {
+    left: var(--sidebar-w);
+    right: 0;
+}
+
+/* line 1914 */
+#app.market-mode .sidebar, #app.market-mode .hotkeys-bar, #app.market-mode .topbar .page-title, #app.market-mode .topbar .topbar-search, #app.market-mode .topbar .icon-btn[title="Bildirishnomalar"], #app.market-mode .topbar .icon-btn[title="Chek chop (F8)"], #app.market-mode .topbar .topbar-clock {
+    display: none;
+}
+
+/* line 1918 */
+#app.market-mode .topbar {
+    left: 0;
+    justify-content: flex-end;
+}
+
+/* line 3272 */
+  @media(max-width:900px)
+.topbar {
+    padding: 0 16px;
+}
+
+/* line 3286 */
+  @media(max-width:900px)
+.hotkeys-bar {
+    display: none;
+}
+
+/* line 3298 */
+  @media (max-width: 768px)
+.sidebar {
+    width: min(300px, 84vw);
+    transform: translateX(-100%);
+}
+
+/* line 3305 */
+  @media (max-width: 768px)
+.sidebar.open {
+    transform: translateX(0);
+}
+
+/* line 3314 */
+  @media (max-width: 768px)
+#app:not(.market-mode) .topbar {
+    padding-left: 68px;
+}
+
+/* line 3328 */
+  @media (max-width: 768px)
+.topbar {
+    left: 0;
+    right: 0;
+}
+
+/* line 3346 */
+  @media(max-width:600px)
+.topbar {
+    left: 0;
+    padding: 0 10px;
+    gap: 8px;
+}
+
+/* line 3362 */
+  @media(max-width:600px)
+.topbar-actions {
+    gap: 6px;
+}
+
+/* line 3367 */
+  @media(max-width:600px)
+.topbar-actions .icon-btn[title="Bildirishnomalar"], .topbar-actions .icon-btn[title="Chek chop (F8)"] {
+    display: none;
+}
+
+/* line 3371 */
+  @media(max-width:600px)
+.topbar-clock {
+    display: none;
+}
+
+/* line 3375 */
+  @media(max-width:600px)
+.topbar-search {
+    display: none;
+}
+
+/* line 3927 */
+.stat-icon i, .avatar i, .user-avatar i, .salary-stat-icon i, .sidebar-logo .logo-sq i, .login-logo .logo-icon i, .product-card-img-placeholder i {
+    display: inline-block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* line 6619 */
+#app.market-mode .topbar {
+    display: none;
+}
+
+/* line 10866 */
+.sidebar-logo > div:last-child, .nav-item > span:not(.nav-badge), .user-info {
+    max-width: 200px;
+    overflow: hidden;
+}
+
+/* line 10880 */
+.sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+/* line 10911 */
+  @media (min-width: 769px)
+#app:not(.market-mode) .topbar {
+    padding-left: 80px;
+}
+
+/* line 10916 */
+  @media (min-width: 769px)
+.sidebar.collapsed .sidebar-logo {
+    justify-content: center;
+    gap: 0;
+    padding: 22px 0;
+}
+
+/* line 10922 */
+  @media (min-width: 769px)
+.sidebar.collapsed .sidebar-logo > div:last-child {
+    max-width: 0;
+}
+
+/* line 10928 */
+  @media (min-width: 769px)
+.sidebar.collapsed .nav-section {
+    padding: 10px 22px;
+}
+
+/* line 10932 */
+  @media (min-width: 769px)
+.sidebar.collapsed .nav-section-label {
+    display: block;
+}
+
+/* line 10943 */
+  @media (min-width: 769px)
+.sidebar.collapsed .nav-item {
+    justify-content: center;
+    gap: 0;
+    padding: 14px 0;
+    min-height: 48px;
+    margin: 3px 14px;
+}
+
+/* line 10951 */
+  @media (min-width: 769px)
+.sidebar.collapsed .nav-item > span:not(.nav-badge) {
+    max-width: 0;
+}
+
+/* line 10957 */
+  @media (min-width: 769px)
+.sidebar.collapsed .nav-item i {
+    width: auto;
+}
+
+/* line 10963 */
+  @media (min-width: 769px)
+.sidebar.collapsed .nav-badge {
+    position: absolute;
+    top: 6px;
+    right: 12px;
+    margin-left: 0;
+    padding: 1px 5px;
+    min-width: 16px;
+}
+
+/* line 10977 */
+  @media (min-width: 769px)
+.sidebar.collapsed .user-card {
+    justify-content: center;
+    gap: 0;
+    padding: 10px;
+}
+
+/* line 10983 */
+  @media (min-width: 769px)
+.sidebar.collapsed .user-info {
+    max-width: 0;
+}
+
+/* line 10988 */
+  @media (min-width: 769px)
+.sidebar.collapsed .user-card > i {
+    display: none;
+}
+
+/* line 10993 */
+  @media (min-width: 769px)
+.sidebar.collapsed .nav-submenu {
+    display: none !important;
+}
+
+/* line 10999 */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+}
+
+/* line 11010 */
+#app.market-mode .sidebar-overlay {
+    display: none !important;
+}
+
+/* line 11016 */
+  @media (max-width: 768px)
+.sidebar-overlay {
+    display: block;
+}

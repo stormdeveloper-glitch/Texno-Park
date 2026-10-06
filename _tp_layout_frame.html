@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>TP layout frame (vaqtinchalik o'lchov)</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+    }
+
+    iframe {
+      border: 0;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <pre id="tp-out" style="display:none"></pre>
+  <script>
+    // _tp_layout_frame.html — iframe orqali ANIQ viewport o'lchamini beradi.
+    (function () {
+      var P = new URLSearchParams(location.search);
+      var W = +P.get('w'), H = +P.get('h');
+      var q = P.get('q') || '';
+      var out = document.getElementById('tp-out');
+      var f = document.createElement('iframe');
+      f.style.width = W + 'px';
+      f.style.height = H + 'px';
+      f.setAttribute('width', String(W));
+      f.setAttribute('height', String(H));
+      f.src = '_tp_layout_probe.html?' + q;
+      document.body.appendChild(f);
+      function collect() {
+        try {
+          var d = f.contentDocument;
+          var pre = d && d.getElementById('tp-layout');
+          if (pre && pre.textContent) out.textContent = pre.textContent;
+        } catch (e) {
+          out.textContent = JSON.stringify([{ error: 'iframe o\'qish xatosi: ' + e }]);
+        }
+      }
+      f.addEventListener('load', function () { collect(); setTimeout(collect, 150); setTimeout(collect, 500); });
+    })();
+  </script>
+</body>
+
+</html>

@@ -3072,6 +3072,68 @@ select.form-control option {
     background: var(--card);
 }
 
+/* ============ BOSS MODALLAR UCHUN XUSUSIY FIX (ROOT CAUSE TUZATUV) ============ */
+/* Sabab: bossStaffModal, bossPassModal, bossOwnPassModal bevosita <body> ichida class="modal" berilgan
+   va <div class="modal-overlay"> ichida emaslar; .modal uchun CSS default display:none yo'qligi
+   sabab ular har doim ko'rinib turadi (computedDisplay:flex). Ushbu scoped rule ularni
+   faqat .open class borligida ko'rsatadi (openModal / closeModal bilan toggle). */
+
+#bossStaffModal,
+#bossPassModal,
+#bossOwnPassModal {
+    display: none !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .65);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    padding: 20px;
+    overflow-y: auto;
+}
+
+#bossStaffModal.open,
+#bossPassModal.open,
+#bossOwnPassModal.open {
+    display: flex !important;
+    animation: fadeIn .2s ease;
+}
+
+/* Modal ichidagi .modal-box (boss modallari o'z ichiga .modal-box oladi) — 
+   boshqa .modal-overlay ichidagi .modal bilan bir xil ko'rinishga keltirish */
+#bossStaffModal > .modal-box,
+#bossPassModal > .modal-box,
+#bossOwnPassModal > .modal-box {
+    background: var(--card);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-xl);
+    padding: 30px;
+    width: 520px;
+    max-width: 92vw;
+    max-height: 92vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .35);
+}
+
+/* Mobil moslashuvchanlik — kichik ekranlarda modal kengligi 95vw va padding 20px */
+@media (max-width: 768px) {
+    #bossStaffModal,
+    #bossPassModal,
+    #bossOwnPassModal { padding: 12px; }
+    #bossStaffModal > .modal-box,
+    #bossPassModal > .modal-box,
+    #bossOwnPassModal > .modal-box { padding: 20px; width: 95vw; }
+}
+
+@media (max-width: 480px) {
+    #bossStaffModal > .modal-box,
+    #bossPassModal > .modal-box,
+    #bossOwnPassModal > .modal-box { padding: 16px 14px; max-height: 94vh; }
+}
+/* ============ END BOSS MODAL FIX ============ */
+
 /* ===== MODAL ===== */
 .modal-overlay {
     display: none;
@@ -3541,6 +3603,26 @@ body.modal-open {
 
 .menu-toggle i {
     pointer-events: none;
+    display: inline-block;
+    transition: transform .18s ease, opacity .12s ease;
+}
+
+.menu-toggle i.icon-pop {
+    animation: menu-icon-pop .24s ease;
+}
+
+@keyframes menu-icon-pop {
+    0% {
+        transform: scale(.65);
+        opacity: .5;
+    }
+    55% {
+        transform: scale(1.18);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
 /* Login sahifasida tugma ko'rinmaydi (do'kon rejimi qoidasi alohida) */
@@ -11223,6 +11305,11 @@ body.drawer-open {
         --sidebar-w: var(--sidebar-collapsed-w);
     }
 
+    /* Sidebar kengligi silliq o'zgaradi (ochilish/yopilish) */
+    .sidebar {
+        transition: width .3s cubic-bezier(.4, 0, .2, 1);
+    }
+
     /* ☰ tugma sidebar chekkasida turadi va holat almashganda siljiydi */
     .menu-toggle {
         left: calc(var(--sidebar-w) + 16px);
@@ -11341,6 +11428,11 @@ body.drawer-open {
     .sidebar-overlay.visible {
         opacity: 1;
         visibility: visible;
+    }
+
+    /* Mobil drawer ochiq bo'lganda orqa scroll qulflanadi */
+    body.sidebar-locked {
+        overflow: hidden;
     }
 }
 

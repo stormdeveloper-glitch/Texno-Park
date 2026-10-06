@@ -1,0 +1,485 @@
+/* ============================================================
+   BOSH.LIQ BOSHQARUV USLUBLARI (boss.css)
+   ============================================================
+   Mavjud Texno Park dizayn tizimiga (`style.css` dagi CSS
+   o'zgaruvchilari: qora, to'q burgun, qizil, sariq, oq, kulrang)
+   tayanadi — yangi rang palitrasi kiritilmaydi.
+   ============================================================ */
+
+/* ── Sahifa sarlavhasi ──────────────────────────────────────── */
+.boss-page-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.boss-page-head h2 {
+    font-size: 20px; font-weight: 800; margin: 0;
+    display: flex; align-items: center; gap: 10px; color: var(--text);
+}
+.boss-page-head h2 i { color: var(--primary); }
+.boss-page-head p { color: var(--text-secondary); font-size: 13px; margin: 4px 0 0; }
+
+/* ── Davr filtri (chip'lar) ─────────────────────────────────── */
+.boss-period, .boss-view-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.boss-chip {
+    padding: 7px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    background: var(--card); color: var(--text-secondary);
+    border: 1px solid var(--border); cursor: pointer;
+    transition: all .18s ease; white-space: nowrap;
+}
+.boss-chip:hover { border-color: var(--primary); color: var(--text); }
+.boss-chip.active { background: var(--primary-gradient); color: #fff; border-color: transparent; }
+
+/* ── KPI kartalari ──────────────────────────────────────────── */
+.boss-kpi-grid {
+    display: grid; gap: 14px; margin-bottom: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.boss-kpi {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 16px 18px;
+    position: relative; overflow: hidden;
+    transition: transform .18s ease, border-color .18s ease;
+}
+.boss-kpi::before {
+    content: ''; position: absolute; inset: 0 auto 0 0; width: 3px;
+    background: var(--primary);
+}
+.boss-kpi.tone-success::before { background: var(--success); }
+.boss-kpi.tone-warning::before { background: var(--warning); }
+.boss-kpi.tone-info::before { background: var(--info); }
+.boss-kpi:hover { transform: translateY(-2px); border-color: var(--border-mid); }
+.boss-kpi-top {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+}
+.boss-kpi-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--text-secondary);
+}
+.boss-kpi-top i { color: var(--text-muted); font-size: 14px; }
+.boss-kpi.tone-success .boss-kpi-top i { color: var(--success); }
+.boss-kpi.tone-warning .boss-kpi-top i { color: var(--warning); }
+.boss-kpi-value {
+    font-size: 22px; font-weight: 800; color: var(--text);
+    line-height: 1.15; word-break: break-word;
+}
+.boss-kpi-hint {
+    font-size: 11.5px; color: var(--text-muted); margin-top: 6px;
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+}
+.boss-kpi-hint i { font-size: 10px; }
+
+/* ── Panellar ───────────────────────────────────────────────── */
+.boss-grid-2 {
+    display: grid; gap: 16px; margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+.boss-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 16px;
+}
+.boss-grid-2 .boss-panel { margin-bottom: 0; }
+.boss-panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.boss-panel-head h3 {
+    font-size: 14px; font-weight: 700; margin: 0; color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+}
+.boss-panel-head h3 i { color: var(--primary); }
+.boss-panel-body { padding: 16px 18px; }
+
+/* ── Xodim karta elementi (reyting va jadvalda ishlatiladi) ── */
+.boss-who { display: flex; align-items: center; gap: 10px; }
+.boss-avatar {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #fff; background: var(--primary-gradient);
+    text-transform: uppercase;
+}
+.boss-who strong { font-size: 13px; }
+.boss-who small { display: block; font-size: 11px; color: var(--text-muted); }
+.boss-me {
+    font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+    background: var(--primary-subtle); color: var(--primary); font-weight: 700;
+}
+
+/* ── Reyting qatori ─────────────────────────────────────────── */
+.boss-rank-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; }
+.boss-rank-row + .boss-rank-row { border-top: 1px solid var(--border); }
+.boss-rank-main { flex: 1; min-width: 0; }
+.boss-rank-top {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;
+}
+.boss-rank-top strong {
+    font-size: 13.5px; color: var(--text); font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.boss-rank-val {
+    margin-left: auto; font-size: 12.5px; font-weight: 700;
+    color: var(--primary); white-space: nowrap;
+}
+.boss-rank-main small { font-size: 11.5px; color: var(--text-muted); }
+.boss-rank {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 26px; height: 26px; padding: 0 7px; border-radius: 8px;
+    font-size: 12px; font-weight: 800; flex-shrink: 0;
+    background: var(--card-hover); color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+.boss-rank.r1 { background: rgba(245,158,11,.16); color: #F59E0B; border-color: rgba(245,158,11,.35); }
+.boss-rank.r2 { background: rgba(148,163,184,.16); color: #94A3B8; border-color: rgba(148,163,184,.32); }
+.boss-rank.r3 { background: rgba(205,127,50,.16); color: #CD7C32; border-color: rgba(205,127,50,.32); }
+
+.boss-bar {
+    height: 6px; border-radius: 999px; background: var(--card-hover);
+    overflow: hidden; margin-bottom: 5px;
+}
+.boss-bar-fill {
+    height: 100%; border-radius: 999px;
+    background: var(--primary-gradient); transition: width .4s ease;
+}
+
+/* ── Rol va holat nishonlari ────────────────────────────────── */
+.boss-role {
+    display: inline-block; padding: 3px 9px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+    background: var(--card-hover); color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+.boss-role.role-boss { background: var(--primary-gradient); color: #fff; border-color: transparent; }
+.boss-role.role-admin { background: rgba(139,92,246,.16); color: #A78BFA; border-color: rgba(139,92,246,.3); }
+.boss-role.role-manager { background: rgba(59,130,246,.16); color: #60A5FA; border-color: rgba(59,130,246,.3); }
+.boss-role.role-cashier { background: rgba(16,185,129,.16); color: #34D399; border-color: rgba(16,185,129,.3); }
+
+.boss-badge {
+    display: inline-block; padding: 3px 9px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.boss-badge.active { background: var(--success-bg); color: var(--success); }
+.boss-badge.blocked { background: var(--danger-bg); color: var(--danger); }
+.boss-badge.inactive { background: rgba(148,163,184,.14); color: var(--text-secondary); }
+.boss-badge.warn { background: var(--warning-bg); color: var(--warning); }
+.boss-chip-mini {
+    padding: 2px 8px; border-radius: 5px; font-size: 11px;
+    background: var(--info-bg); color: var(--info); white-space: nowrap;
+}
+
+/* ── Filter paneli ──────────────────────────────────────────── */
+.boss-toolbar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;
+}
+.boss-toolbar .form-control { padding: 8px 12px; font-size: 13px; width: auto; min-width: 150px; }
+.boss-toolbar .boss-search { flex: 1; min-width: 200px; max-width: 340px; }
+.boss-count { font-size: 12px; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+.boss-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+.boss-actions .btn-sm { padding: 5px 9px; font-size: 11.5px; }
+
+/* ── Filter bar (sana, filial, qidiruv) ────────────────────── */
+.boss-filterbar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 16px; padding: 12px 14px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+}
+.boss-filterbar .form-control {
+    padding: 8px 12px; font-size: 13px; width: auto; min-width: 140px;
+}
+.boss-filterbar .boss-search { flex: 1; min-width: 200px; max-width: 320px; }
+.boss-filterbar .boss-view-chips { margin-left: auto; }
+.boss-filterbar .btn { white-space: nowrap; }
+.boss-date { min-width: 150px; }
+
+/* ── Diagrammalar (Chart.js) ───────────────────────────────── */
+.boss-charts-grid {
+    display: grid; gap: 16px; margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+.boss-charts-grid .boss-panel { margin-bottom: 0; }
+/* Konteynerga aniq balandlik beriladi — o'lchamni Chart.js boshqaradi. */
+.boss-chart-body { position: relative; height: 280px; padding: 14px 16px; }
+
+/* ── Tafsilot modallari (mahsulot / filial / chek) ────────── */
+.boss-detail-grid {
+    display: grid; gap: 10px; margin-bottom: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.boss-detail-grid > div {
+    background: var(--card-hover); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 10px 12px;
+}
+.boss-detail-grid span {
+    display: block; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: .03em; color: var(--text-muted); margin-bottom: 4px;
+}
+.boss-detail-grid strong { font-size: 14px; color: var(--text); }
+
+/* ── Bosiladigan elementlar (kartalar, filial qatorlari) ──── */
+.boss-card[data-boss-product] {
+    cursor: pointer;
+    transition: transform .18s ease, border-color .18s ease;
+}
+.boss-card[data-boss-product]:hover,
+.boss-card[data-boss-product]:focus-visible {
+    border-color: var(--primary); transform: translateY(-2px);
+}
+.boss-table tbody tr[data-boss-branch] { cursor: pointer; }
+.boss-table tbody tr[data-boss-branch]:hover,
+.boss-table tbody tr[data-boss-branch]:focus-visible { background: var(--card-hover); }
+
+/* ── Audit yuqori qator (soni + manba) ─────────────────────── */
+.boss-audit-info {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 10px;
+    padding: 9px 13px; border-radius: var(--radius-md);
+    background: var(--info-bg); border: 1px solid rgba(59,130,246,.28);
+    font-size: 12.5px; color: var(--text-secondary);
+}
+.boss-audit-info i { color: var(--info); }
+.boss-audit-act { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.boss-actions .danger { color: var(--danger); border-color: rgba(239,68,68,.35); }
+
+/* ── Jadval ─────────────────────────────────────────────────── */
+.boss-table { width: 100%; border-collapse: collapse; }
+.boss-table th {
+    text-align: left; padding: 12px 14px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .03em; color: var(--text-secondary);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.boss-table td {
+    padding: 12px 14px; font-size: 13px; color: var(--text);
+    border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+.boss-table tbody tr:last-child td { border-bottom: none; }
+.boss-table tbody tr:hover { background: var(--card-hover); }
+.boss-table td small {
+    display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px;
+}
+/* ── Xodim savdosi (cheklar) ────────────────────────────────── */
+.boss-sales-kpis {
+    display: grid; gap: 12px; margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.boss-sales-kpis > div {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 14px 16px;
+}
+.boss-sales-kpis span {
+    display: block; font-size: 11px; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: .03em; margin-bottom: 5px;
+}
+.boss-sales-kpis strong { font-size: 18px; font-weight: 800; color: var(--text); }
+
+.boss-receipt {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-md); margin-bottom: 12px; overflow: hidden;
+}
+.boss-receipt-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--text-secondary); background: var(--card-hover);
+}
+.boss-receipt-head strong { margin-left: auto; color: var(--text); font-size: 14px; }
+.boss-chek { font-weight: 800; color: var(--primary); }
+.boss-pay { font-size: 11px; color: var(--text-muted); }
+.boss-lines { padding: 4px 8px 8px; overflow-x: auto; }
+.boss-lines table { width: 100%; border-collapse: collapse; }
+.boss-lines th {
+    text-align: left; padding: 8px 10px; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; color: var(--text-muted);
+}
+.boss-lines td {
+    padding: 8px 10px; font-size: 12.5px; color: var(--text);
+    border-top: 1px solid var(--border);
+}
+
+/* ── Mahsulot kartalari ─────────────────────────────────────── */
+.boss-cards {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.boss-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 14px 16px;
+}
+.boss-card-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 10px; margin-bottom: 8px;
+}
+.boss-card-head strong { font-size: 13.5px; color: var(--text); line-height: 1.3; min-width: 0; }
+.boss-card-meta {
+    display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px;
+    color: var(--text-muted); margin-bottom: 10px;
+}
+.boss-card-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.boss-card-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    padding-top: 10px; border-top: 1px solid var(--border);
+}
+.boss-card-stats span {
+    display: block; font-size: 10.5px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .03em;
+}
+.boss-card-stats strong { font-size: 13px; color: var(--text); }
+.boss-card-foot {
+    margin-top: 10px; padding-top: 8px; font-size: 11px;
+    color: var(--text-muted); border-top: 1px solid var(--border);
+}
+
+/* ── Signal, izoh va bo'sh holatlar ────────────────────────── */
+.boss-signals { list-style: none; margin: 0; padding: 0; }
+.boss-signals li {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 0; font-size: 13px; color: var(--text-secondary);
+}
+.boss-signals li + li { border-top: 1px solid var(--border); }
+.boss-signals i { margin-top: 3px; flex-shrink: 0; }
+.boss-signals .tone-warning i { color: var(--warning); }
+.boss-signals .tone-success i { color: var(--success); }
+.boss-signals .tone-info i { color: var(--info); }
+.boss-signals strong { color: var(--text); }
+
+.boss-note, .boss-finance-note {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 14px 16px; margin-top: 14px; border-radius: var(--radius-md);
+    background: var(--info-bg); border: 1px solid rgba(59,130,246,.28);
+    font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;
+}
+.boss-note i, .boss-finance-note i { color: var(--info); margin-top: 2px; flex-shrink: 0; }
+.boss-note strong, .boss-finance-note strong { color: var(--text); }
+
+.boss-empty { padding: 30px 20px; text-align: center; color: var(--text-muted); }
+.boss-empty i { font-size: 30px; opacity: .35; display: block; margin-bottom: 10px; }
+.boss-empty p { margin: 0; font-size: 13px; }
+.boss-loading { padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+/* ── Audit log ──────────────────────────────────────────────── */
+.boss-audit {
+    border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;
+}
+.boss-audit-row {
+    display: grid; gap: 4px 14px; padding: 12px 16px; font-size: 12.5px;
+    grid-template-columns: 130px 170px 1fr 1fr 130px; align-items: center;
+}
+.boss-audit-row + .boss-audit-row { border-top: 1px solid var(--border); }
+.boss-audit-time { color: var(--text-muted); font-size: 11.5px; }
+.boss-audit-act { font-weight: 700; color: var(--text); }
+.boss-audit-target { color: var(--primary); font-weight: 600; }
+.boss-audit-detail { color: var(--text-secondary); font-size: 11.5px; }
+.boss-audit-actor { color: var(--text-muted); font-size: 11.5px; text-align: right; }
+
+/* ── Modallar ───────────────────────────────────────────────── */
+.boss-form { display: grid; gap: 14px; }
+.boss-form .form-group { display: block; }
+.boss-form .form-control { width: 100%; }
+.boss-form .form-group > span {
+    display: block; font-size: 11px; font-weight: 700; margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: .03em; color: var(--text-secondary);
+}
+.boss-form .form-group > span b { color: var(--primary); }
+.boss-form .form-group small {
+    display: block; font-size: 11px; color: var(--text-muted); margin-top: 5px;
+}
+.boss-modal-note {
+    font-size: 12px; color: var(--text-secondary); margin: 12px 0 0;
+    padding: 10px 12px; border-radius: var(--radius-sm);
+    background: var(--card-hover); border: 1px solid var(--border);
+}
+.boss-modal-note strong { color: var(--text); }
+
+/* ============================================================
+   RESPONSIVE — mobil Boshliq paneli
+   ============================================================ */
+
+/* Planshet: KPI 2 ustunga, panellar ustma-ust */
+@media (max-width: 900px) {
+    .boss-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .boss-kpi-value { font-size: 19px; }
+    .boss-grid-2 { grid-template-columns: 1fr; }
+    .boss-toolbar .boss-search { max-width: none; flex-basis: 100%; }
+    .boss-audit-row { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .boss-audit-actor { text-align: left; }
+}
+
+/* Telefon: jadvallar KARTAGA aylanadi (gorizontal siljitish yo'q) */
+@media (max-width: 640px) {
+    .boss-page-head { flex-direction: column; align-items: stretch; }
+    .boss-page-head h2 { font-size: 17px; }
+    .boss-period { justify-content: flex-start; }
+
+    .boss-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 9px; }
+    .boss-kpi { padding: 12px 13px; border-radius: var(--radius-md); }
+    .boss-kpi-label { font-size: 10px; }
+    .boss-kpi-value { font-size: 16px; }
+    .boss-kpi-hint { font-size: 10.5px; }
+
+    .boss-cards { grid-template-columns: 1fr; }
+    .boss-sales-kpis { grid-template-columns: 1fr 1fr; gap: 9px; }
+    .boss-sales-kpis strong { font-size: 15px; }
+
+    /* Jadval -> kartalar */
+    .boss-table thead { display: none; }
+    .boss-table, .boss-table tbody, .boss-table tr, .boss-table td { display: block; width: 100%; }
+    .boss-table tr {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 10px;
+    }
+    .boss-table tbody tr:hover { background: var(--card); }
+    .boss-table td {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border);
+        text-align: right; font-size: 12.5px;
+    }
+    .boss-table td:last-child { border-bottom: none; padding-bottom: 0; }
+    .boss-table td::before {
+        content: attr(data-label);
+        font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .03em; color: var(--text-muted); text-align: left;
+        flex-shrink: 0;
+    }
+    .boss-table td[data-label="Amallar"] { display: block; text-align: left; }
+    .boss-table td[data-label="Amallar"]::before { display: block; margin-bottom: 6px; }
+    .boss-actions { justify-content: flex-start; }
+    .boss-table td small { text-align: right; }
+    .boss-who { justify-content: flex-end; }
+
+    .boss-toolbar { flex-direction: column; align-items: stretch; }
+    .boss-toolbar .form-control { width: 100%; min-width: 0; }
+    .boss-count { margin-left: 0; text-align: center; }
+    .boss-filterbar { flex-direction: column; align-items: stretch; }
+    .boss-filterbar .form-control,
+    .boss-filterbar .boss-search { width: 100%; min-width: 0; max-width: none; }
+    .boss-filterbar .boss-view-chips { margin-left: 0; }
+    .boss-charts-grid { grid-template-columns: 1fr; }
+    .boss-chart-body { height: 230px; }
+    .boss-receipt-head { gap: 6px; }
+    .boss-receipt-head strong { margin-left: 0; flex-basis: 100%; }
+    .boss-lines { padding: 4px 2px 8px; }
+    .boss-audit-row { grid-template-columns: 1fr; gap: 3px; }
+    .boss-audit-time { font-size: 11px; }
+    .boss-panel-body { padding: 14px; }
+    .boss-form { gap: 12px; }
+}
+
+/* Juda kichik ekranlar (360–390 px) */
+@media (max-width: 380px) {
+    .boss-kpi-grid { gap: 8px; }
+    .boss-kpi { padding: 10px 11px; }
+    .boss-kpi-value { font-size: 14.5px; }
+    .boss-kpi-label { font-size: 9.5px; }
+    .boss-sales-kpis { grid-template-columns: 1fr; }
+    .boss-card-stats { grid-template-columns: 1fr; }
+    .boss-page-head h2 { font-size: 16px; }
+}
+
+/* Keng ekran: 1600+ da katta monitorlar uchun */
+@media (min-width: 1600px) {
+    .boss-kpi-grid { grid-template-columns: repeat(4, 1fr); }
+    .boss-kpi-value { font-size: 24px; }
+}
+
+/* Kamaytirilgan harakat */
+@media (prefers-reduced-motion: reduce) {
+    .boss-kpi:hover { transform: none; }
+    .boss-bar-fill { transition: none; }
+}

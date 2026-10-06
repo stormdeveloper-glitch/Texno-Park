@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<title>_tp Google login removal check (vaqtinchalik probe)</title>
+<style>html,body{margin:0}iframe{border:0;display:block}</style>
+</head>
+<body>
+<iframe id="f" src="index.html"></iframe>
+<pre id="tp-gcheck" style="display:none"></pre>
+<script>
+// Vaqtinchalik tekshiruv harness'i — ilova kodiga ta'sir qilmaydi.
+(async () => {
+  const HASH = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const VP = (HASH.get('vp') || '1366x900').split('x').map(Number);
+  const out = { vpReq: VP.join('x'), checks: [], info: {}, captured: null };
+  const add = (ok, msg) => out.checks.push((ok ? 'PASS ' : 'FAIL ') + msg);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const f = document.getElementById('f');
+  if (VP.length === 2) { f.style.width = VP[0] + 'px'; f.style.height = VP[1] + 'px'; }
+  await new Promise(res => f.addEventListener('load', res, { once: true }));
+  const win = f.contentWindow, doc = f.contentDocument;
+  for (let i = 0; i < 80 && !doc.querySelector('.login-box'); i++) await sleep(100);
+  let prevW = -1, steady = 0;
+  for (let i = 0; i < 60 && steady < 4; i++) {
+    await sleep(100);
+    const w = doc.documentElement.clientWidth;
+    if (w === prevW) steady++; else { steady = 0; prevW = w; }
+  }
+  await sleep(600);
+  const q = s => doc.querySelector(s);
+  const lp = q('#loginPage');
+
+  // 1) Google login UI butunlay yo'q
+  add(!doc.getElementById('googleBtnContainer'), 'googleBtnContainer div yo\u0027q');
+  add(!q('.login-google-block'), '.login-google-block yo\u0027q');
+  add(!q('.google-custom-btn'), '.google-custom-btn yo\u0027q');
+  add(!q('.google-icon'), '.google-icon yo\u0027q');
+  const lpLower = (lp ? lp.innerHTML : '').toLowerCase();
+  add(lpLower.indexOf('google') === -1, 'login HTML da "google" so\u0027zi yo\u0027q');
+  add(!q('#loginPage .login-box hr'), 'login kartada divider (hr) yo\u0027q');
+  const scr = Array.from(doc.querySelectorAll('script[src]')).map(s => s.getAttribute('src') || '');
+  add(!scr.some(s => /accounts\.google\.com|gsi\//.test(s)), 'GSI script tag yo\u0027q');
+  add(typeof win.simulateGoogleSignIn === 'undefined', 'simulateGoogleSignIn JS yo\u0027q');
+  add(typeof win.handleCredentialResponse === 'undefined', 'handleCredentialResponse JS yo\u0027q');
+  add(typeof win.decodeJwtResponse === 'undefined', 'decodeJwtResponse JS yo\u0027q');
+
+  // 2) Login elementlari
+  const phone = q('#loginPhone'), pass = q('#loginPass'), btn = q('#loginPage .btn-login'),
+    toggle = q('#loginPage .pass-toggle'), box = q('.login-box');
+  add(!!phone && !!pass && !!btn && !!toggle && !!box, 'login elementlari mavjud');
+  add(!!q('.phone-prefix') && q('.phone-prefix').textContent.trim() === '+998', '+998 prefiks bor');
+
+  // 3) Eye toggle
+  toggle.click(); await sleep(120);
+  const eyeOpen = pass.type === 'text';
+  toggle.click(); await sleep(120);
+  add(eyeOpen && pass.type === 'password', 'eye toggle ochadi/yopadi');
+
+  // 4) Telefon+parol login oqimi (fetch stub — payload tekshiriladi)
+  const origFetch = win.fetch;
+  win.fetch = async function (url, opts) {
+    const u = String(url);
+    if (u.indexOf('/api/auth/login') !== -1) {
+      try { out.captured = JSON.parse((opts && opts.body) || 'null'); }
+      catch (e) { out.captured = { parseError: String(e) }; }
+      return new win.Response(JSON.stringify({ status: 'error', message: 'probe' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new win.Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const PH = '90 848 09 21';
+  phone.value = PH;
+  pass.value = 'probe-parol';
+  btn.click();
+  await sleep(1600);
+  win.fetch = origFetch;
+  add(!!out.captured, 'login POST yuborildi (fetch ushlandi)');
+  if (out.captured) {
+    add(out.captured.login === PH, 'POST login = telefon maydon qiymati (' + out.captured.login + ')');
+    add(out.captured.password === 'probe-parol', 'POST password maydoni yuborildi');
+    add('turnstileToken' in out.captured, 'turnstileToken maydoni saqlangan');
+  }
+
+  // 5) Layout o'lchovlari
+  const r = box.getBoundingClientRect();
+  out.info = {
+    vp: [win.innerWidth, win.innerHeight],
+    boxH: Math.round(r.height * 100) / 100,
+    boxTop: Math.round(r.top * 100) / 100,
+    bottomGap: Math.round((win.innerHeight - r.bottom) * 100) / 100,
+    hOverflow: doc.documentElement.scrollWidth - win.innerWidth,
+    btnBottom: Math.round(btn.getBoundingClientRect().bottom * 100) / 100
+  };
+  add(out.info.hOverflow <= 0, 'gorizontal overflow yo\u0027q: ' + out.info.hOverflow);
+  add(btn.getBoundingClientRect().bottom <= r.bottom + 1, 'Kirish tugmasi karta ichida tugaydi');
+
+  document.getElementById('tp-gcheck').textContent = JSON.stringify(out, null, 1);
+})().catch(e => {
+  document.getElementById('tp-gcheck').textContent = JSON.stringify({ fatal: String((e && e.message) || e) });
+});
+</script>
+</body>
+</html>

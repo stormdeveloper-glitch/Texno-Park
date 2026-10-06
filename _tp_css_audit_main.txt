@@ -1,0 +1,144 @@
+/* line 789 */
+.page-title {
+    flex: 1;
+    min-width: 0;
+}
+
+/* line 801 */
+.page-title small {
+    display: block;
+    overflow: hidden;
+}
+
+/* line 1073 */
+.main {
+    margin-left: var(--sidebar-w);
+    width: calc(100% - var(--sidebar-w));
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+
+/* line 1082 */
+.main {
+    display: block;
+}
+
+/* line 1087 */
+.page {
+    display: none;
+}
+
+/* line 1091 */
+.page.active {
+    display: block;
+}
+
+/* line 1096 */
+.page {
+    padding: 36px;
+    margin: 24px auto;
+    max-width: 1200px;
+    box-sizing: border-box;
+}
+
+/* line 1143 */
+.page .panel, .page .stat-card, .page .chart-wrap, .page .table-wrap, .page .form-row, .page .form-col, .page .card {
+    transform: none;
+}
+
+/* line 1914 */
+#app.market-mode .sidebar, #app.market-mode .hotkeys-bar, #app.market-mode .topbar .page-title, #app.market-mode .topbar .topbar-search, #app.market-mode .topbar .icon-btn[title="Bildirishnomalar"], #app.market-mode .topbar .icon-btn[title="Chek chop (F8)"], #app.market-mode .topbar .topbar-clock {
+    display: none;
+}
+
+/* line 1927 */
+#app.market-mode .main {
+    margin-left: 0;
+    width: 100%;
+    padding: 72px 18px 32px;
+}
+
+/* line 1933 */
+#app.market-mode .page {
+    padding: 0;
+}
+
+/* line 3048 */
+  @media (max-width: 680px)
+#app.market-mode .main {
+    padding: 66px 10px 24px;
+}
+
+/* line 3268 */
+  @media(max-width:900px)
+.page {
+    padding: 24px;
+}
+
+/* line 3319 */
+  @media (max-width: 768px)
+.main, .main-content {
+    margin-left: 0 !important;
+}
+
+/* line 3342 */
+  @media(max-width:600px)
+.page {
+    padding: 12px;
+}
+
+/* line 3358 */
+  @media(max-width:600px)
+.page-title small {
+    display: none;
+}
+
+/* line 6623 */
+#app.market-mode .main {
+    padding: 18px 20px 44px;
+}
+
+/* line 7252 */
+  @media (max-width: 780px)
+#app.market-mode .main {
+    padding: 10px 10px 28px;
+}
+
+/* line 7776 */
+#app.market-mode, #app.market-mode .main, #app.market-mode .page {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
+}
+
+/* line 8046 */
+#app.market-mode .main {
+    padding: 0 var(--page-gutter) 44px;
+}
+
+/* line 9584 */
+#app.market-mode, #app.market-mode .main, #app.market-mode .page {
+    overflow: visible !important;
+    overflow-x: clip !important;
+}
+
+/* line 11372 */
+  @media (max-width: 768px)
+#app:not(.market-mode) .main {
+    width: 100%;
+}
+
+/* line 11373 */
+  @media (max-width: 768px)
+#app:not(.market-mode) .page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 16px;
+}
+
+/* line 11388 */
+  @media (max-width: 480px)
+#app:not(.market-mode) .page {
+    padding: 12px;
+}

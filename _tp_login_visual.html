@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Login visual (vaqtinchalik)</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #10050a; }
+    iframe { position: fixed; left: 0; top: 0; border: 0; display: block; }
+  </style>
+</head>
+
+<body>
+  <iframe id="f" src="index.html"></iframe>
+  <script>
+    // Parol faqat ishga tushirish paytida URL fragmentidan olinadi —
+    // bu faylda ochiq parol SAQLANMAYDI.
+    (async () => {
+      const HASH = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const PW = HASH.get('pw') || '';
+      const VP = (HASH.get('vp') || '1366x768').split('x').map(Number);
+      const PHONE = (HASH.get('phone') || '908480921').replace(/\D/g, '');
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const f = document.getElementById('f');
+      f.style.width = VP[0] + 'px';
+      f.style.height = VP[1] + 'px';
+      document.title = 'login-visual ' + VP[0] + 'x' + VP[1];
+      await new Promise(res => f.addEventListener('load', res, { once: true }));
+      const win = f.contentWindow, doc = f.contentDocument;
+      for (let i = 0; i < 100 && !doc.querySelector('.login-box'); i++) await sleep(100);
+      // O'lcham o'zgargani uchun mobil rejim/scrollbar joylashuvi barqarorlashishini kutamiz
+      let prev = -1, steady = 0;
+      for (let i = 0; i < 80 && steady < 4; i++) {
+        await sleep(100);
+        const w = doc.documentElement.clientWidth;
+        if (w === prev) steady++; else { steady = 0; prev = w; }
+      }
+      await sleep(1200);
+
+      const phone = doc.getElementById('loginPhone');
+      const pass = doc.getElementById('loginPass');
+      // Telefon: foydalanuvchi yozgandek kiritiladi (maska ishlaydi)
+      phone.value = '';
+      for (const ch of PHONE) {
+        phone.value += ch;
+        phone.dispatchEvent(new win.Event('input', { bubbles: true }));
+        await sleep(30);
+      }
+      phone.dispatchEvent(new win.Event('blur', { bubbles: true }));
+      // Parol: kiritiladi, lekin HECH QACHON ochiq ko'rsatilmaydi (type=password)
+      pass.value = PW;
+      pass.dispatchEvent(new win.Event('input', { bubbles: true }));
+      pass.blur();
+      await sleep(400);
+      document.title = 'login-visual ' + VP[0] + 'x' + VP[1]
+        + ' phone=' + phone.value + ' passType=' + pass.type;
+    })();
+  </script>
+</body>
+
+</html>

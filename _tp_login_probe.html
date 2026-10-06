@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Login probe (vaqtinchalik)</title>
+  <style>
+    html, body { margin: 0; }
+    iframe { width: 100vw; height: 100vh; border: 0; display: block; }
+  </style>
+</head>
+
+<body>
+  <iframe id="f" src="index.html"></iframe>
+  <pre id="tp-results" style="display:none"></pre>
+  <script>
+    (async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const f = document.getElementById('f');
+      await new Promise(res => { f.addEventListener('load', res, { once: true }); });
+      const win = f.contentWindow, doc = f.contentDocument;
+      for (let i = 0; i < 60 && !doc.querySelector('.login-box'); i++) await sleep(100);
+      await sleep(1500); // fade-in tugashi + config
+
+      const results = { checks: [], info: {} };
+      const add = (ok, msg) => results.checks.push((ok ? 'PASS ' : 'FAIL ') + msg);
+      const q = s => doc.querySelector(s);
+      const qa = s => [...doc.querySelectorAll(s)];
+      const rect = el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(v => Math.round(v * 100) / 100); };
+      const cs = el => win.getComputedStyle(el);
+      const eq = (a, b, tol) => { tol = tol || 0.75; return a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= tol); };
+
+      const lp = q('#loginPage'), lb = q('.login-box'), btn = q('#loginPage .btn-login'), icon = q('.login-logo .logo-icon');
+      const cards = qa('#loginPage .quick-section');
+      const snapshot = () => ({
+        box: rect(lb), cards: cards.map(rect), btn: rect(btn), icon: rect(icon)
+      });
+
+      const base = snapshot();
+      results.info.vp = [win.innerWidth, win.innerHeight];
+      results.info.base = base;
+
+      // A) Fon rasmi
+      const bgi = cs(lp).backgroundImage;
+      add(/texno-park-n1-exterior\.jpg/.test(bgi), 'bg-image: ' + bgi.slice(0, 70));
+      add(cs(lp).backgroundSize === 'cover', 'bg-size: ' + cs(lp).backgroundSize);
+      add(cs(lp).backgroundPosition === '50% 50%', 'bg-position: ' + cs(lp).backgroundPosition);
+      add(cs(lp).backgroundRepeat === 'no-repeat', 'bg-repeat: ' + cs(lp).backgroundRepeat);
+      const imgOk = await new Promise(res => {
+        const i = new win.Image();
+        i.onload = () => res(i.naturalWidth + 'x' + i.naturalHeight);
+        i.onerror = () => res('');
+        i.src = 'assets/texno-park-n1-exterior.jpg?p=1';
+      });
+      add(!!imgOk, 'img yuklandi: ' + imgOk);
+
+      // B) Animatsiya / transform
+      add(cs(lb).animationName === 'loginFadeIn', 'box anim: ' + cs(lb).animationName);
+      add(cs(icon).animationName === 'none', 'icon anim: ' + cs(icon).animationName);
+      add(cards.every(c => cs(c).animationName === 'none'), 'cards anim: ' + cards.map(c => cs(c).animationName).join(','));
+      add(cs(btn).animationName === 'none', 'btn anim: ' + cs(btn).animationName);
+      add(cs(lb).transform === 'none', 'box transform: ' + cs(lb).transform);
+      add(cs(icon).transform === 'none', 'icon transform: ' + cs(icon).transform);
+      add(cards.every(c => cs(c).transform === 'none'), 'cards transform: ' + cards.map(c => cs(c).transform).join(','));
+      add(cs(btn).transform === 'none', 'btn transform: ' + cs(btn).transform);
+      add(cs(lb).willChange === 'auto', 'will-change: ' + cs(lb).willChange);
+
+      // C) Vaqt bo'yicha barqarorlik
+      await sleep(900);
+      let s = snapshot();
+      add(eq(base.box, s.box) && base.cards.every((r, i) => eq(r, s.cards[i])) && eq(base.icon, s.icon), '900ms: pozitsiya bir xil');
+
+      // D) Focus / click / toggle / rol tanlash
+      doc.getElementById('loginUser').focus();
+      await sleep(150);
+      s = snapshot();
+      add(eq(base.box, s.box), 'username focus: stable');
+      add(doc.activeElement && doc.activeElement.id === 'loginUser', 'username focus: activeElement');
+      doc.getElementById('loginPass').focus();
+      await sleep(150);
+      s = snapshot();
+      add(eq(base.box, s.box), 'parol focus: stable (border o`lchami o`zgarmaydi)');
+      const pt = q('#loginPage .pass-toggle');
+      pt.click();
+      await sleep(220);
+      add(doc.getElementById('loginPass').type === 'text', 'eye toggle: text');
+      s = snapshot();
+      add(eq(base.box, s.box), 'eye toggle (text): stable');
+      pt.click();
+      await sleep(220);
+      add(doc.getElementById('loginPass').type === 'password', 'eye toggle: password qaytdi');
+      s = snapshot();
+      add(eq(base.box, s.box), 'eye toggle (parol): stable');
+      for (let i = 0; i < 3; i++) {
+        cards[i].click();
+        await sleep(220);
+        s = snapshot();
+        const selCount = cards.filter(c => c.classList.contains('selected')).length;
+        add(eq(base.box, s.box) && base.cards.every((r, j) => eq(r, s.cards[j])) && selCount === 1 && cards[i].classList.contains('selected'),
+          'rol ' + i + ' tanlash: selected=1, surilish yo`q (value=' + doc.getElementById('loginUser').value + ')');
+      }
+
+      // E) HAQIQIY hover kaskadi simulyatsiyasi: :hover -> .tp-force-hover klon
+      const cssParts = [];
+      for (const sh of doc.styleSheets) {
+        try {
+          let text = '';
+          if (sh.ownerNode && sh.ownerNode.textContent) text = sh.ownerNode.textContent;
+          else if (sh.href) {
+            const u = new URL(sh.href, win.location.href);
+            if (u.origin !== win.location.origin) continue;
+            text = await (await fetch(u.href)).text();
+          }
+          if (text && text.indexOf(':hover') !== -1) cssParts.push(text.replace(/:hover/g, '.tp-force-hover'));
+        } catch (e) { /* tashqi CDN — o'tkazib yuboriladi */ }
+      }
+      const st = doc.createElement('style');
+      st.textContent = cssParts.join('\n');
+      doc.head.appendChild(st);
+      const force = qa('#loginPage *');
+      force.forEach(el => el.classList.add('tp-force-hover'));
+      lb.classList.add('tp-force-hover');
+      await sleep(450);
+      s = snapshot();
+      add(eq(base.box, s.box), 'FORCED HOVER: panel joyida ' + JSON.stringify(s.box));
+      add(eq(base.btn, s.btn) && base.cards.every((r, i) => eq(r, s.cards[i])), 'FORCED HOVER: tugma/kartalar joyida');
+      add(cs(btn).transform === 'none' && cards.every(c => cs(c).transform === 'none') && cs(icon).transform === 'none' && cs(lb).transform === 'none',
+        'FORCED HOVER: transform=none hammasida (' + cs(btn).transform + ')');
+      results.info.hoverParts = cssParts.length;
+      st.remove();
+      force.forEach(el => el.classList.remove('tp-force-hover'));
+      lb.classList.remove('tp-force-hover');
+      await sleep(300);
+
+      // F) Overflow / layout
+      add(doc.documentElement.scrollWidth - win.innerWidth <= 0, 'gorizontal overflow (doc): ' + (doc.documentElement.scrollWidth - win.innerWidth));
+      add(lp.scrollWidth - lp.clientWidth <= 0, 'gorizontal overflow (loginPage): ' + (lp.scrollWidth - lp.clientWidth));
+      add(Math.abs(doc.body.getBoundingClientRect().width - win.innerWidth) < 1.5, 'body to`liq kenglik');
+      add(cs(doc.body).marginTop === '0px' && cs(doc.body).marginLeft === '0px', 'body margin 0');
+      const c1 = doc.elementFromPoint(2, 2);
+      const c2 = doc.elementFromPoint(win.innerWidth - 3, win.innerHeight - 3);
+      add(!!lp.contains(c1) && !!lp.contains(c2), 'burchaklar loginPage bilan qoplangan (white gap yo`q)');
+
+      // G) Scroll — transform o'zgarmasligi
+      win.scrollTo(0, 250);
+      lp.scrollTop = 200;
+      await sleep(150);
+      add(cs(lb).transform === 'none' && cs(icon).transform === 'none' && cs(btn).transform === 'none', 'scroll: transformlar none');
+      win.scrollTo(0, 0);
+      lp.scrollTop = 0;
+      await sleep(150);
+
+      // H) Mobil vertikal: yuqori qism kesilib qolmasligi
+      const showEl = q('.login-showcase');
+      const showR = showEl ? showEl.getBoundingClientRect() : null;
+      const lpR = lp.getBoundingClientRect();
+      results.info.vert = {
+        lpScrollH: lp.scrollHeight, lpClientH: lp.clientHeight,
+        overflow: lp.scrollHeight - lp.clientHeight,
+        showcaseTop: showR ? Math.round(showR.top * 100) / 100 : null,
+        lpTop: Math.round(lpR.top * 100) / 100,
+        topReachable: showR ? showR.top >= lpR.top - 1.5 : null
+      };
+      if (showR && lp.scrollHeight > lp.clientHeight) {
+        add(showR.top >= lpR.top - 1.5, 'vertikal overflow bor, lekin yuqori qism ochiq (kesilmagan)');
+      }
+
+      // I) Tozalash (screenshot uchun toza holat)
+      cards.forEach(c => c.classList.remove('selected'));
+      if (doc.activeElement && doc.activeElement.blur) doc.activeElement.blur();
+      await sleep(150);
+
+      document.getElementById('tp-results').textContent = JSON.stringify(results);
+    })().catch(e => {
+      document.getElementById('tp-results').textContent = JSON.stringify({ error: String((e && e.message) || e) });
+    });
+  </script>
+</body>
+
+</html>

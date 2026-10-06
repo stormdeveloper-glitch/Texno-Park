@@ -650,6 +650,9 @@ function csvCell(value) {
 }
 
 function requireRole(...roles) {
+    // Rol iyerarxiyasi: BOSHLIQ eng yuqori rol — u boshqa rollarning
+    // barcha imkoniyatlariga ega. Pastroq rollar o'z chegarasida qoladi.
+    if (isBoss()) return true;
     if (!currentUser || !roles.includes(currentUser.role)) {
         playError();
         showNotif('error', 'Ruxsat yo\'q!', 'Bu amal uchun huquq yetarli emas');
@@ -725,16 +728,180 @@ function normalizeCustomer(c) {
 // USERS
 // ============================================================
 const USERS = [
-    { id: 1, login: 'admin', salt: 'tp-adm-9x2', passHash: '847987bfe33b7e4354666fd0a6084ec34e6f09b60f673065a10735f8aa2b7057', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 2, login: 'cashier', salt: 'tp-csh-4k7', passHash: 'e3da606a986c263b7018487dfdbc9e8316898f0a1b68792106619ef867c97f41', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 3, login: 'manager', salt: 'tp-mng-3z8', passHash: '91416abaaa7af1470c242189d1cfe0d6658d1b2eee31a1fdcbd001426dfcc895', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 7, login: 'customer', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
-    { id: 4, login: 'admin@texnopark.uz', salt: 'tp-adm-9x2', passHash: '847987bfe33b7e4354666fd0a6084ec34e6f09b60f673065a10735f8aa2b7057', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 5, login: 'cashier@texnopark.uz', salt: 'tp-csh-4k7', passHash: 'e3da606a986c263b7018487dfdbc9e8316898f0a1b68792106619ef867c97f41', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 6, login: 'manager@texnopark.uz', salt: 'tp-mng-3z8', passHash: '91416abaaa7af1470c242189d1cfe0d6658d1b2eee31a1fdcbd001426dfcc895', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 8, login: 'customer@texnopark.uz', salt: 'tp-usr-6q1', passHash: 'dd550620e6c75f4d97bf3c4923f1c28b459b2df39f31600cf63e20d2b49b4819', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 1, login: 'admin', phone: '+998908480921', salt: 'tp-adm-9x2', passHash: '1a25159d411b5128ef8c163d5219159ae2e68a475028803916d231217d44b32a', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 2, login: 'cashier', phone: '+998905450921', salt: 'tp-csh-4k7', passHash: 'c9ca5cfba8a78e3ecaf6e2f649954af302cbbc8bfd0cda66b5f952e24a571c67', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 3, login: 'manager', phone: '+998902750921', salt: 'tp-mng-3z8', passHash: '1cd5bbc9db80f2c06d67eb639dc43dceb7e8c2d2862331cc05a7ded2a3b700f0', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 7, login: 'customer', phone: '', salt: 'tp-usr-6q1', passHash: 'c6829c1abecee2d0139933b5dfb14c9f2324290f583ed9aec94934a3558dc66b', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 4, login: 'admin@texnopark.uz', phone: '', salt: 'tp-adm-9x2', passHash: '1a25159d411b5128ef8c163d5219159ae2e68a475028803916d231217d44b32a', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 5, login: 'cashier@texnopark.uz', phone: '', salt: 'tp-csh-4k7', passHash: 'c9ca5cfba8a78e3ecaf6e2f649954af302cbbc8bfd0cda66b5f952e24a571c67', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 6, login: 'manager@texnopark.uz', phone: '', salt: 'tp-mng-3z8', passHash: '1cd5bbc9db80f2c06d67eb639dc43dceb7e8c2d2862331cc05a7ded2a3b700f0', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 8, login: 'customer@texnopark.uz', phone: '', salt: 'tp-usr-6q1', passHash: 'c6829c1abecee2d0139933b5dfb14c9f2324290f583ed9aec94934a3558dc66b', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 9, login: 'boss', phone: '+998901234554', salt: 'tp-9048e163a57a', passHash: 'f92f92a1cd47c8d2d33944393be6c58db21eba9b9503a8007a60e0c915891c25', name: 'Boshliq', role: 'boss', color: '#8B5CF6' },
 ];
-const ROLES = { admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
+// Rol iyerarxiyasi: BOSHLIQ > ADMIN > MANAGER > CASHIER.
+// Raqam qanchalik katta bo'lsa, rol shunchalik kuchli.
+const ROLE_RANK = { boss: 40, admin: 30, manager: 20, cashier: 10, customer: 0 };
+const ROLES = { boss: 'Boshliq', admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
+
+// ============================================================
+// LOGIN TELEFON MAYDONI — maska + +998 prefiksi (websayt)
+// ============================================================
+function phoneDigitsUz(value) {
+    let digits = String(value || '').replace(/\D/g, '');
+    // "+998908480921" / "+998 90 123 45 54" / "998901234554" kabi prefiksli
+    // to'liq raqam ham 9 xonali lokal qismga keltiriladi. MUHIM: prefiksni
+    // KESISHDAN OLDIN olib tashlaymiz — aks holda sekin terilganda
+    // 10-belgidan keyin kesish "998901234554" -> "998901234" (-998998901234)
+    // noto'g'ri raqamga olib kelardi (paste ishlar, terish ishlamas edi).
+    const prefixed = digits.startsWith('998') && digits.length > 9;
+    if (prefixed) digits = digits.slice(3);
+    if (digits.length > 9) digits = digits.slice(0, 9);
+    return digits;
+}
+
+/** Ko'rinish uchun maska: "908480921" → "90 848 09 21". */
+function formatPhoneMaskUz(value) {
+    const d = phoneDigitsUz(value);
+    const parts = [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean);
+    return parts.join(' ');
+}
+
+/** Yagona normalizatsiya: yaroqli bo'lsa +998XXXXXXXXX, aks holda ''. */
+function normalizePhoneUz(value) {
+    const d = phoneDigitsUz(value);
+    if (d.length !== 9 || d[0] === '0') return '';
+    return '+998' + d;
+}
+
+/** Login telefon maydoniga maskani bog'laydi (bir marta). */
+function initLoginPhoneMask() {
+    const inp = document.getElementById('loginPhone');
+    if (!inp || inp.dataset.maskBound === '1') return;
+    inp.dataset.maskBound = '1';
+    inp.addEventListener('input', () => {
+        const masked = formatPhoneMaskUz(inp.value);
+        if (inp.value !== masked) {
+            inp.value = masked;
+            // Kursor doim matn oxirida qoladi
+            try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
+        }
+    });
+}
+
+/** Login telefon maydonidagi qiymatni bir xil maskaga keltiradi. */
+function formatLoginPhoneField() {
+    const inp = document.getElementById('loginPhone');
+    if (!inp) return;
+    const masked = formatPhoneMaskUz(inp.value);
+    if (inp.value !== masked) {
+        inp.value = masked;
+        try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
+    }
+}
+
+/** Brauzer autofill uchun telefon qiymatini ham bir xil maskaga keltiradi. */
+function initLoginPhoneAutofillGuard() {
+    const inp = document.getElementById('loginPhone');
+    if (!inp || inp.dataset.autofillBound === '1') return;
+    inp.dataset.autofillBound = '1';
+    inp.addEventListener('change', formatLoginPhoneField);
+    inp.addEventListener('blur', formatLoginPhoneField);
+    window.addEventListener('pageshow', formatLoginPhoneField);
+    formatLoginPhoneField();
+}
+
+// ============================================================
+// LOGIN PAROL MAYDONI — DOIM YASHIRIN (standart holat)
+// ============================================================
+// Parol faqat foydalanuvchi ko'z tugmasini bosganda ko'rinadi. Brauzer
+// autofill'i, kengaytmalar yoki boshqa kod maydonni "text" holatiga
+// o'tkazsa — darhol "password" holatiga qaytaramiz (ochiq matn ko'rinmaydi).
+let loginPasswordVisible = false;
+
+/** Parolni ko'rsatish/yashirish holatini yagona joydan boshqaradi. */
+function setLoginPasswordVisible(visible) {
+    const inp = document.getElementById('loginPass');
+    const ico = document.querySelector('#loginPage .pass-toggle i');
+    const btn = document.querySelector('#loginPage .pass-toggle');
+    loginPasswordVisible = !!visible;
+    if (inp) inp.type = loginPasswordVisible ? 'text' : 'password';
+    if (ico) ico.className = loginPasswordVisible ? 'fas fa-eye-slash' : 'fas fa-eye';
+    if (btn) btn.setAttribute('aria-label', loginPasswordVisible ? 'Parolni yashirish' : 'Parolni ko\'rsatish');
+}
+
+/** Parolni yashirin holatga qaytaradi (foydalanuvchi ko'rsatmagan bo'lsa). */
+function enforceLoginPasswordHidden() {
+    if (loginPasswordVisible) return;
+    setLoginPasswordVisible(false);
+}
+
+/** Sahifa ochilganda va qayta tiklanishida parolni doim yashirin qiladi. */
+function initLoginPasswordGuard() {
+    const inp = document.getElementById('loginPass');
+    if (!inp || inp.dataset.guardBound === '1') return;
+    inp.dataset.guardBound = '1';
+    loginPasswordVisible = false;
+    enforceLoginPasswordHidden();
+    if (typeof MutationObserver !== 'undefined') {
+        // Ruxsatsiz `type` o'zgarishi (autofill/kengaytma/boshqa kod)
+        // darhol bekor qilinadi.
+        new MutationObserver(() => {
+            if (!loginPasswordVisible && inp.type !== 'password') enforceLoginPasswordHidden();
+        }).observe(inp, { attributes: true, attributeFilter: ['type'] });
+    }
+    ['focus', 'input', 'change'].forEach(evt => inp.addEventListener(evt, enforceLoginPasswordHidden));
+    window.addEventListener('pageshow', enforceLoginPasswordHidden);
+    document.addEventListener('visibilitychange', enforceLoginPasswordHidden);
+}
+
+function showLoginFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.toggle('show', !!message);
+}
+
+function clearLoginFieldErrors() {
+    ['loginPhoneError', 'loginPassError'].forEach(id => showLoginFieldError(id, ''));
+}
+
+/** Kirish tugmasining yuklanish holati (duplicate bosishning oldini oladi). */
+function setLoginLoading(on) {
+    const btn = document.getElementById('loginBtn');
+    if (!btn) return;
+    btn.classList.toggle('is-loading', !!on);
+    btn.disabled = !!on;
+    const ico = btn.querySelector('i');
+    const label = btn.querySelector('.btn-login-label');
+    if (ico) ico.className = on ? 'fas fa-spinner fa-spin' : 'fas fa-sign-in-alt';
+    if (label) label.textContent = on ? 'Kirish...' : 'Kirish';
+}
+
+// Login sahifasi ochilishida maska tayyor (skript body oxirida yuklanadi).
+// Parol maydoni esa har doim YASHIRIN holatdan boshlanadi (default hidden),
+// autofill natijasidagi telefon qiymati ham bir xil ko'rinishga keltiriladi.
+initLoginPhoneMask();
+initLoginPhoneAutofillGuard();
+initLoginPasswordGuard();
+
+/** Joriy roling darajasi (0 — ichki/guest rolda). */
+function currentRoleRank() {
+    return ROLE_RANK[String(currentUser?.role || '').toLowerCase()] || 0;
+}
+
+/** Boshliq — eng yuqori rol: admin/manager/cashier imkoniyatlariga ham ega. */
+function isBoss() {
+    return currentRoleRank() >= ROLE_RANK.boss;
+}
+
+/**
+ * Ko'rsatish tekshiruvi (iyerarxiyaga asoslangan).
+ * Masalan: requireRank('admin') → boss va admin o'tadi, manager/cashier yo'q.
+ * Frontend'dagi bu YAGINA qulaylik — haqiqiy himoya serverdadir (@require_staff).
+ */
+function requireRank(minRole) {
+    return currentRoleRank() >= (ROLE_RANK[String(minRole).toLowerCase()] || Infinity);
+}
 
 // ============================================================
 // KATEGORIYALAR — yagona manba (POS, do'kon, mahsulot formasi, hisobot)
@@ -817,7 +984,14 @@ function secureUserOverrides() {
 
 function findBaseUser(loginKey) {
     const key = String(loginKey || '').toLowerCase();
-    return USERS.find(u => u.login.toLowerCase() === key) || null;
+    const byLogin = USERS.find(u => u.login.toLowerCase() === key);
+    if (byLogin) return byLogin;
+    // Telefon raqami bilan ham topamiz (oflayn rejimda telefon orqali kirish)
+    const phone = normalizePhoneUz(loginKey);
+    if (phone) {
+        return USERS.find(u => u.phone && normalizePhoneUz(u.phone) === phone) || null;
+    }
+    return null;
 }
 
 /**
@@ -829,6 +1003,13 @@ function findBaseUser(loginKey) {
 function verifyUserLogin(loginKey, password) {
     const base = findBaseUser(loginKey);
     if (!base) return { ok: false, reason: 'not-found' };
+
+    // Hisob holati: admin bloklagan (status != active) hisob OFLAYN rejimda
+    // ham kirmaydi — auth oqimi: 1) user 2) status 3) lock 4) parol 5) muvaffaqiyat.
+    const accStatus = String(base.status || 'active').trim().toLowerCase();
+    if (accStatus && accStatus !== 'active') {
+        return { ok: false, reason: 'account-blocked', user: base };
+    }
 
     const override = secureUserOverrides().find(u => String(u.login).toLowerCase() === base.login.toLowerCase());
     const salt = override?.salt || base.salt || 'tp-legacy';
@@ -1157,12 +1338,26 @@ async function serverLogin(login, password) {
     }
 }
 
-/** Token eskirgan/bloklangan bo'lsa — xavfsiz tarzda sessiyani yopadi. */
+/** Token eskirgan/bloklangan bo'lsa — xavfsiz tarzda sessiyani yopadi.
+ *  Server 401 qaytarganda (token muddati tugagan / sessiya bekor qilingan)
+ *  faqat token o'chirish YETARLI EMAS: foydalanuvchi "kirilgan" holatda
+ *  qoladi — Boshliq Dashboard bo'sh turadi va har bir `/api/boss/*` so'rovi
+ *  «Sessiya yo'q / Qayta kiring» xatini takrorlaydi. Shuning uchun
+ *  frontend sessiyasi ham yakunlanib, login ekranga qaytiladi. */
 function handleSessionExpired() {
     if (!staffToken) return;
     clearStaffToken();
     if (currentUser && currentUser.role !== 'customer') {
         showNotif('warning', 'Sessiya tugadi', 'Xavfsizlik uchun tizimga qaytadan kiring');
+        const name = currentUser.name || currentUser.login || '';
+        Security.endSession('server-session-expired');
+        currentUser = null;
+        cart = [];
+        shopCart = [];
+        showLoginScreen();
+        setupRoleBasedNav();
+        securityLog('session-expired', 'medium',
+            `Server sessiyasi tugadi — qayta kirish talab qilinadi (${name})`);
     }
 }
 
@@ -1346,8 +1541,14 @@ async function loadFromBackend() {
 
         // To'liq baza faqat xodim tokeni bilan ochiladi (server RBAC)
         const response = await fetch('/api/data', { headers: authHeaders() });
-        if (response.status === 401 || response.status === 403) {
-            console.warn('Xodim tokeni yo\'q yoki eskirgan — faqat ommaviy katalog yuklanadi');
+        if (response.status === 401) {
+            console.warn('Xodim tokeni eskirgan — sessiya yopiladi');
+            handleSessionExpired();
+            await loadPublicCatalog();
+            return;
+        }
+        if (response.status === 403) {
+            console.warn('Xodim tokeni yo\'q yoki huquq yetarli emas — faqat ommaviy katalog yuklanadi');
             clearStaffToken();
             await loadPublicCatalog();
             return;
@@ -1484,11 +1685,16 @@ let barcodeBuffer = '';
 let barcodeTimer = null;
 
 document.addEventListener('keypress', e => {
-    // Only in POS page, ignore when typing in inputs
+    // BARCODE SKANER FAQAT KASSA (POS) SAHIFASI OCHIQ BO'LGANDA ISHLAYDI.
+    // Login va boshqa sahifalarda Enter yoki boshqa tugmalar "barkod" sifatida
+    // qabul qilinmaydi — shu bois login sahifasida POS notification chiqmaydi
+    // ("Topilmadi! Barkod: Enter — mahsulot yo'q" kabi xatolik bo'lmaydi).
+    const pagePos = document.getElementById('page-pos');
+    if (!pagePos || !pagePos.classList.contains('active')) return;
+    // Matn maydonlarida yozish skaner hisoblanmaydi
     if (document.activeElement.tagName === 'TEXTAREA') return;
     if (document.activeElement.tagName === 'INPUT' &&
-        document.activeElement.id !== 'posSearch' &&
-        !document.getElementById('page-pos').classList.contains('active')) return;
+        document.activeElement.id !== 'posSearch') return;
 
     // Accumulate fast characters (barcode scanners send chars very quickly)
     barcodeBuffer += e.key;
@@ -1543,10 +1749,9 @@ function processBarcodeInput(code) {
 // ============================================================
 function togglePassword() {
     const inp = document.getElementById('loginPass');
-    const ico = document.querySelector('#loginPage .pass-toggle i');
-    if (!inp || !ico) return;
-    if (inp.type === 'password') { inp.type = 'text'; ico.className = 'fas fa-eye-slash'; }
-    else { inp.type = 'password'; ico.className = 'fas fa-eye'; }
+    if (!inp) return;
+    // Ko'z tugmasi — parolni ko'rsatishning YAGONA yo'li (foydalanuvchi tanlovi)
+    setLoginPasswordVisible(inp.type === 'password');
 }
 
 function selectUser(role) {
@@ -1643,35 +1848,84 @@ function openEmployeeLogin() {
 // LOGIN
 // ============================================================
 async function doLogin() {
-    const u = cleanText(document.getElementById('loginPhone')?.value, 80).toLowerCase();
+    const phoneInp = document.getElementById('loginPhone');
+    const phoneRaw = phoneInp?.value || '';
     const p = document.getElementById('loginPass')?.value || '';
 
-    if (hasSqlInjectionPattern(u) || hasSqlInjectionPattern(p) || hasXssPattern(u) || hasXssPattern(p)) {
+    clearLoginFieldErrors();
+
+    // ── Validatsiya (telefon + parol) ──
+    const phone = normalizePhoneUz(phoneRaw);
+    if (!phoneRaw.replace(/\D/g, '')) {
+        showLoginFieldError('loginPhoneError', 'Telefon raqamini kiriting');
+        phoneInp?.focus();
+        playError();
+        return;
+    }
+    if (!phone) {
+        showLoginFieldError('loginPhoneError', 'Telefon raqami noto\u2018g\u2018ri');
+        phoneInp?.focus();
+        playError();
+        return;
+    }
+    if (!p) {
+        showLoginFieldError('loginPassError', 'Parolni kiriting');
+        document.getElementById('loginPass')?.focus();
+        playError();
+        return;
+    }
+
+    if (hasSqlInjectionPattern(phone) || hasSqlInjectionPattern(p) || hasXssPattern(phone) || hasXssPattern(p)) {
         playError();
         showNotif('error', 'Xavfsizlik!', 'Login ma\'lumotlarida shubhali belgilar topildi');
-        securityLog('login-injection-block', 'high', `Login maydonida shubhali belgilar: "${u.slice(0, 40)}"`);
+        securityLog('login-injection-block', 'high', 'Kirish maydonida shubhali belgilar aniqlandi');
         return;
     }
 
-    // ── Brute-force himoyasi ──
-    const guard = loginGuardStatus(u);
+    // ── Brute-force himoyasi (telefon raqami bo'yicha) ──
+    // MUHIM (ROOT CAUSE FIX): lokal (brauzer) lockout FAQAT noto'g'ri parol
+    // urinishlarini cheklashi kerak. To'g'ri telefon + parol eski (stale)
+    // `tp_login_guard` holatidan bloklanmaydi — haqiqiy tekshiruv
+    // attemptLogin() da o'tkaziladi; muvaffaqiyatda clearLoginFailures()
+    // barcha urlanishlarni tozalaydi, xato bo'lsa onLoginRejected() ->
+    // registerLoginFailure() lockoutni qayta qo'llaydi (5 xato urinish -> blok).
+    // Server xavfsizligi o'zgartirilmaydi: IP-ratelimit (429) va bloklangan
+    // hisob (403 account_blocked) xuddi avvalgidek ishlaydi.
+    const guard = loginGuardStatus(phone);
     if (guard.locked) {
-        playError();
-        showNotif('error', 'Kirish bloklangan!',
-            `Juda ko'p noto'g'ri urinish. ${guard.minutes} daqiqadan keyin qayta urinib ko'ring.`);
-        securityLog('lockout', 'high', `Bloklangan hisobga kirish urinishi: ${u}`);
-        return;
+        securityLog('lockout', 'high', 'Bloklangan telefon raqami uchun login tekshiruvi: ' + phone);
     }
 
-    const loginBtn = document.querySelector('#loginPage button[onclick*="doLogin"]');
-    if (loginBtn) loginBtn.disabled = true;
+    // Yuklanish holati: tugma o'chadi — ikki marta bosish duplicate request yubormaydi
+    setLoginLoading(true);
     try {
-        await attemptLogin(u, p);
+        await attemptLogin(phone, p);
     } finally {
-        if (loginBtn) loginBtn.disabled = false;
+        setLoginLoading(false);
         // Turnstile tokeni bir martalik — muvaffaqiyatsiz urinishdan keyin
         // yangisini olish uchun widget'ni tozalaymiz.
         if (typeof TurnstileGate !== 'undefined' && !currentUser) TurnstileGate.reset();
+    }
+}
+
+/**
+ * Noto'g'ri login/parol urinishini qayd etadi va tegishli xabarni ko'rsatadi.
+ * Lokal lockout (tp_login_guard) faqat MANA SHU yerda — muvaffaqiyatsiz
+ * urinishlar uchun — qo'llanadi. Ma'lum miqdordagi xatodan so'ng
+ * registerLoginFailure() lockUntil ni o'rnatadi va keyingi xato urinishlar
+ * "Kirish bloklangan!" xabari bilan cheklanadi. To'g'ri parol bloklanmaydi.
+ */
+function onLoginRejected(loginKey) {
+    registerLoginFailure(loginKey);
+    playError();
+    const st = loginGuardStatus(loginKey);
+    if (st.locked) {
+        showNotif('error', 'Kirish bloklangan!',
+            `Juda ko'p noto'g'ri urinish. ${st.minutes} daqiqadan keyin qayta urinib ko'ring.`);
+        securityLog('lockout', 'high', 'Bloklangan telefon raqamiga kirish urinishi: ' +
+            String(loginKey || '').slice(0, 40));
+    } else {
+        showNotif('error', 'Xato!', `Login yoki parol noto'g'ri (${st.left} urinish qoldi)`);
     }
 }
 
@@ -1713,7 +1967,7 @@ async function attemptLogin(u, p) {
         serverOnline = true;
         clearLoginFailures(u);
         const local = findBaseUser(u);
-        const role = ['admin', 'cashier', 'manager', 'customer'].includes(server.user?.role)
+        const role = ROLE_RANK[String(server.user?.role || '').toLowerCase()] > 0
             ? server.user.role : 'customer';
         finishLogin({
             id: local?.id || Date.now(),
@@ -1732,14 +1986,7 @@ async function attemptLogin(u, p) {
     }
 
     if (server.invalid) {
-        const info = registerLoginFailure(u);
-        playError();
-        if (info.locked) {
-            showNotif('error', 'Hisob bloklandi!',
-                `${systemSettings.lockMinutes} daqiqa davomida kirish bloklandi`);
-        } else {
-            showNotif('error', 'Xato!', `Login yoki parol noto'g'ri (${info.left} urinish qoldi)`);
-        }
+        onLoginRejected(u);
         return;
     }
 
@@ -1747,14 +1994,7 @@ async function attemptLogin(u, p) {
     console.warn('Server javob bermadi — oflayn tekshiruv ishlatiladi');
     const result = verifyUserLogin(u, p);
     if (!result.ok) {
-        const info = registerLoginFailure(u);
-        playError();
-        if (info.locked) {
-            showNotif('error', 'Hisob bloklandi!',
-                `${systemSettings.lockMinutes} daqiqa davomida kirish bloklandi`);
-        } else {
-            showNotif('error', 'Xato!', `Login yoki parol noto'g'ri (${info.left} urinish qoldi)`);
-        }
+        onLoginRejected(u);
         return;
     }
 
@@ -1796,7 +2036,10 @@ function finishLogin(user) {
     initApp();
     // Xodim kirganda eng asosiy bo'lim ochiladi (do'kon yon panelning oxirida turadi)
     if (user.role !== 'customer') {
-        const firstPage = user.role === 'cashier' ? 'page-pos' : 'page-dashboard';
+        // BOSHLIQ kirganda uning o'z "Boshliq Dashboard"i ochiladi (page-boss),
+        // boshqa rollar o'z standart sahifasiga o'tadi.
+        const firstPage = user.role === 'cashier' ? 'page-pos'
+            : (user.role === 'boss' ? 'page-boss' : 'page-dashboard');
         const firstNav = Array.from(document.querySelectorAll('.nav-item')).find(n =>
             (n.getAttribute('onclick') || '').includes(`'${firstPage}'`));
         goTo(firstPage, firstNav);
@@ -1817,6 +2060,10 @@ function doLogout(force = false) {
     if (user && !force && !confirm('Tizimdan chiqmoqchimisiz?')) return;
     if (user) addLog('Chiqish', `${user.name} tizimdan chiqdi`);
     if (user) securityLog('logout', 'low', `${user.name} tizimdan chiqdi${force ? ' (majburiy)' : ''}`);
+    // Serverda sessiyani yopamiz (token hali borligida) — keyin lokal token o'chiriladi.
+    try {
+        fetch('/api/auth/logout', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }) }).catch(() => { });
+    } catch (e) { /* offline — lokal chiqish kifoya */ }
     // Server tokenini ham o'chiramiz (sessiya to'liq yopiladi)
     clearStaffToken();
     Security.endSession(force ? 'majburiy' : 'foydalanuvchi');
@@ -1839,12 +2086,10 @@ function doLogout(force = false) {
     const loginPhone = document.getElementById('loginPhone');
     const loginPass = document.getElementById('loginPass');
     if (loginPhone) loginPhone.value = '';
-    if (loginPass) {
-        loginPass.value = '';
-        loginPass.type = 'password';
-    }
-    const toggleIcon = document.querySelector('#loginPage .pass-toggle i');
-    if (toggleIcon) toggleIcon.className = 'fas fa-eye';
+    if (loginPass) loginPass.value = '';
+    // Parol holati doim yashirin holatga qaytadi
+    loginPasswordVisible = false;
+    setLoginPasswordVisible(false);
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     goTo('page-shop', document.getElementById('nav-shop'));
     setupRoleBasedNav();
@@ -1905,6 +2150,9 @@ function initApp() {
     if (typeof Branches !== 'undefined') Branches.init();
     // Kirim / chiqim / harajat (filial bo'yicha moliyaviy nazorat)
     if (typeof CashFlow !== 'undefined') CashFlow.init();
+    // Boshliq moduli faqat BOSHLIQ roliga yuklanadi — boshqa rollar uchun
+    // na moduli, na `/api/boss/*` so'rovi ishga tushmaydi.
+    if (typeof Boss !== 'undefined' && isBoss()) Boss.paintPeriodChips();
 }
 
 function showLoginScreen() {
@@ -1925,10 +2173,21 @@ function showLoginScreen() {
 function setupRoleBasedNav() {
     const role = currentUser?.role || 'guest';
     document.body.setAttribute('data-role', role);
+    // BOSHLIQ (boss) — eng yuqori rol, lekin sidebar'da FAQAT o'z menyusi ko'rinadi
+    // (8 bo'lim: Boshliq Dashboard, Xodimlar, Xodim savdosi, Mahsulotlar,
+    // Filiallar, Moliya, Hisobotlar, Amallar jurnali).
+    // Sozlamalar BOSHLIQ menyusiga kirmaydi — bu talabga ko'ra faqat boss
+    // bo'limlari ko'rinadi, qolgan rollar o'z `data-role` ro'yxati bilan cheklanadi.
+    const boss = isBoss();
     document.querySelectorAll('.nav-item, .nav-section').forEach(el => {
         const raw = el.getAttribute('data-role') || 'admin,cashier,manager';
         const roles = raw.split(',').map(r => r.trim()).filter(Boolean);
-        const visible = roles.includes(role) || roles.includes('all');
+        let visible;
+        if (boss) {
+            visible = roles.includes('boss');
+        } else {
+            visible = roles.includes(role) || roles.includes('all');
+        }
         if (visible) {
             el.classList.add('visible');
             el.style.display = '';
@@ -2009,7 +2268,15 @@ function goTo(pageId, el) {
     // 5) sarlavha (title/subtitle) yangilash - key sifatida pageId dan qismini olamiz
     const key = pageId.replace(/^page-/, '');
     const titles = {
-        dashboard: ['Dashboard', 'Xush kelibsiz, bugun ham yaxshi kun!'],
+        dashboard: ['Dashboard', 'Xush kelibsiz, bugun ham yaxshi dun!'],
+        boss: ['Boshliq Dashboard', 'Butun biznes holati — real ma\'lumot asosida'],
+        bossStaff: ['Xodimlar', 'Xodimlar nazorati, reyting va boshqaruv'],
+        bossStaffSales: ['Xodim savdosi', 'Kim qancha va nima sotganini ko\'rish'],
+        bossProducts: ['Mahsulotlar', 'Mahsulotlar, top sotuvchilar va kam qoldiqlar'],
+        bossBranches: ['Filiallar', 'Filiallar holati va o\'zaro solishtirish'],
+        bossFinance: ['Moliya', 'Savdo, kirim, chiqim, xarajat va sof natija'],
+        bossReports: ['Hisobotlar', 'Boshliq hisobotlari va CSV eksport'],
+        bossAudit: ['Amallar jurnali', 'Boshliq amalari tarixi'],
         shop: ['Do\'kon', 'Mahsulot tanlang va buyurtma bering'],
         pos: ['Kassa (POS)', "F2=To'lov | Esc=Tozala | F3=Kassa | F8=Chek"],
         products: ['Mahsulotlar', "Qo'shish, tahrirlash, o'chirish"],
@@ -2037,6 +2304,11 @@ function goTo(pageId, el) {
     }
 
     // Dynamic page renders
+    if (key.startsWith('boss')) {
+        // Boshliq sahifalari (boss, bossStaff, bossStaffSales, ...) o'z
+        // moduli orqali chiziladi (boss.js) — har bir bo'lim qayta yuklanadi.
+        if (typeof Boss !== 'undefined') Boss.onPageOpen(key);
+    }
     if (key === 'categories') { if (typeof renderCategoriesPage === 'function') renderCategoriesPage(); }
     if (key === 'warehouse') { if (typeof renderWarehousePage === 'function') renderWarehousePage(); }
     if (key === 'discounts') { if (typeof renderDiscountsPage === 'function') renderDiscountsPage(); }
@@ -2072,32 +2344,123 @@ function goTo(pageId, el) {
     // 7) maxsus element fokuslari
     if (key === 'pos') document.getElementById('posSearch')?.focus();
 
-    // 8) mobil qurilmalarda sidebarni yopish
-    if (window.innerWidth <= 900) toggleSidebar(false);
+    // 8) mobil qurilmalarda drawer'ni yopish (sahifa almashganda)
+    if (sidebarIsMobile()) resetSidebar();
 }
 
 function canAccessPage(pageId) {
     if (!currentUser) return pageId === 'page-shop';
+    // Boshliq eng yuqori rol — barcha bo'limlarga kira oladi.
+    if (isBoss()) return true;
     const nav = Array.from(document.querySelectorAll('.nav-item')).find(item => {
         const handler = item.getAttribute('onclick') || '';
         return handler.includes(`'${pageId}'`) || handler.includes(`"${pageId}"`);
     });
-    if (!nav) return true;
+    // Nav ro'yxatida bo'lmagan sahifa — faqat ochiq do'kon (page-shop) uchun ruxsat.
+    // Aks holda URL orqali bevosita kirishga urinish (to'g'ridan-to'g'ri manzil)
+    // ham rad etiladi, faqat menyuni yashirish bilan cheklanilmaydi.
+    if (!nav) return pageId === 'page-shop';
     const roles = (nav.getAttribute('data-role') || 'admin,cashier,manager').split(',').map(r => r.trim());
     return roles.includes(currentUser.role) || roles.includes('all');
 }
 
+// ============================================================
+// SIDEBAR TOGGLE — yagona holat (menuOpen) asosida
+// Desktop: .collapsed (84px, faqat ikonlar) <-> ochiq (276px, ikon + nom)
+// Mobil:   .open (chapdan drawer) + qoramtir overlay
+// Ikon (☰ <-> ✕) va sidebar holati DOIM sinxron.
+// ============================================================
+
+/** Mobil drawer chegarasi — CSS'dagi 768px media query bilan bir xil. */
+function sidebarIsMobile() {
+    return window.innerWidth <= 768;
+}
+
+/** ☰ / ✕ tugma holatini joriy sidebar holatiga moslashtiradi. */
+function syncSidebarToggleIcon() {
+    const btn = document.getElementById('sidebarToggleBtn');
+    const sb = document.getElementById('sidebar');
+    if (!btn || !sb) return;
+    const open = sidebarIsMobile()
+        ? sb.classList.contains('open')
+        : !sb.classList.contains('collapsed');
+    const icon = btn.querySelector('i');
+    if (icon) {
+        icon.className = open ? 'fas fa-times' : 'fas fa-bars';
+        // Yengil icon almashish animatsiyasi (takroran ishga tushadi)
+        icon.classList.remove('icon-pop');
+        void icon.getBoundingClientRect();
+        icon.classList.add('icon-pop');
+    }
+    const label = open ? 'Menyuni yopish' : 'Menyuni ochish';
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-expanded', String(open));
+}
+
+/** Mobil drawer ochiq bo'lganda qoramtir overlay'ni ko'rsatadi/yashiradi. */
+function syncSidebarOverlay() {
+    const overlay = document.getElementById('sidebarOverlay');
+    const sb = document.getElementById('sidebar');
+    if (!overlay || !sb) return;
+    const show = sidebarIsMobile() && sb.classList.contains('open');
+    overlay.classList.toggle('visible', show);
+    overlay.setAttribute('aria-hidden', String(!show));
+}
+
+/** Yagona sidebar holati: barcha klass facetlari bitta qiymatdan keladi. */
+function setSidebarOpen(open) {
+    const sb = document.getElementById('sidebar');
+    if (!sb) return;
+    const mobile = sidebarIsMobile();
+    sb.classList.toggle('open', open);
+    // Desktop: ochiq holat `.collapsed` olib tashlash bilan kengayadi
+    // Mobil: `.collapsed` faqat desktop qoidalariga taalluqli — ta'sir qilmaydi
+    if (!mobile) sb.classList.toggle('collapsed', !open);
+    syncSidebarToggleIcon();
+    syncSidebarOverlay();
+    // Mobil drawer ochiq bo'lganda orqa scroll qulflanadi
+    document.body.classList.toggle('sidebar-locked', open && mobile);
+}
+
+/** ☰ / ✕ tugma — desktopda yig'adi/ochadi, mobilda drawer ochadi/yopadi. */
 function toggleSidebar(force) {
     const sb = document.getElementById('sidebar');
     if (!sb) return;
-    const open = typeof force === 'boolean' ? force : !sb.classList.contains('open');
-    sb.classList.toggle('open', open);
-    const t = document.querySelector('.menu-toggle i');
-    if (t) t.className = open ? 'fas fa-times' : 'fas fa-bars';
+    const open = typeof force === 'boolean'
+        ? force
+        : (sidebarIsMobile() ? !sb.classList.contains('open') : sb.classList.contains('collapsed'));
+    setSidebarOpen(open);
 }
-// Ekran kattalashsa yoki Esc bosilsa — telefon menyusi yopiladi
-window.addEventListener('resize', () => { if (window.innerWidth > 900) toggleSidebar(false); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleSidebar(false); });
+
+/** Sidebarni majburiy yopish (overlay, Esc, sahifa almashinuvi). */
+function resetSidebar() {
+    setSidebarOpen(false);
+}
+
+// Ekran kattalashsa — telefon drawer yopiladi, desktop yopiq holatga qaytadi.
+// Faqat HAQIQIY o'lcham o'zgarishida ishlaydi (goTo'dagi sintetik resize e'tiborsiz).
+let _sidebarLastW = window.innerWidth;
+let _sidebarResizeTimer = null;
+window.addEventListener('resize', () => {
+    clearTimeout(_sidebarResizeTimer);
+    _sidebarResizeTimer = setTimeout(() => {
+        if (window.innerWidth === _sidebarLastW) return;
+        _sidebarLastW = window.innerWidth;
+        const sb = document.getElementById('sidebar');
+        if (!sb) return;
+        if (!sidebarIsMobile()) {
+            sb.classList.remove('open');
+            sb.classList.add('collapsed');
+        }
+        syncSidebarToggleIcon();
+        syncSidebarOverlay();
+        document.body.classList.toggle('sidebar-locked', sidebarIsMobile() && sb.classList.contains('open'));
+    }, 120);
+});
+
+// Esc — drawer yoki ochiq sidebarni yopadi
+document.addEventListener('keydown', e => { if (e.key === 'Escape') resetSidebar(); });
 
 // ============================================================
 // SCROLL REVEAL HELPERS
@@ -2143,8 +2506,19 @@ function toggleTheme() {
 // DASHBOARD
 // ============================================================
 function loadDashboard() {
-    ['admin-dashboard', 'cashier-dashboard', 'manager-dashboard'].forEach(id => document.getElementById(id).style.display = 'none');
+    ['admin-dashboard', 'cashier-dashboard', 'manager-dashboard'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
     const role = currentUser?.role || 'cashier';
+    // Boshliq — alohida "Boshliq Dashboard" bo'limiga o'tadi.
+    if (role === 'boss') {
+        const box = document.getElementById('boss-dashboard');
+        if (box) box.style.display = 'block';
+        goTo('page-boss', document.getElementById('nav-boss'));
+        if (typeof Boss !== 'undefined') Boss.load();
+        return;
+    }
     if (role === 'admin') { document.getElementById('admin-dashboard').style.display = 'block'; loadAdminDashboard(); loadAdminDashboardExtras(); }
     else if (role === 'cashier') { document.getElementById('cashier-dashboard').style.display = 'block'; loadCashierDashboard(); }
     else if (role === 'manager') { document.getElementById('manager-dashboard').style.display = 'block'; loadManagerDashboard(); }
@@ -4616,6 +4990,21 @@ document.addEventListener('keydown', e => {
     const tag = document.activeElement.tagName;
     const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
 
+    // LOGIN sahifasi ochiq bo'lsa faqat Enter (login submit) va Escape
+    // (oynalarni yopish) ishlaydi. F1/F2/F3/F8 va Ctrl+F — POS hotkeylari
+    // login sahifasida AKTIV EMAS (F3 kassaga, F2 checkoutga o'tmaydi).
+    const lp = document.getElementById('loginPage');
+    const loginVisible = !!lp && lp.style.display !== 'none';
+    if (loginVisible) {
+        if (e.key === 'Enter') { e.preventDefault(); doLogin(); return; }
+        if (e.key === 'Escape') {
+            hideSearchSuggestions();
+            const openModals = Array.from(document.querySelectorAll('.modal-overlay.open')).reverse();
+            if (openModals.length > 0) openModals.forEach(m => closeModal(m.id));
+        }
+        return;
+    }
+
     // F1 — Sayohat (xodimlar uchun qo'llanma) yoki Yordam oynasi
     if (e.key === 'F1') {
         e.preventDefault();
@@ -5365,6 +5754,22 @@ function clearLoginFailures(loginKey) {
     }
 }
 
+/**
+ * Development/test uchun eski (stale) frontend lock holatini xavfsiz tozalaydi.
+ * PRODUCTION lockout mexanizmini o'chirmaydi — faqat `tp_login_guard` brauzer
+ * kalitini tozalaydi. Konsoldan chaqirish mumkin:
+ *   resetLoginLock('+998901234554')  — bitta telefon uchun
+ *   resetLoginLock()                 — barcha urlanishlar uchun
+ */
+function resetLoginLock(loginKey) {
+    const store = loginGuardStore();
+    const key = String(loginKey || '').toLowerCase();
+    if (key) delete store[key];
+    else Object.keys(store).forEach(k => delete store[k]);
+    saveLoginGuardStore(store);
+    return Object.keys(store).length;
+}
+
 // ── Sessiya boshqaruvi ────────────────────────────────────
 function startSession(user) {
     const now = Date.now();
@@ -5464,8 +5869,12 @@ const Security = {
         }
     },
 
-    /** Sahifa yangilanganda amaldagi sessiyani tiklaydi (faqat muddati o'tmagan bo'lsa) */
-    restoreSession() {
+    /** Sahifa yangilanganda amaldagi sessiyani tiklaydi.
+     *  Lokal muddatdan tashqari SERVER tokeni (tp_token) ham tekshiriladi:
+     *  401 qaytsa (token eskirgan yoki sessiya bekor qilingan) sessiya
+     *  tiklanmaydi — foydalanuvchi to'g'ridan-to'g'ri login ekranga qoladi.
+     *  Server javob bermasa (oflayn) — lokal sessiya ishoniladi. */
+    async restoreSession() {
         if (currentUser) return;
         const sess = safeJsonParse(sessionStorage.getItem(SESSION_KEY) || 'null', null);
         if (!sess || !sess.login || !sess.expiresAt) return;
@@ -5473,6 +5882,18 @@ const Security = {
             try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
             securityLog('session-expired', 'low', 'Saqlangan sessiya muddati tugagan — qayta kirish talab qilinadi');
             return;
+        }
+        if (staffToken && navigator.onLine !== false) {
+            try {
+                const res = await fetchWithTimeout('/api/auth/session', { headers: authHeaders() }, 5000);
+                if (res.status === 401) {
+                    clearStaffToken();
+                    try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
+                    securityLog('session-expired', 'low', 'Server tokeni eskirgan — qayta kirish talab qilinadi');
+                    showNotif('warning', 'Sessiya tugadi', 'Xavfsizlik uchun qaytadan kiring');
+                    return;
+                }
+            } catch (e) { /* oflayn rejim — lokal sessiya ishoniladi */ }
         }
         const user = findBaseUser(sess.login);
         if (!user) return;
@@ -5551,9 +5972,13 @@ const Security = {
         if (summary && !notify) summary.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Yuklanmoqda...';
         try {
             const res = await fetch('/api/security/sessions', { headers: authHeaders() });
-            if (res.status === 401 || res.status === 403) {
+            if (res.status === 401) {
                 handleSessionExpired();
-                if (summary) summary.textContent = 'Ruxsat yo\'q — tizimga qaytadan kiring.';
+                if (summary) summary.textContent = 'Sessiya tugadi — tizimga qaytadan kiring.';
+                return;
+            }
+            if (res.status === 403) {
+                if (summary) summary.textContent = 'Ruxsat yo\'q.';
                 return;
             }
             const data = await res.json().catch(() => null);
@@ -7834,7 +8259,20 @@ function buildContractPrintHTML(c) {
 /* [CONTRACTS-MODULE-END] */
 
 applySavedTheme();
-function bootstrapApp() {
+async function bootstrapApp() {
+    // 1) Sahifa refresh/yuklashda saqlangan sessiyani tiklash (Security.restoreSession
+    //    ichki ravishda loginWithUser → initApp ni chaqiradi). Bu yo'q bo'lsa har bir
+    //    yangilanish guest rejimga qaytadi va sidebar navigatsiyasi "Ruxsat yo'q" bo'ladi.
+    //    restoreSession async — server tokeni (tp_token) yaroqliligi ham tekshiriladi.
+    if (!currentUser && typeof Security !== 'undefined' && typeof Security.restoreSession === 'function') {
+        try { await Security.restoreSession(); } catch (e) { /* buzilgan sessiya — guest rejimda davom */ }
+    }
+    if (currentUser) {
+        // Sessiya tiklandi: initApp allaqachon loginWithUser ichida ishga tushdi,
+        // Dashboard esa HTML'da default .active — qayta init qilmasdan chiqamiz.
+        renderShop();
+        return;
+    }
     initApp();
     goTo('page-shop', document.getElementById('nav-shop'));
     renderShop();
@@ -8126,9 +8564,13 @@ const Assistant = (() => {
             });
             const data = await res.json().catch(() => null);
 
-            if (res.status === 401 || res.status === 403) {
+            if (res.status === 401) {
                 handleSessionExpired();
-                history.push({ role: 'error', text: 'Ruxsat yo\'q. Faqat admin AI yordamchidan foydalanadi — qaytadan kiring.' });
+                history.push({ role: 'error', text: 'Sessiya tugadi. Qaytadan kiring.' });
+                return;
+            }
+            if (res.status === 403) {
+                history.push({ role: 'error', text: 'Ruxsat yo\'q. Faqat admin AI yordamchidan foydalanadi.' });
                 return;
             }
             if (res.status === 429) {
@@ -8223,6 +8665,9 @@ function loginWithUser(user) {
 }
 
 function toggleEmployeesDropdown(el) {
+    // Desktop yig'ilgan sidebarda submenu yashirin (CSS) — avval sidebarni ochamiz
+    const sb = document.getElementById('sidebar');
+    if (sb && !sidebarIsMobile() && sb.classList.contains('collapsed')) setSidebarOpen(true);
     const submenu = document.getElementById('employees-submenu');
     const arrow = el.querySelector('.submenu-arrow');
     if (submenu) {
@@ -9220,3 +9665,307 @@ async function submitReport(event) {
         showNotif('warning', 'Oflayn saqlandi!', 'Murojaat lokal keshda saqlandi (tarmoq xatosi).');
     }
 }
+
+/* ============================================================
+   POS / KASSA — REAL-TIME STOCK + CART SYNC
+   Professional rebuild:
+   - Stock on-cart = product.stock - cart.qty
+   - UI inline refresh (butun render emas)
+   - Add / ChangeQty / Remove / ClearCart WRAPPER
+   - Double-click guard
+   - Single card inline stock color badges
+   - renderProductGrid OVERRIDE (available stock + fa-plus icon)
+   ============================================================ */
+(function () {
+    'use strict';
+
+    /* ── 1. Source truth funksiyalar (generic, productId asosida) ── */
+
+    /** Savatdagi maxsulot soni (productId bo'yicha). */
+    function getCartQty(id) {
+        const n = Number(id);
+        const it = (typeof cart !== 'undefined' ? cart : window.cart || []).find(function (x) { return Number(x.id) === n; });
+        return it ? Math.max(0, Number(it.qty) || 0) : 0;
+    }
+
+    /** UI uchun available stock: real stock - savatdagi miqdor (negative bo'lmasligi kerak). */
+    function getAvailableStockForUI(id) {
+        const n = Number(id);
+        const p = (typeof products !== 'undefined' ? products : window.products || []).find(function (x) { return Number(x.id) === n; });
+        if (!p) return 0;
+        const realStock = Math.max(0, Number(p.stock) || 0);
+        const inCart = getCartQty(n);
+        return Math.max(0, realStock - inCart);
+    }
+
+    /* ── 2. Inline DOM refresh (bitta card / barcha cardlarni) ── */
+
+    function stockClass(avail) {
+        if (avail <= 0) return 'stock-zero';
+        if (avail <= 5)  return 'stock-low';
+        return 'stock-high';
+    }
+
+    /** Bitta mahsulot kartasini stock, button, badge, out class bilan yangilaydi. */
+    function refreshProductCardUI(id) {
+        const n = Number(id);
+        const cards = document.querySelectorAll('#productGrid .product-card[data-pid="' + n + '"]');
+        if (!cards.length) return;
+        const avail = getAvailableStockForUI(n);
+        const p = (typeof products !== 'undefined' ? products : window.products || []).find(function (x) { return Number(x.id) === n; });
+        const inCartQty = getCartQty(n);
+        cards.forEach(function (card) {
+            // 1) Stock text yangilashi
+            const stockEl = card.querySelector('.product-card-stock');
+            if (stockEl) {
+                const iconPrefix = avail <= 5 && avail > 0 ? '⚠️ ' : (avail === 0 ? '🚫 ' : '');
+                stockEl.classList.remove('stock-high', 'stock-low', 'stock-zero');
+                stockEl.classList.add(stockClass(avail));
+                const qtyEl = stockEl.querySelector('.stock-qty');
+                if (qtyEl) qtyEl.textContent = String(avail);
+                else stockEl.innerHTML = iconPrefix + 'Qoldiq: <span class="stock-qty">' + avail + '</span>';
+            }
+            // 2) Qo'shish tugmasi — disabled + ikon
+            const btn = card.querySelector('.product-add-btn');
+            if (btn) {
+                if (avail <= 0) {
+                    btn.setAttribute('disabled', 'disabled');
+                    btn.setAttribute('aria-disabled', 'true');
+                    btn.title = 'Qoldiq tugagan';
+                } else {
+                    btn.removeAttribute('disabled');
+                    btn.removeAttribute('aria-disabled');
+                    btn.title = 'Savatga qo\'shish';
+                }
+                if (!btn.querySelector('i')) {
+                    // Agar hozircha "+" text bo'lsa — FontAwesome ga almashtirish
+                    btn.innerHTML = '<i class="fas fa-plus"></i>';
+                }
+            }
+            // 3) Out class + label
+            card.classList.toggle('out', avail <= 0);
+            if (avail <= 0) {
+                card.classList.remove('in');
+            } else if (inCartQty > 0) card.classList.add('in');
+            // 4) Savat badge (posAfterCartUpdate bilan sinxron)
+            const badge = card.querySelector('.in-cart-badge');
+            if (badge) {
+                badge.textContent = inCartQty ? '×' + inCartQty : '';
+            }
+        });
+    }
+
+    /** Barcha mahsulot kartalarining stock textini yangilaydi. */
+    function refreshAllProductCardsInGrid() {
+        const ids = new Set();
+        document.querySelectorAll('#productGrid .product-card[data-pid]').forEach(function (c) {
+            ids.add(c.getAttribute('data-pid'));
+        });
+        ids.forEach(function (id) { refreshProductCardUI(id); });
+    }
+
+    // Global export qilib qo'shish uchun public
+    window.__getAvailableStock = getAvailableStockForUI;
+    window.__refreshProductCard = refreshProductCardUI;
+    window.__refreshAllStockCards = refreshAllProductCardsInGrid;
+
+    /* ── 3. Double-click / Concurrent guard ── */
+    const __posGuard = { locked: Object.create(null) };
+    function isLocked(id) { return !!__posGuard.locked[id]; }
+    function lockBriefly(id, ms) {
+        __posGuard.locked[id] = true;
+        setTimeout(function () { __posGuard.locked[id] = false; }, ms || 150);
+    }
+
+    /* ── 4. WRAPPER: addToCart ── */
+    const _origAddToCart = window.addToCart;
+    window.addToCart = function (id, isScan) {
+        const n = Number(id);
+        if (isNaN(n)) return;
+        if (isLocked(n)) return;
+        const avail = getAvailableStockForUI(n);
+        if (avail <= 0) {
+            (typeof playError === 'function') && playError();
+            (typeof showNotif === 'function') && showNotif('error', 'Xato!', 'Mahsulot qolmadi');
+            return;
+        }
+        lockBriefly(n, 160);
+        _origAddToCart.call(this, n, !!isScan);
+        // UI feedback
+        const card = document.querySelector('#productGrid .product-card[data-pid="' + n + '"] .product-add-btn');
+        if (card) card.classList.add('anim-press');
+        setTimeout(function () { card && card.classList.remove('anim-press'); }, 260);
+        refreshProductCardUI(n);
+        if (typeof refreshAllProductCardsInGrid === 'function') refreshAllProductCardsInGrid();
+    };
+
+    /* ── 5. WRAPPER: changeQty ── */
+    let _origChangeQty = window.changeQty;
+    window.changeQty = function (id, delta) {
+        const n = Number(id);
+        if (isNaN(n)) return;
+        const d = Number(delta) || 0;
+        if (d > 0) {
+            const a = getAvailableStockForUI(n);
+            if (a <= 0) {
+                (typeof playError === 'function') && playError();
+                (typeof showNotif === 'function') && showNotif('error', 'Yetarli emas!', 'Qoldiq tugadi');
+                return;
+            }
+            if (isLocked(n)) return;
+            lockBriefly(n, 140);
+        }
+        _origChangeQty.call(this, n, d);
+        refreshProductCardUI(n);
+        if (typeof refreshAllProductCardsInGrid === 'function') refreshAllProductCardsInGrid();
+    };
+
+    /* ── 6. WRAPPER: removeFromCart ── */
+    let _origRemoveFromCart = window.removeFromCart;
+    window.removeFromCart = function (id) {
+        const n = Number(id);
+        if (isNaN(n)) return;
+        _origRemoveFromCart.call(this, n);
+        if (!isNaN(n)) refreshProductCardUI(n);
+        if (typeof refreshAllProductCardsInGrid === 'function') refreshAllProductCardsInGrid();
+    };
+
+    /* ── 7. WRAPPER: clearCart ── */
+    let _origClearCart = window.clearCart;
+    window.clearCart = function () {
+        const cartArr = (typeof cart !== 'undefined') ? cart : (window.cart || []);
+        const before = (cartArr || []).slice();
+        _origClearCart.call(this);
+        before.forEach(function (it) { refreshProductCardUI(it.id); });
+        if (typeof refreshAllProductCardsInGrid === 'function') refreshAllProductCardsInGrid();
+    };
+
+    /* ── 8. WRAPPER: posAfterCartUpdate (badge + yangi stock inline) ── */
+    const orig = window.posAfterCartUpdate;
+    if (orig) {
+        window.posAfterCartUpdate = function () {
+            orig.call(this);
+            try { refreshAllProductCardsInGrid(); } catch (_) { /* ignore */ }
+        };
+    }
+
+    /* ── 9. WRAPPER: renderProductGrid (available stock + fa-plus + disabled) ── */
+    const __origRender = window.renderProductGrid;
+    if (__origRender) {
+        window.renderProductGrid = function () {
+            // Avval asl render'ni bajaradi
+            __origRender.call(this);
+            // Keyin:
+            // a) har bir product-card da stock-class qo'shiladi (available-stock)
+            // b) + btn content'i "<i class=fa-plus>" almashtirish
+            // c) disabled state
+            // d) stock text'ni QOLDAN AVAILABLE qilib o'zgartirish
+            const cards = document.querySelectorAll('#productGrid .product-card[data-pid]');
+            if (!cards.length) return;
+            cards.forEach(function (card) {
+                const id = card.getAttribute('data-pid');
+                if (!id) return;
+                const avail = getAvailableStockForUI(id);
+                const inCartQty = getCartQty(id);
+                const stockEl = card.querySelector('.product-card-stock');
+                if (stockEl) {
+                    // eski stock HTML ni to'liq available bilan almashtiramiz
+                    const prefix = avail <= 5 && avail > 0 ? '⚠️ ' : (avail === 0 ? '🚫 ' : '');
+                    stockEl.classList.remove('stock-high', 'stock-low', 'stock-zero');
+                    stockEl.classList.add(stockClass(avail));
+                    const strongExists = !!stockEl.querySelector('strong');
+                    if (strongExists) {
+                        stockEl.innerHTML = prefix + 'Qoldiq: <span class="stock-qty">' + avail + '</span>';
+                    } else {
+                        stockEl.innerHTML = prefix + 'Qoldiq: <span class="stock-qty">' + avail + '</span>';
+                    }
+                    stockEl.style.color = ''; // eski inline color ni o'chirib, CSS class dan foydalanamiz
+                }
+                const btn = card.querySelector('.product-add-btn');
+                if (btn) {
+                    // String "+" → FontAwesome ➕ almashtirish
+                    if (!btn.querySelector('i')) {
+                        btn.innerHTML = '<i class="fas fa-plus"></i>';
+                    }
+                    if (avail <= 0) {
+                        btn.setAttribute('disabled', 'disabled');
+                        btn.setAttribute('aria-disabled', 'true');
+                        btn.title = 'Qoldiq tugagan';
+                    } else {
+                        btn.removeAttribute('disabled');
+                        btn.removeAttribute('aria-disabled');
+                        btn.title = 'Savatga qo\'shish';
+                    }
+                }
+                card.classList.toggle('out', avail <= 0);
+                if (avail > 0 && inCartQty > 0) card.classList.add('in');
+                const badge = card.querySelector('.in-cart-badge');
+                if (badge) badge.textContent = inCartQty ? '×' + inCartQty : '';
+            });
+        };
+    }
+
+    /* ── 10. POS checkout / sale → savatdagi mahsulot sotilganda → yangi renderProductGrid trigger bo'ladi (asl flow) ── */
+    // Qo'shimcha: Checkout tugmasi bosilgandan so'ng to'liq grid'ni qayta render qilish
+    const origPosCheckout = window.posCheckout || window.makeSale || null;
+    if (origPosCheckout) {
+        const targetKey = typeof window.posCheckout === 'function' ? 'posCheckout' : (typeof window.makeSale === 'function' ? 'makeSale' : null);
+        if (targetKey) {
+            window[targetKey] = function () {
+                const cartArr = (typeof cart !== 'undefined') ? cart : (window.cart || []);
+                const before = (cartArr || []).slice();
+                const r = origPosCheckout.apply(this, arguments);
+                setTimeout(function () {
+                    before.forEach(function (it) { try { refreshProductCardUI(it.id); } catch (_) {} });
+                    try { if (typeof renderProductGrid === 'function') renderProductGrid(); } catch (_) {}
+                }, 120);
+                return r;
+            };
+        }
+    }
+
+    /* ── 11. Boot — birinchi navbatda render bo'lgandan keyin ham refresh ── */
+    const boot = function () {
+        try {
+            refreshAllProductCardsInGrid();
+        } catch (_) { /* ignore */ }
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        setTimeout(boot, 250);
+    }
+    window.addEventListener('load', function () { setTimeout(boot, 150); });
+
+    // Har bir goTo page-pos ochilganda grid'ni yangilash
+    let _origGoToPos = window.goTo;
+    if (_origGoToPos) {
+        window.goTo = function (pageId, el) {
+            const r = _origGoToPos.call(this, pageId, el);
+            if (pageId === 'page-pos') setTimeout(function () {
+                try { if (typeof renderProductGrid === 'function') renderProductGrid(); } catch (_) {}
+                try { if (typeof refreshAllProductCardsInGrid === 'function') refreshAllProductCardsInGrid(); } catch (_) {}
+            }, 120);
+            return r;
+        };
+    }
+
+    // saveProduct → render → product yangilansa ham grid render bo'ladi (aslida renderProductGrid) — va stock inline refresh
+    const __origSave = window.saveProduct;
+    if (__origSave) {
+        window.saveProduct = function () {
+            const r = __origSave.apply(this, arguments);
+            setTimeout(function () { try { refreshAllProductCardsInGrid(); } catch (_) {} }, 320);
+            return r;
+        };
+    }
+    const __origDel = window.deleteProduct;
+    if (__origDel) {
+        window.deleteProduct = function (id) {
+            const r = __origDel.call(this, id);
+            setTimeout(function () { try { refreshAllProductCardsInGrid(); } catch (_) {} }, 220);
+            return r;
+        };
+    }
+
+})();

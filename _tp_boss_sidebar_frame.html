@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>TP BOSHLIQ sidebar frame (vaqtinchalik o'lchov)</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; }
+    iframe { border: 0; display: block; }
+  </style>
+</head>
+
+<body>
+  <pre id="tp-out" style="display:none"></pre>
+  <script>
+    // _tp_boss_sidebar_frame.html — iframe orqali ANIQ viewport o'lchamini beradi.
+    // iframe ichida index.html + _tp_boss_sidebar_inject.js (ya'ni _tp_boss_sidebar_harness.html).
+    (function () {
+      var P = new URLSearchParams(location.search);
+      var W = +P.get('w'), H = +P.get('h');
+      var q = P.get('q') || '';
+      var out = document.getElementById('tp-out');
+      var f = document.createElement('iframe');
+      f.style.width = W + 'px';
+      f.style.height = H + 'px';
+      f.setAttribute('width', String(W));
+      f.setAttribute('height', String(H));
+      f.src = '_tp_boss_sidebar_harness.html' + (q.charAt(0) === '#' || q.charAt(0) === '?' ? '' : '?') + q;
+      document.body.appendChild(f);
+      function collect() {
+        try {
+          var d = f.contentDocument;
+          var el = d && d.getElementById('tp-out');
+          if (el && el.textContent) { out.textContent = el.textContent; return true; }
+        } catch (e) { /* cross-origin */ }
+        return false;
+      }
+      var tries = 0;
+      var iv = setInterval(function () {
+        if (collect() || ++tries > 400) clearInterval(iv);
+      }, 150);
+    })();
+  </script>
+</body>
+
+</html>

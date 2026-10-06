@@ -1,0 +1,7 @@
+Sayt domeni: (SITE_DOMAIN .env da yozilmagan) | kanonik yonaltirish: OFF
+Cloudflare: proxy ishonchi OFF | Turnstile: ochirilgan | avtomatik domen qoshish: OFF
+Server 5099-portda ishlamoqda. Baza turi: sqlite
+Debug rejimi: o'chirilgan (xavfsiz)
+To'lov tizimlari: faqat Naqd/Karta
+ * Serving Flask app 'app'
+ * Debug mode: off

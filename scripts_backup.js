@@ -233,14 +233,14 @@ function normalizeCustomer(c) {
 // USERS
 // ============================================================
 const USERS = [
-    { id: 1, login: 'admin', passHash: 'MTIzNDU2', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 2, login: 'cashier', passHash: 'MTIzNDU2', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 3, login: 'manager', passHash: 'MTIzNDU2', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 7, login: 'customer', passHash: 'MTIzNDU2', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
-    { id: 4, login: 'admin@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
-    { id: 5, login: 'cashier@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
-    { id: 6, login: 'manager@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
-    { id: 8, login: 'customer@tehnopark.uz', passHash: 'MTIzNDU2', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 1, login: 'admin', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 2, login: 'cashier', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 3, login: 'manager', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 7, login: 'customer', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
+    { id: 4, login: 'admin@tehnopark.uz', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Abdullayev Admin', role: 'admin', color: '#ff6b35' },
+    { id: 5, login: 'cashier@tehnopark.uz', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Karimov Kassir', role: 'cashier', color: '#10B981' },
+    { id: 6, login: 'manager@tehnopark.uz', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Toshmatov Menejer', role: 'manager', color: '#F59E0B' },
+    { id: 8, login: 'customer@tehnopark.uz', passHash: 'ZGl5b3JiZWs2Mjcy', name: 'Online Xaridor', role: 'customer', color: '#2563EB' },
 ];
 const ROLES = { admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
 

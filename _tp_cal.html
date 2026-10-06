@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>cal</title>
+</head>
+
+<body>
+  <pre id="cal" style="display:none"></pre>
+  <div style="height:3000px"></div>
+  <script>
+    document.getElementById('cal').textContent = JSON.stringify({
+      w: innerWidth, h: innerHeight, dpr: devicePixelRatio,
+      outerW: outerWidth, outerH: outerHeight,
+      clientW: document.documentElement.clientWidth,
+      clientH: document.documentElement.clientHeight,
+      screenW: screen.width, screenH: screen.height
+    });
+  </script>
+</body>
+
+</html>

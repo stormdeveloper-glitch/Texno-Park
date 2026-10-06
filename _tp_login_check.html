@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Login check (vaqtinchalik probe)</title>
+  <style>
+    html, body { margin: 0; }
+    iframe { width: 100vw; height: 100vh; border: 0; display: block; }
+  </style>
+</head>
+
+<body>
+  <iframe id="f" src="index.html"></iframe>
+  <pre id="tp-results" style="display:none"></pre>
+  <script>
+    // Parol faqat ishga tushirish paytida URL fragmentidan olinadi —
+    // bu faylda (va loyiha kodida) ochiq parol SAQLANMAYDI.
+    (async () => {
+      const HASH = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const PW = HASH.get('pw') || '';
+      const VP = (HASH.get('vp') || '').split('x').map(Number);
+      const out = { checks: [], info: {} };
+      const add = (ok, msg) => out.checks.push((ok ? 'PASS ' : 'FAIL ') + msg);
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const f = document.getElementById('f');
+      await new Promise(res => f.addEventListener('load', res, { once: true }));
+      const win = f.contentWindow, doc = f.contentDocument;
+      for (let i = 0; i < 80 && !doc.querySelector('.login-box'); i++) await sleep(100);
+      await sleep(1200);
+
+      // Aniq viewport: iframe o'lchami breakpointni AYNAN tekshirish uchun
+      // berilgan piksel o'lchamiga o'rnatiladi (masalan 360x640, 390x844).
+      if (VP.length === 2 && VP[0] > 0 && VP[1] > 0) {
+        f.style.width = VP[0] + 'px';
+        f.style.height = VP[1] + 'px';
+        // Layout barqarorlashuvini kutamiz: o'lcham o'zgarganda ilova mobil
+        // rejimga o'tadi va hujjat scrollbar gutter'i bir marta o'zgaradi
+        // (6px kenglik). O'lchovlar shundan KEYIN boshlanishi kerak.
+        let prevW = -1, steady = 0;
+        for (let i = 0; i < 60 && steady < 4; i++) {
+          await sleep(100);
+          const w = doc.documentElement.clientWidth;
+          if (w === prevW) steady++; else { steady = 0; prevW = w; }
+        }
+        out.info.clientWidth = doc.documentElement.clientWidth;
+        await sleep(400);
+      }
+
+      const q = s => doc.querySelector(s);
+      const lp = q('#loginPage');
+      // Element o'lchamlari hujjat koordinatalarida o'lchanadi: inputga focus
+      // bo'lganda konteyner avtomatik scroll qilsa ham "qimirlash" hisoblanmaydi
+      // (scroll sabab ekrandagi nisbiy o'rin o'zgarishi — panel siljishi emas).
+      const rect = el => {
+        const r = el.getBoundingClientRect();
+        const dx = (win.scrollX || 0) + (lp ? lp.scrollLeft : 0);
+        const dy = (win.scrollY || 0) + (lp ? lp.scrollTop : 0);
+        return [r.x + dx, r.y + dy, r.width, r.height].map(v => Math.round(v * 100) / 100);
+      };
+      const vpRect = el => { const r = el.getBoundingClientRect(); return [r.left, r.right]; };
+      const eq = (a, b, tol) => { tol = tol || 0.75; return a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= tol); };
+      const cs = el => win.getComputedStyle(el);
+
+      const box = q('.login-box'), phone = q('#loginPhone'), pass = q('#loginPass');
+      const btn = q('#loginPage .btn-login'), toggle = q('#loginPage .pass-toggle'), prefix = q('#loginPage .phone-prefix');
+      out.info.vp = [win.innerWidth, win.innerHeight];
+
+      // 1) Login formasi
+      add(!!box && !!phone && !!pass && !!btn && !!toggle, 'login elementlari mavjud (panel/telefon/parol/tugma/eye)');
+      add(!q('#loginPage .quick-section') && !q('#loginPage [data-role]'), 'rol kartochkalari yo`q');
+      add(phone.getAttribute('type') === 'tel', 'telefon input type=tel');
+      add(!!prefix && prefix.textContent.trim() === '+998', '+998 prefiksi: ' + (prefix ? prefix.textContent.trim() : 'yo`q'));
+
+      // 1b) Standart holat: maydonlar BO'SH, parol YASHIRIN (default hidden)
+      out.info.initial = {
+        phoneValue: phone.value, phoneAttr: phone.getAttribute('value'),
+        passType: pass.type, passValue: pass.value, passDefault: pass.defaultValue,
+        passPlaceholder: pass.placeholder, eyeIcon: q('#loginPage .pass-toggle i').className,
+        phoneAutocomplete: phone.getAttribute('autocomplete'),
+        passAutocomplete: pass.getAttribute('autocomplete')
+      };
+      add(phone.value === '' && !phone.hasAttribute('value'), 'telefon maydoni bo`sh (default qiymat yo`q)');
+      add(phone.getAttribute('autocomplete') === 'username', 'telefon autocomplete=username (tel-national emas)');
+      add(pass.type === 'password', 'parol default holati: type=password (yashirin)');
+      add(pass.value === '' && pass.defaultValue === '' && !pass.hasAttribute('value'),
+        'parol maydonida default qiymat YO`Q (parol hardcode qilinmagan)');
+      add(pass.placeholder === '••••••••••••', 'parol maskasi ko`rinishi: ' + pass.placeholder.length + ' ta •');
+      add(pass.getAttribute('autocomplete') === 'current-password', 'parol autocomplete=current-password');
+      add(q('#loginPage .pass-toggle i').className.indexOf('fa-eye-slash') === -1,
+        'ko`z ikonkasi boshlang`ich holatda "yashirin" (fa-eye)');
+      add(doc.documentElement.outerHTML.indexOf('tel-national') === -1, 'HTMLda tel-national autofill yo`q');
+
+      // 2) Sig'imi / overflow
+      const overflow = doc.documentElement.scrollWidth - win.innerWidth;
+      add(overflow <= 0, 'gorizontal overflow yo`q: ' + overflow);
+      [['panel', box], ['telefon', phone], ['parol', pass], ['Kirish tugmasi', btn]].forEach(([n, el]) => {
+        const r = vpRect(el);
+        add(r[0] >= -0.75 && r[1] <= win.innerWidth + 0.75,
+          n + ' ekranga sig`adi (l=' + Math.round(r[0]) + ', r=' + Math.round(r[1]) + ' / vp=' + win.innerWidth + ')');
+      });
+
+      // 3) Barqarorlik (focus / eye / hover / scroll)
+      const snap = () => ({ box: rect(box), phone: rect(phone), pass: rect(pass), btn: rect(btn), toggle: rect(toggle),
+        tr: [cs(box).transform, cs(btn).transform, cs(pass).transform].join('|') });
+      const base = snap();
+      const stable = label => {
+        const s = snap();
+        const keys = ['box', 'phone', 'pass', 'btn'];
+        const same = keys.every(k => eq(base[k], s[k]));
+        const eye = eq(base.toggle, s.toggle, 6);
+        const diff = keys.filter(k => !eq(base[k], s[k]))
+          .map(k => k + ':' + JSON.stringify(base[k]) + '->' + JSON.stringify(s[k])).join(' ');
+        const sb = win.innerWidth - doc.documentElement.clientWidth;
+        add(same, label + ': panel/inputlar qimirlamadi' + (same ? '' : ' | ' + diff + ' | scrollbar=' + sb
+          + ' | clientW=' + doc.documentElement.clientWidth));
+        add(eye, label + ': eye tugmasi joyida (o`lcham ±6px)');
+        add(base.tr === s.tr, label + ': transform holati o`zgarmadi');
+      };
+
+      phone.focus(); await sleep(200);
+      add(doc.activeElement === phone, 'telefon focus oladi');
+      stable('telefon focus');
+      pass.focus(); await sleep(200);
+      add(doc.activeElement === pass, 'parol focus oladi');
+      stable('parol focus');
+      toggle.click(); await sleep(250);
+      add(pass.type === 'text', 'eye: parol ko`rinadi (type=text)');
+      add(q('#loginPage .pass-toggle i').className.indexOf('fa-eye-slash') !== -1, 'eye: ikonka fa-eye-slash');
+      add(toggle.getAttribute('aria-label') === 'Parolni yashirish', 'eye: aria-label = Parolni yashirish');
+      stable('parolni ko`rsatish');
+      toggle.click(); await sleep(250);
+      add(pass.type === 'password', 'eye: parol yashiriladi (type=password)');
+      add(q('#loginPage .pass-toggle i').className.indexOf('fa-eye-slash') === -1, 'eye: ikonka fa-eye');
+      add(toggle.getAttribute('aria-label') === "Parolni ko'rsatish", "eye: aria-label = Parolni ko'rsatish");
+      stable('parolni yashirish');
+
+      // 3b) Qo'riqchi: ruxsatsiz "ochish" (autofill/kengaytma) darhol bekor qilinadi
+      pass.setAttribute('type', 'text');
+      await sleep(150);
+      add(pass.type === 'password', 'qo`riqchi: ruxsatsiz type=text darhol bekor qilindi');
+      add(q('#loginPage .pass-toggle i').className.indexOf('fa-eye-slash') === -1, 'qo`riqchi: ikonka fa-eye holatida');
+      pass.focus(); await sleep(150);
+      add(pass.type === 'password', 'qo`riqchi: focus paytida ham yashirin');
+      btn.focus(); await sleep(150); stable('tugma focus');
+
+      add(cs(box).transform === 'none', 'panel transform=none (' + cs(box).transform + ')');
+      add(cs(box).animationName === 'loginFadeIn' || cs(box).animationName === 'none',
+        'panel animatsiyasi: ' + cs(box).animationName);
+      out.info.transforms = { box: cs(box).transform, btn: cs(btn).transform, eye: cs(toggle).transform };
+
+      const m = new win.MouseEvent('mousemove', { bubbles: true, clientX: win.innerWidth - 40, clientY: win.innerHeight - 40 });
+      doc.dispatchEvent(m); await sleep(200);
+      stable('sichqoncha harakati');
+
+      lp.scrollTop = 120; await sleep(150);
+      stable('scroll');
+      lp.scrollTop = 0; await sleep(150);
+
+
+      // 4) Telefon maskasi
+      phone.value = '+998908480921';
+      phone.dispatchEvent(new win.Event('input', { bubbles: true }));
+      await sleep(120);
+      out.info.masked_paste = phone.value;
+      add(phone.value === '90 848 09 21', 'paste maskasi: "' + phone.value + '"');
+      add(win.normalizePhoneUz(phone.value) === '+998908480921', 'normalizatsiya: ' + win.normalizePhoneUz(phone.value));
+      phone.value = '';
+      for (const ch of '908480921') { phone.value += ch; phone.dispatchEvent(new win.Event('input', { bubbles: true })); await sleep(15); }
+      out.info.masked_typing = phone.value;
+      add(phone.value === '90 848 09 21', 'yozish maskasi: "' + phone.value + '"');
+      add(phone.value.indexOf('+998') === -1, 'foydalanuvchi +998 yozmaydi (prefiks tayyor)');
+
+      // 4b) Har bir account raqami ANIQ maskalanadi (aralashib ketmaydi)
+      const EXPECT = { '908480921': '90 848 09 21', '902750921': '90 275 09 21', '905450921': '90 545 09 21' };
+      Object.keys(EXPECT).forEach(digits => {
+        phone.value = digits;
+        phone.dispatchEvent(new win.Event('change', { bubbles: true }));
+        add(phone.value === EXPECT[digits],
+          'maska ' + digits + ' -> "' + phone.value + '" (kutilgan: "' + EXPECT[digits] + '")');
+        add(win.normalizePhoneUz(phone.value) === '+998' + digits,
+          'normalizatsiya +998' + digits + ' -> ' + win.normalizePhoneUz(phone.value));
+      });
+      // To'liq ko'rinish: +998 prefiksi + maska
+      phone.value = '908480921';
+      phone.dispatchEvent(new win.Event('change', { bubbles: true }));
+      const fullVisual = prefix.textContent.trim() + ' ' + phone.value;
+      out.info.fullVisual = fullVisual;
+      add(fullVisual === '+998 90 848 09 21', 'UI ko`rinishi: "' + fullVisual + '"');
+      add(fullVisual.indexOf('849') === -1, 'noto`g`ri "849" varianti yo`q');
+      // Brauzer autofill'i (change) bilan kelgan to'liq format ham to'g'ri ishlanadi
+      phone.value = '998908480921';
+      phone.dispatchEvent(new win.Event('change', { bubbles: true }));
+      add(phone.value === '90 848 09 21', 'autofill (998908480921) to`g`ri maskalanadi: "' + phone.value + '"');
+
+      // 5) Resize: tashqi o'lcham o'zgarganda panel barqaror
+      const shrinkW = VP.length === 2 ? Math.max(320, VP[0] - 40) : Math.max(320, Math.round(win.innerWidth * 0.62));
+      const shrinkH = VP.length === 2 ? Math.max(480, VP[1] - 80) : Math.max(560, Math.round(win.innerHeight * 0.8));
+      f.style.width = shrinkW + 'px';
+      f.style.height = shrinkH + 'px';
+      await sleep(500);
+      const afterResize = win.innerWidth;
+      const r2 = box.getBoundingClientRect();
+      add(r2.left >= -0.75 && r2.right <= afterResize + 0.75,
+        'resize (' + win.innerWidth + 'px): panel sig`adi (l=' + Math.round(r2.left) + ', r=' + Math.round(r2.right) + ')');
+      add(doc.documentElement.scrollWidth - afterResize <= 0,
+        'resize: gorizontal overflow yo`q: ' + (doc.documentElement.scrollWidth - afterResize));
+      add(cs(box).transform === 'none', 'resize: panel transform=none');
+      f.style.width = VP.length === 2 ? VP[0] + 'px' : '100vw';
+      f.style.height = VP.length === 2 ? VP[1] + 'px' : '100vh';
+      await sleep(400);
+
+      // 6) To'liq login oqimi (oflayn rejim — APK bilan bir xil yo'l)
+      //    currentUser `let` bilan e'lon qilingan — window'da ko'rinmaydi,
+      //    shuning uchun natijani interfeys holatidan aniqlaymiz.
+      const ROLE_LABEL = { admin: 'Administrator', manager: 'Menejer', cashier: 'Kassa Xodimi' };
+      const ROLE_NAV = { admin: ['nav-products', null], manager: ['nav-cashflow', 'nav-products'], cashier: ['nav-customers', 'nav-cashflow'] };
+      const HASHD = HASH;
+      const PHONE_DIGITS = (HASHD.get('phone') || '908480921').replace(/\D/g, '');
+      const ROLE = HASHD.get('role') || 'admin';
+      out.info.role = ROLE;
+      if (PW) {
+        const logs = [];
+        ['log', 'warn', 'error'].forEach(k => {
+          const orig = win.console[k].bind(win.console);
+          win.console[k] = (...a) => { logs.push(k + ': ' + a.map(x => String(x)).join(' ').slice(0, 140)); orig(...a); };
+        });
+        win.addEventListener('error', e => logs.push('window.error: ' + String(e.message)));
+        win.addEventListener('unhandledrejection', e => logs.push('unhandledrejection: ' + String(e.reason)));
+
+        const v = win.verifyUserLogin('+998' + PHONE_DIGITS, PW);
+        out.info.verify = { ok: v.ok, reason: v.reason, role: v.user ? v.user.role : null };
+        add(v.ok === true && v.user && v.user.role === ROLE,
+          'xesh tekshiruvi: ok=' + v.ok + ' reason=' + v.reason + ' role=' + (v.user ? v.user.role : '—'));
+        const wrong = win.verifyUserLogin('+998' + PHONE_DIGITS, PW + 'xato');
+        add(wrong.ok === false, 'noto`g`ri parol xesh bilan mos kelmaydi (reason=' + wrong.reason + ')');
+
+        phone.value = ''; pass.value = '';
+        for (const ch of PHONE_DIGITS) { phone.value += ch; phone.dispatchEvent(new win.Event('input', { bubbles: true })); }
+        pass.value = PW;
+        try { await win.doLogin(); } catch (e) { logs.push('doLogin xatosi: ' + String(e && e.message)); }
+        const appEl = doc.getElementById('app');
+        for (let i = 0; i < 60 && appEl.style.display !== 'block'; i++) await sleep(200);
+        const sideUser = (q('#sideUser') || {}).textContent || '';
+        const sideRole = (q('#sideRole') || {}).textContent || '';
+        out.info.user = { sideUser: sideUser, sideRole: sideRole };
+        out.info.logs = logs;
+        add(!logs.some(l => l.indexOf(PW) !== -1), 'consolega ochiq parol chiqmadi (' + logs.length + ' yozuv)');
+        add(appEl.style.display === 'block', 'login o`tdi (telefon + parol) — ilova ochildi');
+        add(sideRole === ROLE_LABEL[ROLE], 'rol avtomatik aniqlandi: "' + sideRole + '" (' + sideUser + ')');
+        add(q('#loginPage').classList.contains('active') === false, 'login sahifasi yopildi (redirect)');
+        const navPair = ROLE_NAV[ROLE] || [];
+        if (navPair[0]) {
+          const el = q('#' + navPair[0]);
+          add(!!el && el.style.display !== 'none', ROLE.toUpperCase() + ' huquqi: #' + navPair[0] + ' menyusi ko`rinadi');
+        }
+        if (navPair[1]) {
+          const el = q('#' + navPair[1]);
+          add(!!el && el.style.display === 'none', ROLE.toUpperCase() + ' huquqi: #' + navPair[1] + ' yashirilgan');
+        }
+        add(phone.value === win.formatPhoneMaskUz(PHONE_DIGITS),
+          'kirishda ishlatilgan telefon maskasi: "' + phone.value + '"');
+        const store = (() => { try { return JSON.stringify(win.localStorage) + JSON.stringify(win.sessionStorage); } catch (e) { return ''; } })();
+        add(store.indexOf(PW) === -1, 'localStorage/sessionStorage`da ochiq parol yo`q');
+        add(doc.documentElement.outerHTML.indexOf(PW) === -1, 'DOM (HTML)da ochiq parol yo`q');
+        add(pass.type === 'password', 'parol maydoni ko`rinmas holatda (mask)');
+
+        // 7) Logout
+        win.doLogout(true);
+        await sleep(700);
+        add(q('#loginPage').classList.contains('active'), 'logout: login sahifasi qaytdi');
+        add(appEl.style.display === 'none', 'logout: ilova yopildi (sessiya tugadi)');
+        add((win.sessionStorage.getItem('tp_token') || '') === '', 'logout: token o`chirildi');
+        add(phone.value === '' && pass.value === '' && pass.type === 'password', 'logout: maydonlar tozalandi + parol yashirin');
+        add(q('#loginPage .pass-toggle i').className.indexOf('fa-eye-slash') === -1, 'logout: ko`z ikonkasi fa-eye holatida');
+        add(toggle.getAttribute('aria-label') === "Parolni ko'rsatish", "logout: aria-label = Parolni ko'rsatish");
+      }
+
+      document.getElementById('tp-results').textContent = JSON.stringify(out);
+    })().catch(e => {
+      document.getElementById('tp-results').textContent = JSON.stringify({ error: String((e && e.message) || e) });
+    });
+  </script>
+</body>
+
+</html>

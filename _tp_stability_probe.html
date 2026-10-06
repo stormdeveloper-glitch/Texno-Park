@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Login stability probe (vaqtinchalik)</title>
+  <style>
+    html, body { margin: 0; }
+    iframe { width: 100vw; height: 100vh; border: 0; display: block; }
+  </style>
+</head>
+
+<body>
+  <iframe id="f" src="index.html"></iframe>
+  <pre id="tp-results" style="display:none"></pre>
+  <script>
+    (async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const f = document.getElementById('f');
+      // ?w=390&h=844 — iframe viewportni aniq o'lchamga qotirish (mobil sinov)
+      const prm = new URLSearchParams(location.search);
+      const wParam = parseInt(prm.get('w') || '0', 10);
+      const hParam = parseInt(prm.get('h') || '0', 10);
+      if (wParam > 0 && hParam > 0) {
+        const box = prm.get('box') === '1';
+        f.style.width = wParam + 'px';
+        f.style.height = hParam + 'px';
+        if (box) {
+          f.style.margin = '10px';
+          f.style.border = '2px solid #888';
+        }
+      }
+      await new Promise(res => { f.addEventListener('load', res, { once: true }); });
+      const win = f.contentWindow, doc = f.contentDocument;
+      for (let i = 0; i < 80 && !doc.querySelector('.login-box'); i++) await sleep(100);
+      await sleep(1800); // fade-in + async config (turnstile/google) tugashi
+
+      const results = { checks: [], info: {} };
+      const add = (ok, msg) => results.checks.push((ok ? 'PASS ' : 'FAIL ') + msg);
+      const q = s => doc.querySelector(s);
+      const qa = s => [...doc.querySelectorAll(s)];
+      const rect = el => {
+        const r = el.getBoundingClientRect();
+        return [r.x, r.y, r.width, r.height].map(v => Math.round(v * 100) / 100);
+      };
+      const eq = (a, b, tol) => { tol = tol || 0.75; return a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= tol); };
+      const scrollProbe = () => {
+        const de = doc.scrollingElement || doc.documentElement;
+        const lpp = q('#loginPage');
+        return {
+          winY: Math.round(win.scrollY),
+          docScroll: de.scrollHeight - win.innerHeight,
+          lpScroll: lpp.scrollHeight - lpp.clientHeight,
+          lpTop: Math.round(lpp.scrollTop),
+          deTop: Math.round(de.scrollTop),
+          bodyTop: Math.round(doc.body.scrollTop || 0)
+        };
+      };
+      const lp = q('#loginPage'), lb = q('.login-box'), btn = q('#loginPage .btn-login');
+      const icon = q('.login-logo .logo-icon'), cards = qa('#loginPage .quick-section');
+      const base = rect(lb);
+
+      results.info.vp = [win.innerWidth, win.innerHeight];
+      results.info.base = base;
+      results.info.sizes = {
+        docScrollH: doc.scrollingElement.scrollHeight,
+        docClientH: doc.scrollingElement.clientHeight,
+        lpScrollH: lp.scrollHeight,
+        lpClientH: lp.clientHeight,
+        lbH: Math.round(lb.getBoundingClientRect().height * 100) / 100,
+        turnstile: (() => { const t = q('#turnstileWrap'); return t ? win.getComputedStyle(t).display : 'n/a'; })(),
+        lpOverflowY: win.getComputedStyle(lp).overflowY,
+        lpHeight: win.getComputedStyle(lp).height,
+        lpMinHeight: win.getComputedStyle(lp).minHeight,
+        lpAlignItems: win.getComputedStyle(lp).alignItems,
+        lpDisplay: win.getComputedStyle(lp).display,
+        lbBottom: Math.round(lb.getBoundingClientRect().bottom * 100) / 100,
+        btnBottom: Math.round(btn.getBoundingClientRect().bottom * 100) / 100,
+        googleBottom: (() => {
+          const g = q('#loginPage .login-google-block');
+          return g ? Math.round(g.getBoundingClientRect().bottom * 100) / 100 : null;
+        })(),
+        vpH: win.innerHeight
+      };
+
+      // Karta to'liq (Kirish + Google blokigacha) viewport ichidami?
+      const gBlock = q('#loginPage .login-google-block');
+      const cardBottom = gBlock ? gBlock.getBoundingClientRect().bottom : lb.getBoundingClientRect().bottom;
+      add(cardBottom <= win.innerHeight + 1,
+        'karta to`liq sig`adi (card bottom=' + Math.round(cardBottom) + ' <= vpH=' + win.innerHeight + ')');
+
+      // 0) Sahifada vertikal scroll bormi (root cause tekshiruvi)
+      const sp0 = scrollProbe();
+      add(sp0.docScroll <= 1, 'body/document vertikal scroll yo`q (doc: ' + sp0.docScroll + 'px)');
+      add(sp0.lpScroll <= 1, '#loginPage ichki scroll yo`q (lp: ' + sp0.lpScroll + 'px)');
+
+      // 1) Scroll sinovi: scroll qilinsa panel viewportda siljiyaptimi?
+      win.scrollTo(0, 400);
+      lp.scrollTop = 400;
+      await sleep(200);
+      const afterScroll = rect(lb);
+      add(Math.abs(afterScroll[1] - base[1]) <= 1, 'scroll: panel siljishi ' +
+        (Math.abs(afterScroll[1] - base[1]) <= 1 ? 'yo`q' : 'BOR dy=' + (afterScroll[1] - base[1])) +
+        ' (winY=' + Math.round(win.scrollY) + ', lpTop=' + lp.scrollTop + ')');
+      win.scrollTo(0, 0);
+      lp.scrollTop = 0;
+      await sleep(250);
+      add(eq(base, rect(lb), 1), 'scroll resetdan keyin panel asl holatida');
+
+      const step = async (label, fn, wait) => {
+        if (fn) await fn();
+        await sleep(wait || 200);
+        const r = rect(lb);
+        const dr = [r[0] - base[0], r[1] - base[1], r[2] - base[2], r[3] - base[3]].map(v => Math.round(v * 100) / 100);
+        add(eq(base, r, 0.75), label + ': panel stable (d=' + JSON.stringify(dr) + ')');
+        return r;
+      };
+      await step('mouse hover (forced :hover)', async () => {
+        const parts = [];
+        for (const sh of doc.styleSheets) {
+          try {
+            let text = '';
+            if (sh.ownerNode && sh.ownerNode.textContent) text = sh.ownerNode.textContent;
+            else if (sh.href) {
+              const u = new URL(sh.href, win.location.href);
+              if (u.origin !== win.location.origin) continue;
+              text = await (await fetch(u.href)).text();
+            }
+            if (text && text.indexOf(':hover') !== -1) parts.push(text.replace(/:hover/g, '.tp-force-hover'));
+          } catch (e) { }
+        }
+        const st = doc.createElement('style');
+        st.textContent = parts.join('\n');
+        doc.head.appendChild(st);
+        qa('#loginPage *').forEach(el => el.classList.add('tp-force-hover'));
+        lb.classList.add('tp-force-hover');
+        results.info.hoverSheets = parts.length;
+      }, 450);
+      await step('hover klon tozalash', async () => {
+        qa('#loginPage .tp-force-hover').forEach(el => el.classList.remove('tp-force-hover'));
+      }, 250);
+
+      await step('username focus', () => doc.getElementById('loginUser').focus());
+      await step('username blur', () => doc.getElementById('loginUser').blur());
+      await step('password focus', () => doc.getElementById('loginPass').focus());
+      await step('password blur', () => doc.getElementById('loginPass').blur());
+      await step('password show', () => q('#loginPage .pass-toggle').click());
+      results.info.passType1 = doc.getElementById('loginPass').type;
+      await step('password hide', () => q('#loginPage .pass-toggle').click());
+      results.info.passType2 = doc.getElementById('loginPass').type;
+
+      for (let i = 0; i < cards.length; i++) {
+        await step('rol ' + (i + 1) + ' (' + cards[i].querySelector('.section-title').textContent.trim() + ') tanlash', () => cards[i].click(), 300);
+      }
+      add(cards.filter(c => c.classList.contains('selected')).length === 1, 'rol tanlashda faqat 1 ta selected');
+      // 3) Kirish tugmasi (login funksiyasi tegilmagan — faqat bosilib, pozitsiya o'lchanadi)
+      await step('Kirish tugmasi bosish', () => btn.click(), 400);
+      await step('Kirish tugmasi blur', () => btn.blur(), 200);
+
+      // 4) Fokus "scroll into view" sinovi (haqiqiy qimirlash sababini aniqlaydi)
+      doc.getElementById('loginPass').blur();
+      await sleep(200);
+      const beforeFocus = scrollProbe();
+      doc.getElementById('loginPass').focus();
+      await sleep(250);
+      const afterFocus = scrollProbe();
+      const focusMoved = afterFocus.winY !== beforeFocus.winY || afterFocus.lpTop !== beforeFocus.lpTop;
+      add(!focusMoved, 'focus scroll jump yo`q (winY ' + beforeFocus.winY + '->' + afterFocus.winY +
+        ', lpTop ' + beforeFocus.lpTop + '->' + afterFocus.lpTop + ')');
+
+      // 5) Scrollbar paydo bo'lishi
+      results.info.scrollbar = win.innerWidth - doc.documentElement.clientWidth;
+      add(results.info.scrollbar <= 0, 'vertikal scrollbar yo`q (kenglik: ' + results.info.scrollbar + 'px)');
+
+      // 6) Transform / animation audit
+      const csLb = win.getComputedStyle(lb);
+      results.info.anim = {
+        box: csLb.animationName, icon: win.getComputedStyle(icon).animationName,
+        btn: win.getComputedStyle(btn).animationName,
+        cards: cards.map(c => win.getComputedStyle(c).animationName).join(','),
+        boxTransform: csLb.transform, iconTransform: win.getComputedStyle(icon).transform,
+        btnTransform: win.getComputedStyle(btn).transform,
+        cardsTransform: cards.map(c => win.getComputedStyle(c).transform).join(',')
+      };
+      add(csLb.animationName === 'loginFadeIn' || csLb.animationName === 'none', 'box animatsiya: faqat fade (' + csLb.animationName + ')');
+      add(csLb.transform === 'none' && win.getComputedStyle(icon).transform === 'none' &&
+        win.getComputedStyle(btn).transform === 'none' && cards.every(c => win.getComputedStyle(c).transform === 'none'),
+        'login panelda transform yo`q');
+      add(cards.every(c => win.getComputedStyle(c).animationName === 'none') &&
+        win.getComputedStyle(icon).animationName === 'none' && win.getComputedStyle(btn).animationName === 'none',
+        'icon/btn/kartalarda continuous animatsiya yo`q');
+
+      // 7) Fon rasm saqlanganmi?
+      const bg = win.getComputedStyle(lp);
+      add(/texno-park-n1-exterior\.jpg/.test(bg.backgroundImage), 'fon rasmi saqlangan (' + bg.backgroundImage.slice(0, 60) + ')');
+      add(bg.backgroundSize === 'cover' && bg.backgroundRepeat === 'no-repeat', 'fon: cover + no-repeat');
+
+      // 8) Role tanlash layoutni buzmaydimi (border qalinligi)?
+      const r0 = rect(cards[0]);
+      cards[0].click();
+      await sleep(250);
+      const r1 = rect(cards[0]);
+      add(eq(r0, r1, 0.5), 'selected border layoutni siljitmaydi (d=' +
+        JSON.stringify([r1[0] - r0[0], r1[1] - r0[1], r1[2] - r0[2], r1[3] - r0[3]]) + ')');
+
+      // 9) ASYNC balandlik o'zgarishi: CAPTCHA paydo bo'lsa panel qimirlaydimi?
+      const topBefore = rect(lb)[1];
+      const tw = q('#turnstileWrap');
+      const fake = doc.createElement('div');
+      fake.style.height = '65px';
+      if (tw) {
+        tw.style.display = 'block';
+        q('#turnstileWidget').appendChild(fake);
+      }
+      await sleep(300);
+      const rAsync = rect(lb);
+      add(Math.abs(rAsync[1] - topBefore) <= 1, 'CAPTCHA paydo bo`ldi: panel tepasi joyida (dy=' +
+        Math.round((rAsync[1] - topBefore) * 100) / 100 + ')');
+      results.info.asyncCase = { topBefore: topBefore, topAfter: rAsync[1], h: rAsync[3], lpScrollTop: lp.scrollTop };
+      if (tw) {
+        fake.remove();
+        tw.style.display = 'none';
+      }
+      await sleep(250);
+
+      // 10) RESIZE: o'lcham o'zgargach panel yangi joyga ANIQ o'tadimi
+      //     (qaytarilganda aynan o'sha joyga qaytadimi — "sakrash" yo'q)
+      const origW = win.innerWidth, origH = win.innerHeight;
+      const beforeRs = rect(lb);
+      f.style.width = '1024px';
+      f.style.height = '768px';
+      // iframe ichida resize'ni majburiy qayta hisoblash (aks holda layout stale qoladi)
+      win.dispatchEvent(new Event('resize'));
+      void doc.documentElement.offsetHeight;
+      await sleep(300);
+      win.dispatchEvent(new Event('resize'));
+      void doc.documentElement.offsetHeight;
+      await sleep(400);
+      const at1100 = rect(lb);
+      const rsScroll = scrollProbe();
+      results.info.resize = { at1024: at1100, doc1024: rsScroll.docScroll, lp1024: rsScroll.lpScroll, vp1024: [win.innerWidth, win.innerHeight] };
+      add(rsScroll.docScroll <= 1 && rsScroll.lpScroll <= 1, 'resize 1024x768: scroll yo`q (doc=' + rsScroll.docScroll + ', lp=' + rsScroll.lpScroll + ')');
+      f.style.width = origW + 'px';
+      f.style.height = origH + 'px';
+      win.dispatchEvent(new Event('resize'));
+      void doc.documentElement.offsetHeight;
+      await sleep(400);
+      win.dispatchEvent(new Event('resize'));
+      void doc.documentElement.offsetHeight;
+      await sleep(400);
+      const backRs = rect(lb);
+      add(eq(beforeRs, backRs, 1), 'resize: qaytganda panel aynan o`sha joyda');
+
+      // 11) Yakuniy: panel joyi boshidagi bilan bir xilmi?
+      const finalRect = rect(lb);
+      add(eq(base, finalRect, 0.75), 'YAKUNIY: panel boshidagi joyida (base=' + JSON.stringify(base) +
+        ' final=' + JSON.stringify(finalRect) + ')');
+
+      document.getElementById('tp-results').textContent = JSON.stringify(results);
+
+
+    })();
+  </script>
+</body>
+
+</html>

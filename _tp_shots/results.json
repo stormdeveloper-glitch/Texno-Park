@@ -1,0 +1,176 @@
+{
+ "summary": [
+  {
+   "vp": "1366x768",
+   "status": "PASS",
+   "fails": [],
+   "leftGap": 0,
+   "rightGap": 0,
+   "hOverflow": 0,
+   "lpOverflow": 0,
+   "lpW": 1360,
+   "boxW": 430,
+   "boxLeft": 885.89,
+   "boxRight": 1315.89,
+   "panelRightGap": 50.11,
+   "cornersCovered": true,
+   "minHeight": "768px",
+   "animations": [
+    "loginFadeIn",
+    "none",
+    "none",
+    "none"
+   ],
+   "diag": []
+  }
+ ],
+ "resized": {
+  "at1920": [
+   0,
+   0,
+   49
+  ],
+  "at1366": [
+   0,
+   0,
+   50.11
+  ],
+  "ok": true
+ },
+ "full": [
+  {
+   "vp": "1366x768",
+   "a": {
+    "vp": [
+     1366,
+     768
+    ],
+    "clientW": 1360,
+    "scrollbarW": 6,
+    "hOverflow": 0,
+    "bodyW": 1360,
+    "leftGap": 0,
+    "rightGapIn": 6,
+    "rightGapClient": 0,
+    "panelRightGap": 50.11,
+    "panelLeftGap": 885.89,
+    "lpOverflow": {
+     "x": 0,
+     "y": 0
+    },
+    "loginPage": {
+     "sel": "#loginPage",
+     "l": 0,
+     "t": 0,
+     "w": 1360,
+     "h": 833.17,
+     "r": 1360,
+     "b": 833.17,
+     "width": "1360px",
+     "maxWidth": "none",
+     "margin": "0px 0px 0px 0px",
+     "padding": "19.124px 19.124px 19.124px 19.124px",
+     "minHeight": "768px",
+     "display": "grid",
+     "overflowX": "hidden",
+     "bgImage": "url(\"http://127.0.0.1:8899/assets/texno-park-n1-",
+     "bgSize": "cover",
+     "bgPos": "50% 50%",
+     "bgRepeat": "no-repeat"
+    },
+    "showcase": {
+     "sel": ".login-showcase",
+     "l": 19.11,
+     "t": 121.58,
+     "w": 800.81,
+     "h": 590,
+     "r": 819.92,
+     "b": 711.58,
+     "width": "800.812px",
+     "maxWidth": "none",
+     "margin": "0px 0px 0px 0px",
+     "padding": "0px 0px 0px 0px",
+     "minHeight": "590px",
+     "display": "block",
+     "overflowX": "hidden",
+     "bgImage": "none",
+     "bgSize": "auto",
+     "bgPos": "0% 0%",
+     "bgRepeat": "repeat"
+    },
+    "loginBox": {
+     "sel": ".login-box",
+     "l": 885.89,
+     "t": 19.11,
+     "w": 430,
+     "h": 794.95,
+     "r": 1315.89,
+     "b": 814.06,
+     "width": "430px",
+     "maxWidth": "430px",
+     "margin": "0px 0px 0px 0px",
+     "padding": "40px 36px 40px 36px",
+     "minHeight": "auto",
+     "display": "block",
+     "overflowX": "visible",
+     "bgImage": "linear-gradient(160deg, rgba(46, 11, 16, 0.88), ",
+     "bgSize": "auto",
+     "bgPos": "0% 0%",
+     "bgRepeat": "repeat"
+    },
+    "body": {
+     "sel": "body",
+     "l": 0,
+     "t": 0,
+     "w": 1360,
+     "h": 833.17,
+     "r": 1360,
+     "b": 833.17,
+     "width": "1360px",
+     "maxWidth": "none",
+     "margin": "0px 0px 0px 0px",
+     "padding": "0px 0px 0px 0px",
+     "minHeight": "768px",
+     "display": "block",
+     "overflowX": "clip",
+     "bgImage": "none",
+     "bgSize": "auto",
+     "bgPos": "0% 0%",
+     "bgRepeat": "repeat"
+    },
+    "cornersInLp": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "cornersWho": [
+     "#loginPage",
+     "#loginPage",
+     "#loginPage",
+     "#loginPage",
+     "#loginPage",
+     "#loginPage"
+    ],
+    "diag": [],
+    "transforms": [
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "animations": [
+     "loginFadeIn",
+     "none",
+     "none",
+     "none"
+    ]
+   },
+   "stable": true,
+   "transformsAllNone": true,
+   "cornersCovered": true
+  }
+ ]
+}

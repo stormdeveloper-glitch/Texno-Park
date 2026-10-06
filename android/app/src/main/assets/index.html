@@ -99,55 +99,55 @@
         <div class="nav-item" onclick="goTo('page-dashboard',this)" data-role="admin,cashier,manager">
           <i class="fas fa-th-large"></i><span>Dashboard</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="admin,cashier,manager">
+        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="manager,cashier">
           <i class="fas fa-cash-register"></i><span>Kassa (POS)</span>
         </div>
 
-        <div class="nav-section" id="sec-data" data-role="admin,cashier"><span
+        <div class="nav-section" id="sec-data" data-role="admin,manager,cashier"><span
             class="nav-section-label">Ma'lumotlar</span></div>
-        <div class="nav-item" onclick="goTo('page-products',this)" id="nav-products" data-role="admin">
+        <div class="nav-item" onclick="goTo('page-products',this)" id="nav-products" data-role="admin,manager,cashier">
           <i class="fas fa-tv"></i><span>Mahsulotlar</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-categories',this)" id="nav-categories" data-role="admin">
+        <div class="nav-item" onclick="goTo('page-categories',this)" id="nav-categories" data-role="admin,manager">
           <i class="fas fa-folder-open"></i><span>Kategoriyalar</span>
         </div>
         <div class="nav-item" onclick="goTo('page-warehouse',this)" id="nav-warehouse" data-role="admin,manager">
           <i class="fas fa-warehouse"></i><span>Ombor</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers" data-role="admin,cashier">
+        <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers" data-role="admin,manager,cashier">
           <i class="fas fa-users"></i><span>Mijozlar</span>
           <span class="nav-badge" id="navCustomersBadge">0</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-branches',this)" id="nav-branches" data-role="admin,manager,cashier">
+        <div class="nav-item" onclick="goTo('page-branches',this)" id="nav-branches" data-role="admin,manager">
           <i class="fas fa-map-location-dot"></i><span>Filiallar</span>
           <span class="nav-badge" id="navBranchesBadge">0</span>
         </div>
         <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
           <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
-        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin,manager" style="width:100%">
+        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin" style="width:100%">
           <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees">
             <i class="fas fa-id-badge"></i><span>Xodimlar</span>
             <i class="fas fa-chevron-down submenu-arrow" style="margin-left:auto;transition:transform 0.2s"></i>
           </div>
           <div class="nav-submenu" id="employees-submenu">
-            <div class="nav-item submenu-item"
+            <div class="nav-item submenu-item" data-role="admin"
               onclick="goTo('page-employees',this); setTimeout(openEmployeeModal, 150);">
               <i class="fas fa-user-plus"></i><span>Ro'yxatdan o'tish</span>
             </div>
-            <div class="nav-item submenu-item" onclick="doLogout()">
+            <div class="nav-item submenu-item" data-role="admin" onclick="doLogout()">
               <i class="fas fa-sign-in-alt"></i><span>Kirish</span>
             </div>
-            <div class="nav-item submenu-item" onclick="goTo('page-settings',this)">
+            <div class="nav-item submenu-item" data-role="admin" onclick="goTo('page-settings',this)">
               <i class="fas fa-cog"></i><span>Sozlama</span>
             </div>
-            <div class="nav-item submenu-item" onclick="openProfileModal()">
+            <div class="nav-item submenu-item" data-role="admin" onclick="openProfileModal()">
               <i class="fas fa-user-circle"></i><span>Profil</span>
             </div>
           </div>
         </div>
         <div class="nav-item" onclick="goTo('page-contracts',this)" id="nav-contracts"
-          data-role="admin,manager,cashier">
+          data-role="admin">
           <i class="fas fa-file-signature"></i><span>Shartnomalar</span>
           <span class="nav-badge" id="navContractsBadge">0</span>
         </div>
@@ -189,7 +189,7 @@
     </div>
 
     <!-- SIDEBAR DRAWER OVERLAY (faqat mobil — tashqariga bosilganda drawer yopiladi) -->
-    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true" onclick="resetSidebar()"></div>
 
     <!-- TOPBAR -->
     <div class="topbar">
@@ -330,7 +330,7 @@
             <div class="panel">
               <div class="panel-header">
                 <h3><i class="fas fa-clock" style="color:var(--accent)"></i> Oxirgi Sotuvlar</h3>
-                <button class="btn btn-outline btn-sm" onclick="goTo('page-pos',document.getElementById('navPos'))">+
+                <button class="btn btn-outline btn-sm" onclick="if(requireRole('boss','manager','cashier'))goTo('page-pos',document.getElementById('navPos'))">+
                   Yangi</button>
               </div>
               <div class="panel-body" style="padding:0">
@@ -3251,7 +3251,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.5-premium"></script>
+  <script src="scripts.js?v=1.4.7-authfix"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {
