@@ -746,6 +746,14 @@ function normalizeProduct(p) {
         ikpu: String(p?.ikpu ?? '').replace(/\D/g, '').slice(0, 17),
         packageCode: cleanText(p?.packageCode, 20),
         vatPercent: Number.isFinite(Number(p?.vatPercent)) ? Number(p.vatPercent) : 12,
+        // ── Tan narx / foyda ko'rsatkichlari ────────────────────────────
+        // MUHIM: bu maydonlar ham saqlanishi shart. Ilgari ular yo'q edi —
+        // sahifa yangilangandan keyin tan narxi nolga tushib, "Foyda" va
+        // yangi savdolarning foydasi noto'g'ri (sotuv narxiga teng)
+        // hisoblanardi. `saleProfit()` xarajatni aynan shu maydondan oladi.
+        cost: Math.max(0, Number(p?.cost) || 0),
+        mtype: p?.mtype === 'sum' ? 'sum' : 'pct',
+        markup: Math.max(0, Number(p?.markup) || 0),
     };
 }
 
@@ -1205,7 +1213,10 @@ function saleKpi(s) {
 function employeeStats(emp) {
     const mine = salesHistory.filter(s => isPaidSale(s) && s.cashier === emp.name);
     const total = mine.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-    return { sales: mine.length, total };
+    // Foyda va KPI ham shu xodimning haqiqiy savdolaridan hisoblanadi.
+    const profit = mine.reduce((sum, s) => sum + saleProfit(s), 0);
+    const kpi = mine.reduce((sum, s) => sum + saleKpi(s), 0);
+    return { sales: mine.length, total, profit, kpi };
 }
 
 let salesHistory = safeJsonParse(localStorage.getItem('tp_sales') || '[]', []);
@@ -4440,9 +4451,14 @@ function renderProducts() {
     );
     if (cnt) cnt.textContent = list.length;
     const icons = CATEGORY_EMOJI;
+    // Jadval sarlavhasi 10 ustunli: Rasm | Nomi | Kategoriya | Filial | Narxi (sotuv) |
+    // Tan narxi | Foyda | Qoldiq | Holati | Amallar. Shu sababli har bir qator ham
+    // 10 ta katak chiqaradi — aks holda oxirgi ustunlar siljib ketadi.
     document.getElementById('productsTable').innerHTML = list.map(p => {
         const imgSrc = productImageSrc(p.img);
         const branch = getBranchById(p.branchId);
+        const cost = Number(p.cost) || 0;
+        const profitUnit = (Number(p.price) || 0) - cost;
         return `<tr>
     <td>
       ${imgSrc
@@ -4455,6 +4471,8 @@ function renderProducts() {
                 ? '<span class="badge" style="background:' + escapeHTML(branch.markerColor) + '22;color:' + escapeHTML(branch.markerColor) + '">' + escapeHTML(branch.markerIcon + ' ' + branch.name) + '</span>'
                 : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
     <td style="font-weight:700;color:var(--primary)">${fmt(p.price)} so'm</td>
+    <td style="color:var(--muted)">${cost > 0 ? fmt(cost) + " so'm" : '—'}</td>
+    <td style="font-weight:700;color:${profitUnit < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(profitUnit)} so'm${cost > 0 ? `<br><small style="color:var(--muted)">${((profitUnit / cost) * 100).toFixed(1)}%</small>` : ''}</td>
     <td><span class="${p.stock < 5 ? 'badge badge-red' : 'badge badge-green'}">${p.stock} dona</span></td>
     <td><span class="badge ${p.stock > 0 ? 'badge-green' : 'badge-red'}">${p.stock > 0 ? 'Bor' : 'Tugagan'}</span></td>
     <td>
@@ -4462,62 +4480,111 @@ function renderProducts() {
       <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteProduct(${p.id})"><i class="fas fa-trash"></i></button>
     </td>
   </tr>`;
-    }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing</td></tr>';
+    }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing</td></tr>';
 }
 
 function filterByCategory(val) { currentCategory = val; renderProducts(); }
 function filterProducts(q) { productFilter2 = q; renderProducts(); }
 const debouncedFilterProducts = debounce(filterProducts, 300);
 
+/* Kategoriya <select>'ini mavjud kategoriyalardan qayta quradi.
+   Ilgari bu ro'yxat faqat HTML'dagi qotib qolgan nomlardan iborat edi va
+   foydalanuvchi qo'shgan kategoriyalar mahsulot oynasida ko'rinmasdi. */
+function fillProductCategorySelect(currentCat) {
+    const sel = document.getElementById('p-cat');
+    if (!sel) return;
+    const cats = Array.isArray(CATEGORIES) ? CATEGORIES.slice() : [];
+    const cur = currentCat || '';
+    if (cur && !cats.some(c => c.toLowerCase() === cur.toLowerCase())) cats.push(cur);
+    sel.innerHTML = cats.length
+        ? cats.map(c => `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join('')
+        : '<option value="">Avval kategoriya qo\'shing</option>';
+    if (cur) sel.value = cur;
+}
+
+/* Filial (ombor) <select>'ini to'ldiradi — mahsulotni filialga bog'lash uchun. */
+function fillProductBranchSelect(currentId) {
+    const sel = document.getElementById('p-branchId');
+    if (!sel) return;
+    const list = Array.isArray(branches) ? branches : [];
+    const cur = currentId != null ? String(currentId) : '';
+    sel.innerHTML = '<option value="">Umumiy ombor (filial tanlanmagan)</option>' +
+        list.map(b => `<option value="${escapeHTML(b.id)}">${escapeHTML(b.markerIcon + ' ' + b.name)}</option>`).join('');
+    if (cur && list.some(b => String(b.id) === cur)) sel.value = cur;
+    else if (!cur) { const act = getActiveBranch(); if (act && list.some(b => String(b.id) === String(act.id))) sel.value = String(act.id); }
+}
+
 function openProductModal(id) {
     if (!requireRole('admin')) return;
     editingProductId = id || null;
-    document.getElementById('productModalTitle').textContent = id ? 'Mahsulotni Tahrirlash' : 'Yangi Mahsulot';
-    if (id) {
-        const p = products.find(x => x.id === id);
-        if (p) {
-            document.getElementById('p-name').value = p.name;
-            document.getElementById('p-cat').value = p.cat;
-            document.getElementById('p-price').value = p.price;
-            document.getElementById('p-stock').value = p.stock;
-            document.getElementById('p-img').value = p.img || '';
-            document.getElementById('p-desc').value = p.desc || '';
-            document.getElementById('p-barcode').value = p.barcode || '';
-            document.getElementById('p-ikpu').value = p.ikpu || '';
-            document.getElementById('p-package').value = p.packageCode || '';
-            document.getElementById('p-vat').value = String(p.vatPercent ?? 12);
-            document.getElementById('p-cost').value = p.cost ?? '';
-            document.getElementById('p-mtype').value = p.mtype || 'pct';
-            document.getElementById('p-markup').value = p.markup ?? '';
-        }
+    const editing = editingProductId ? (products.find(x => x.id === editingProductId) || null) : null;
+
+    // Maydonlar mavjudligiga ishonch hosil qilamiz — yo'q maydon butun oynani buzmasin.
+    const setVal = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
+    const title = document.getElementById('productModalTitle');
+    if (title) title.textContent = editing ? 'Mahsulotni Tahrirlash' : 'Yangi Mahsulot';
+
+    fillProductCategorySelect(editing ? editing.cat : '');
+    fillProductBranchSelect(editing ? editing.branchId : '');
+
+    if (editing) {
+        setVal('p-name', editing.name);
+        setVal('p-cat', editing.cat);
+        setVal('p-price', editing.price);
+        setVal('p-stock', editing.stock);
+        setVal('p-img', editing.img || '');
+        setVal('p-desc', editing.desc || '');
+        setVal('p-barcode', editing.barcode || '');
+        setVal('p-ikpu', editing.ikpu || '');
+        setVal('p-package', editing.packageCode || '');
+        setVal('p-vat', String(editing.vatPercent ?? 12));
+        setVal('p-cost', editing.cost ?? '');
+        setVal('p-mtype', editing.mtype || 'pct');
+        setVal('p-markup', editing.markup ?? '');
     } else {
-        ['p-cost', 'p-markup'].forEach(i => document.getElementById(i).value = '');
-        document.getElementById('p-mtype').value = 'pct';
-        ['p-name', 'p-price', 'p-stock', 'p-img', 'p-desc', 'p-barcode', 'p-ikpu', 'p-package'].forEach(i => document.getElementById(i).value = '');
-        document.getElementById('p-vat').value = '12';
+        ['p-name', 'p-price', 'p-stock', 'p-img', 'p-desc', 'p-barcode', 'p-ikpu', 'p-package', 'p-cost', 'p-markup']
+            .forEach(i => setVal(i, ''));
+        setVal('p-mtype', 'pct');
+        setVal('p-vat', '12');
     }
     updateProductImagePreview(document.getElementById('p-img')?.value || '');
+    calcPrice();
     calcProfit();
     openModal('productModal');
 }
 
 // ── Narx / foyda hisoblash (mahsulot oynasi) ──
 function calcPrice() {
-    const cost = parseFloat(document.getElementById('p-cost').value) || 0;
-    const mt = document.getElementById('p-mtype').value;
-    const mk = parseFloat(document.getElementById('p-markup').value) || 0;
-    document.getElementById('p-mlabel').textContent = mt === 'pct' ? 'Ustama (%)' : "Ustama (so'm)";
-    if (cost > 0 && mk > 0) document.getElementById('p-price').value = Math.round(mt === 'pct' ? cost * (1 + mk / 100) : cost + mk);
+    const costEl = document.getElementById('p-cost');
+    const mtEl = document.getElementById('p-mtype');
+    const mkEl = document.getElementById('p-markup');
+    if (!costEl || !mtEl || !mkEl) return;
+    const cost = parseFloat(costEl.value) || 0;
+    const mt = mtEl.value;
+    const mk = parseFloat(mkEl.value) || 0;
+    const label = document.getElementById('p-mlabel');
+    if (label) label.textContent = mt === 'pct' ? 'Ustama (%)' : "Ustama (so'm)";
+    if (cost > 0 && mk > 0) {
+        const priceEl = document.getElementById('p-price');
+        if (priceEl) priceEl.value = Math.round(mt === 'pct' ? cost * (1 + mk / 100) : cost + mk);
+    }
     calcProfit();
 }
 function calcProfit(fromPrice) {
-    const cost = parseFloat(document.getElementById('p-cost').value) || 0;
-    const price = parseFloat(document.getElementById('p-price').value) || 0;
-    const stock = parseInt(document.getElementById('p-stock').value) || 0;
-    const mt = document.getElementById('p-mtype').value;
+    const costEl = document.getElementById('p-cost');
+    const priceEl = document.getElementById('p-price');
+    const stockEl = document.getElementById('p-stock');
+    const mtEl = document.getElementById('p-mtype');
+    if (!costEl || !priceEl || !stockEl) return;
+    const cost = parseFloat(costEl.value) || 0;
+    const price = parseFloat(priceEl.value) || 0;
+    const stock = parseInt(stockEl.value) || 0;
+    const mt = mtEl ? mtEl.value : 'pct';
     const pr = price - cost, pct = cost ? pr / cost * 100 : 0;
-    if (fromPrice && cost > 0 && price > 0) document.getElementById('p-markup').value = mt === 'pct' ? +pct.toFixed(1) : pr;
+    const mkEl = document.getElementById('p-markup');
+    if (fromPrice && cost > 0 && price > 0 && mkEl) mkEl.value = mt === 'pct' ? +pct.toFixed(1) : pr;
     const box = document.getElementById('p-profit-box');
+    if (!box) return;
     box.style.color = pr < 0 ? '#ef4444' : '#10b981';
     box.style.background = pr < 0 ? 'rgba(239,68,68,.12)' : 'rgba(16,185,129,.12)';
     box.innerHTML = `<span>${pr < 0 ? 'Zarar' : 'Foyda'}: 1 dona — ${fmt(pr)} so'm (${pct.toFixed(1)}%)</span><span>Qoldiq bo'yicha jami: ${fmt(pr * stock)} so'm</span>`;
@@ -4556,13 +4623,16 @@ function saveProduct() {
     const mtype = document.getElementById('p-mtype').value === 'sum' ? 'sum' : 'pct';
     const markup = parseFloat(document.getElementById('p-markup').value) || 0;
     const taxFields = { ikpu, packageCode, vatPercent, cost, mtype, markup };
+    // Filial (ombor) — mahsulot qaysi filialga tegishli ekani saqlanadi.
+    const branchEl = document.getElementById('p-branchId');
+    const branchId = branchEl ? String(branchEl.value || '') : '';
     if (editingProductId) {
         const p = products.find(x => x.id === editingProductId);
-        if (p) Object.assign(p, { name, cat, price, stock, img, desc, barcode }, taxFields);
+        if (p) Object.assign(p, { name, cat, price, stock, img, desc, barcode, branchId }, taxFields);
         addLog('Mahsulot', `"${name}" tahrirlandi`);
         showNotif('success', 'Saqlandi!', 'Mahsulot yangilandi');
     } else {
-        products.push(Object.assign({ id: Date.now(), name, cat, price, stock, img, desc, barcode }, taxFields));
+        products.push(Object.assign({ id: Date.now(), name, cat, price, stock, img, desc, barcode, branchId }, taxFields));
         addLog('Mahsulot', `"${name}" qo'shildi`);
         showNotif('success', 'Qo\'shildi!', name + ' mahsulot qo\'shildi');
     }
@@ -4571,6 +4641,8 @@ function saveProduct() {
     renderProducts();
     renderCatTabs();
     renderProductGrid();
+    // Filial bo'limidagi mahsulot/qoldiq ko'rsatkichlari darhol yangilanadi.
+    try { if (typeof Branches !== 'undefined') { Branches.render(); Branches.updateNavBadge(); } } catch (e) { }
 }
 
 function deleteProduct(id) {
@@ -4706,22 +4778,37 @@ function renderReports() {
     setTimeout(() => { initMonthChart(); initIncomeChart(); }, 50);
 }
 
+/* Xodimlar reytingi jadvali: # | Xodim | Sotuvlar | Jami | Foyda | KPI | Ko'rsatkich.
+   Jadval sarlavhasidagi ustunlar soni bilan qatorlar soni bir xil bo'lishi shart —
+   ilgari faqat 5 ta katak chiqarilar edi, shu sababli "FOYDA", "KPI" va
+   "KO'RSATKICH" ustunlari bo'sh ko'rinardi. */
 function renderEmployeeRank() {
     const ranked = employees.map(e => ({ ...e, ...employeeStats(e) })).sort((a, b) => b.total - a.total);
     const el = document.getElementById('employeeRank');
     if (!el) return;
     if (ranked.length === 0) {
-        el.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Xodimlar yo\'q</td></tr>';
+        el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Xodimlar yo\'q</td></tr>';
         return;
     }
     const maxTotal = Math.max(...ranked.map(e => e.total), 1);
-    el.innerHTML = ranked.map((e, i) => `<tr>
+    const grandTotal = ranked.reduce((s, e) => s + (Number(e.total) || 0), 0);
+    el.innerHTML = ranked.map((e, i) => {
+        const profit = Number(e.profit) || 0;
+        const kpi = Number(e.kpi) || 0;
+        const total = Number(e.total) || 0;
+        const barPct = Math.min(100, (total / maxTotal) * 100);
+        const sharePct = grandTotal > 0 ? (total / grandTotal) * 100 : 0;
+        const shareLabel = total > 0 ? sharePct.toFixed(1) + '%' : '0%';
+        return `<tr>
     <td><span style="font-weight:800;color:${i === 0 ? '#F59E0B' : i === 1 ? '#9CA3AF' : i === 2 ? '#CD7C2F' : 'var(--muted)'}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span></td>
-    <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:white">${escapeHTML(e.name[0])}</div>${escapeHTML(e.name)}</div></td>
-    <td>${e.sales}</td>
-    <td style="font-weight:700;color:var(--primary)">${fmt(e.total)} so'm</td>
-    <td><div class="progress-bar" style="width:120px"><div class="progress-fill" style="width:${Math.min(100, (e.total / maxTotal) * 100)}%;background:var(--primary)"></div></div></td>
-  </tr>`).join('');
+    <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:white">${escapeHTML(String(e.name || '?')[0])}</div>${escapeHTML(e.name)}</div></td>
+    <td>${e.sales || 0}</td>
+    <td style="font-weight:700;color:var(--primary)">${fmt(total)} so'm</td>
+    <td style="font-weight:700;color:${profit < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(profit)} so'm</td>
+    <td style="font-weight:700;color:var(--warning)">${fmt(kpi)} so'm</td>
+    <td><div style="display:flex;align-items:center;gap:8px"><div class="progress-bar" style="width:110px"><div class="progress-fill" style="width:${barPct}%;background:var(--primary)"></div></div><span style="font-size:12px;font-weight:700;color:var(--muted)">${shareLabel}</span></div></td>
+  </tr>`;
+    }).join('');
 }
 
 /* Har bir sotuv tafsiloti: sana/kimga/tovar/summa/kim sotdi/foyda/KPI. Har qator alohida. */

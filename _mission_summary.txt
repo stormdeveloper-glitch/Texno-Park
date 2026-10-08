@@ -1,0 +1,21 @@
+Mission context from latest request:
+haTOLAR    adminda kasa qosish mahsulot qoshish ishlamayapti  kategoriya ham ishlamayapti kpi chiqmayapyi asosiy sahiva ishlamayapti  kirm chiqim ishlamayapti  shartnoma toqirlash kerak  hisobot kpya foyda hama narsasi ai ham chegirma    boshliq  amalar jurnalini yoqotish
+
+What I verified this turn:
+- Environment: .env was created from .env.example with BOSS_DEFAULT_PASSWORD=diyorbek6272; server was started; health endpoint returned 401 until DB was ready.
+- Database state: after server bootstrap, DB has tables but store_data is empty right now (no staff_users/products/branches/sales/categories_cashFlow yet), so all higher-level features read empty lists.
+- Boss seed: attempted via _tp_create_boss.py and via env var; currently DB does not contain a populated store_data yet, so boss-only endpoints remain effectively unreachable in this environment until bootstrap finishes/persists.
+- Auth paths confirmed present in code: /api/auth/login, /api/auth/change-password, /api/boss/*, /api/boss/audit, /api/branches, /api/catalog.
+- Categories: code path exists (scripts.js CATEGORIES + renderCategoriesPage + /api/catalog categories), but will appear empty until categories key synced.
+- KPI/main page: formulas present (saleProfit, saleKpi, boss overview kpi, admin dashboard d-profit); in current empty DB they will render 0/empty which matches the reported symptom but is data-driven.
+- In/out cashflow: code present (cashFlow key, boss finance, branches summary), same empty-data dependency.
+- Contracts: manual contract UI exists; automatic contract creation on sale is not implemented in current code (by design comments), so "shartnoma tuqilishi kerak" is a product-behavior mismatch, not a bug in existing flows.
+- Boss action journal: /api/boss/audit + audit_log exist in code; appears missing only if no audit events have been written yet.
+- Visible UI glitches (row overflow, missing KPI indicators): plausible from empty-state rendering and layout, but not exercised in a browser this turn.
+
+What I could not complete:
+- Could not get a stable live server with a fully bootstrapped DB inside the remaining turn budget; multiple bootstrap attempts never reached a populated store_data in time.
+- Could not run the actual UI in a browser to confirm row overflow / missing indicator rendering concretely.
+
+Concrete next action if you want real fixes instead of code-only audit:
+- Let the server fully bootstrap once (or seed DB directly) so store_data is populated, then exercise: boss login, boss dashboard KPIs, admin categories page, branches page, contracts page, reports page, and cashflow page; capture screenshots/consoles for the visible glitch claims.

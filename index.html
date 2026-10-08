@@ -14,7 +14,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.10.1">
+  <link rel="stylesheet" href="style.css?v=5.10.4">
   <link rel="stylesheet" href="boss.css?v=2.1.0">
 </head>
 
@@ -2073,11 +2073,14 @@
         </div>
       </div>
 
-      <!-- ===== KATEGORIYALAR ===== -->
-      <div class="page" id="page-categories">
-        <div style="margin-bottom:20px">
-          <h2 style="font-size:20px;font-weight:700">📂 Kategoriyalar</h2>
-          <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulotlar kategoriyalari ro'yxati</p>
+      <!-- ===== KATEGORIYALAR ===== -->        <div class="page" id="page-categories">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <h2 style="font-size:20px;font-weight:700">📂 Kategoriyalar</h2>
+            <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulotlar kategoriyalari ro'yxati</p>
+          </div>
+          <button class="btn btn-primary" onclick="openCategoryModal()"><i class="fas fa-folder-plus"></i> Yangi
+            kategoriya</button>
         </div>
         <div class="panel">
           <div class="panel-header">
@@ -3004,11 +3007,26 @@
       </div>
       <div class="form-row">
         <div class="form-col"><label>Narxi (sotuv, so'm) *</label><input class="form-control" id="p-price" type="number"
-            placeholder="0"></div>
+            placeholder="0" oninput="calcProfit(true)"></div>
         <div class="form-col"><label>Tan narxi (sotib olish, so'm)</label><input class="form-control" id="p-cost" type="number"
-            placeholder="0"></div>
+            placeholder="0" oninput="calcProfit(true)"></div>
         <div class="form-col"><label>Qoldiq (dona) *</label><input class="form-control" id="p-stock" type="number"
-            placeholder="0"></div>
+            placeholder="0" oninput="calcProfit()"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-col"><label>Ustama turi</label>
+          <select class="form-control" id="p-mtype" onchange="calcPrice()">
+            <option value="pct">Foiz (%)</option>
+            <option value="sum">So'm (qo'shilgan qiymat)</option>
+          </select>
+        </div>
+        <div class="form-col"><label id="p-mlabel">Ustama (%)</label>
+          <input class="form-control" id="p-markup" type="number" min="0" step="0.1" placeholder="0"
+            oninput="calcPrice()">
+        </div>
+      </div>
+      <div class="profit-box" id="p-profit-box">
+        <span>Foyda: 1 dona — 0 so'm (0.0%)</span><span>Qoldiq bo'yicha jami: 0 so'm</span>
       </div>
       <div class="form-col" style="margin-bottom:14px">
         <label>Filial (ombor) — mahsulot qaysi filialga tegishli</label>
@@ -3067,6 +3085,25 @@
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="closeModal('productModal')">Bekor</button>
         <button class="btn btn-primary" onclick="saveProduct()"><i class="fas fa-save"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kategoriya qo'shish / tahrirlash oynasi -->
+  <div class="modal-overlay" id="categoryModal">
+    <div class="modal" style="width:460px">
+      <div class="modal-header">
+        <h3 id="categoryModalTitle"><i class="fas fa-folder-plus"></i> Yangi kategoriya</h3>
+        <button class="modal-close" onclick="closeModal('categoryModal')">✕</button>
+      </div>
+      <div class="form-col" style="margin-bottom:18px">
+        <label>Kategoriya nomi *</label>
+        <input class="form-control" id="categoryNameInput" maxlength="60" placeholder="Masalan: Muzlatgichlar"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();saveCategoryFromModal();}">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('categoryModal')">Bekor</button>
+        <button class="btn btn-primary" onclick="saveCategoryFromModal()"><i class="fas fa-save"></i> Saqlash</button>
       </div>
     </div>
   </div>
@@ -3638,7 +3675,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.8-bossnav"></script>
+  <script src="scripts.js?v=1.4.10-costfix"></script>
   <script src="boss.js?v=2.1.0"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
