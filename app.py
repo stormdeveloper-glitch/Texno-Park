@@ -4,6 +4,7 @@ import functools
 import threading
 import sqlite3
 import json
+import math
 import uuid
 import base64
 import hashlib
@@ -3524,6 +3525,55 @@ def validate_sync_payload(payload):
             return False, f'{key} elementlari obyekt bo\'lishi kerak', None
         clean[key] = value
 
+    def product_number(product, field, default, minimum, integer=False):
+        raw = product.get(field, default)
+        if isinstance(raw, bool):
+            raise ValueError(f'Mahsulot {field} son bo\'lishi kerak')
+        try:
+            number = float(raw)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError(f'Mahsulot {field} son bo\'lishi kerak')
+        if not math.isfinite(number) or number < minimum:
+            raise ValueError(f'Mahsulot {field} qiymati noto\'g\'ri')
+        if integer:
+            if not number.is_integer():
+                raise ValueError(f'Mahsulot {field} butun son bo\'lishi kerak')
+            return int(number)
+        return number
+
+    product_ids = set()
+    for product in clean.get('products', []):
+        try:
+            product['id'] = product_number(
+                product, 'id', None, 1, integer=True)
+            if product['id'] > 9007199254740991:
+                raise ValueError('Mahsulot ID qiymati noto\'g\'ri')
+            product['price'] = product_number(product, 'price', 0, 1)
+            product['cost'] = product_number(product, 'cost', 0, 0)
+            product['stock'] = product_number(
+                product, 'stock', 0, 0, integer=True)
+            product['markup'] = product_number(product, 'markup', 0, 0)
+        except ValueError as error:
+            return False, str(error), None
+
+        if product['id'] in product_ids:
+            return False, 'Mahsulot ID takrorlangan', None
+        product_ids.add(product['id'])
+
+        name = product.get('name')
+        category = product.get('cat')
+        if not isinstance(name, str) or not name.strip() or len(name) > 120:
+            return False, 'Mahsulot nomi 1–120 belgi bo\'lishi kerak', None
+        if not isinstance(category, str) or not category.strip() or len(category) > 80:
+            return False, 'Mahsulot kategoriyasi 1–80 belgi bo\'lishi kerak', None
+        product['name'] = name.strip()
+        product['cat'] = category.strip()
+
+        branch_id = product.get('branchId', '')
+        if isinstance(branch_id, bool) or not isinstance(branch_id, (str, int)):
+            return False, 'Mahsulot filiali noto\'g\'ri', None
+        product['branchId'] = str(branch_id).strip()[:40]
+
     # Mahsulot rasmlari: faqat rasm data-URL yoki http(s) manzil
     images = 0
     for product in clean.get('products', []):
@@ -3545,16 +3595,20 @@ def validate_sync_payload(payload):
 
     # Mahsulotning soliq maydonlari: IKPU (MXIK) 17 xonali, qadoq kodi, QQS stavkasi
     for product in clean.get('products', []):
-        ikpu = re.sub(r'\D', '', str(product.get('ikpu') or ''))[:17]
-        if ikpu and len(ikpu) != 17:
+        raw_ikpu = str(product.get('ikpu') or '').strip()
+        ikpu = re.sub(r'\D', '', raw_ikpu)
+        if ikpu and (len(ikpu) != 17 or len(ikpu) != len(raw_ikpu)):
             return False, 'IKPU (MXIK) kodi 17 xonali bo\'lishi kerak', None
         product['ikpu'] = ikpu
         product['packageCode'] = re.sub(r'[^A-Za-z0-9]', '', str(product.get('packageCode') or ''))[:20]
         try:
-            vat = float(product.get('vatPercent', 12) or 0)
+            vat = product_number(product, 'vatPercent', 12, 0)
         except (TypeError, ValueError):
-            vat = 0.0
-        product['vatPercent'] = min(max(vat, 0.0), 100.0)
+            return False, 'Mahsulot QQS stavkasi son bo\'lishi kerak', None
+        if vat > 100:
+            return False, 'Mahsulot QQS stavkasi 0–100 oralig\'ida bo\'lishi kerak', None
+        product['vatPercent'] = vat
+        product['mtype'] = 'sum' if product.get('mtype') == 'sum' else 'pct'
 
     # Fiskal maydonlar FAQAT server tomonidan yoziladi — brauzer ularni
     # yuborsa ham qabul qilinmaydi (soxta fiskal belgi yasab bo'lmasin).
@@ -3992,6 +4046,23 @@ def sync_data():
         server_security_log('sync-validation', 'medium', f'Yaroqsiz sinxronizatsiya: {message}',
                             request.staff.get('name', '—'))  # type: ignore[attr-defined]
         return json_error(message)
+
+    # Xodimlar boshqaruvi kalitlarini faqat admin/menejer (yoki BOSHLIQ)
+    # yoza oladi. Kassir ham har bir sync'da salaryRecords/salaryHistory
+    # yuboradi (mijoz tomoni toza) — bu kalitlar kirsa, eski localStorage
+    # nusxasi admin'ning maosh ma'lumotlarini bosib yuborishi mumkin.
+    # Shuning uchun past darajadagi rol uchun BU KALITLAR SETDAN
+    # chetlab o'tiladi (qolgan payload normal saqlanadi — POS ishlashida
+    # uzilma bo'lmaydi).
+    EMPLOYEE_MANAGED_KEYS = ('employees', 'salaryRecords', 'salaryHistory')
+    if not role_contains(('admin', 'manager'), request.staff.get('role')):  # type: ignore[attr-defined]
+        dropped = [k for k in EMPLOYEE_MANAGED_KEYS if k in clean]
+        if dropped:
+            for k in dropped:
+                clean.pop(k, None)
+            server_security_log('access-denied', 'high',
+                                f'Xodimlar kalitlari rad etildi ({", ".join(dropped)})',
+                                request.staff.get('name', '—'))  # type: ignore[attr-defined]
 
     try:
         apply_image_keep(clean.get('products') or [])

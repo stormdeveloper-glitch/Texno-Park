@@ -742,6 +742,11 @@ function normalizeProduct(p) {
         // qaytgan mahsulot "filialsiz" bo'lib qoladi va har bir filial
         // ombori bo'sh ko'rinadi.
         branchId: cleanText(p?.branchId, 40),
+        // ── Tannarx / ustama — serverdan qaytganda yo'qolmasin ─────────
+        // (jadvaldagi "Tan narxi" va "Foyda" ustunlari shu maydonga tayanadi)
+        cost: Math.max(0, Number(p?.cost) || 0),
+        mtype: (p?.mtype === 'sum' ? 'sum' : 'pct'),
+        markup: Math.max(0, Number(p?.markup) || 0),
         // ── Fiskal chek maydonlari (QR-kodli chek uchun) ───────────────
         ikpu: String(p?.ikpu ?? '').replace(/\D/g, '').slice(0, 17),
         packageCode: cleanText(p?.packageCode, 20),
@@ -1072,7 +1077,10 @@ const CATEGORY_FA_ICON = {
     'Aksessuarlar': 'fa-plug'
 };
 
-function categoryEmoji(name) { return CATEGORY_EMOJI[name] || '📦'; }
+function categoryEmoji(name) {
+    const custom = (systemSettings.categoryEmojis || {})[name];
+    if (custom) return custom;
+    return CATEGORY_EMOJI[name] || '📦'; }
 function categoryFaIcon(name) { return CATEGORY_FA_ICON[name] || 'fa-box'; }
 
 // ============================================================
@@ -1309,7 +1317,7 @@ window.addEventListener('online', async () => {
 });
 window.addEventListener('offline', () => { document.getElementById('offlineBar').classList.add('show'); showNotif('error', 'Oflayn!', 'Internet aloqasi yo\'q. Tizim oflayn rejimda ishlaydi'); });
 
-function saveToStorage() {
+function saveToStorage(syncBackend = true) {
     try {
         localStorage.setItem('tp_products', JSON.stringify(products.map(productForCache)));
         localStorage.setItem('tp_customers', JSON.stringify(customers));
@@ -1318,7 +1326,7 @@ function saveToStorage() {
         try { localStorage.setItem('tp_branches', JSON.stringify(branches)); } catch (e) { }
         try { localStorage.setItem('tp_cash_flow', JSON.stringify(cashFlow)); } catch (e) { }
         try { localStorage.setItem('tp_contracts', JSON.stringify(contracts)); } catch (e) { }
-        syncWithBackend(); // Sync with SQLite Database
+        if (syncBackend) syncWithBackend(); // Sync with the existing backend store
     } catch (e) {
         console.error('localStorage xatosi:', e);
         alert("Diqqat: Brauzer xotirasi to'ldi! Iltimos, Sozlamalar bo'limidan ma'lumotlarni eksport qilib zaxiralang yoki keraksiz ma'lumotlarni tozalang. Aks holda ma'lumotlaringiz saqlanmasligi mumkin.");
@@ -1560,7 +1568,8 @@ function buildSyncPayload() {
  * Bazaga yozish. Muvaffaqiyatli bo'lsa `true`, aks holda `false` qaytaradi.
  * 401 — sessiya tugagan; 403 — huquq yo'q (qayta urinish foydasiz).
  */
-async function _pushSync() {
+async function _pushSync(strict = false) {
+    _lastSyncError = '';
     try {
         const res = await fetchWithTimeout('/api/sync', {
             method: 'POST',
@@ -1568,18 +1577,28 @@ async function _pushSync() {
             body: JSON.stringify(buildSyncPayload())
         }, SYNC_TIMEOUT_MS);
         if (res.status === 401) {
+            const data = await res.json().catch(() => null);
+            _lastSyncError = data?.message || 'Sessiya tugadi — qaytadan tizimga kiring';
             _pendingImageKeys = [];
             handleSessionExpired();
-            return true;   // qayta urinish kerak emas — sessiya yangilanishi so'raladi
+            return !strict;
         }
         if (res.status === 403) {
-            // Huquq yo'q / CAPTCHA bloklashi — sessiya o'chirilmaydi
+            const data = await res.json().catch(() => null);
+            _lastSyncError = data?.message || 'Bazaga yozish uchun huquq yetarli emas';
             console.warn('Bazaga yozish rad etildi (403)');
-            return true;   // takrorlash foydasiz
+            return !strict;
         }
         if (!res.ok) {
-            console.warn('Bazaga yozishda xatolik (HTTP ' + res.status + ')');
-            return false;  // 5xx kabi vaqtinchalik xatolar — qayta uriniladi
+            const data = await res.json().catch(() => null);
+            _lastSyncError = data?.message || ('Bazaga yozishda xatolik (HTTP ' + res.status + ')');
+            console.warn(_lastSyncError);
+            return false;
+        }
+        const data = await res.json().catch(() => null);
+        if (!data || data.status !== 'success') {
+            _lastSyncError = data?.message || 'Server saqlash natijasini tasdiqlamadi';
+            return false;
         }
         _pendingImageKeys.forEach(k => _syncedImageKeys.add(k));
         _pendingImageKeys = [];
@@ -1588,6 +1607,7 @@ async function _pushSync() {
     } catch (e) {
         console.warn('Backend sync failed (offline or no backend):', e);
         serverOnline = false;
+        _lastSyncError = e?.message || 'Serverga ulanib bo\'lmadi';
         return false;
     }
 }
@@ -1596,6 +1616,7 @@ async function _pushSync() {
 var _syncRetryTimer = null;
 var _syncRetryDelay = 1500;
 var _syncDirty = false;
+var _lastSyncError = '';
 
 function _scheduleSyncRetry() {
     if (_syncRetryTimer || !staffToken) return;
@@ -1614,14 +1635,23 @@ function _scheduleSyncRetry() {
     }, delay);
 }
 
-async function syncWithBackend() {
-    if (!staffToken) return false;
+async function syncWithBackend(strict = false) {
+    if (!staffToken) {
+        if (strict) _lastSyncError = 'Mahsulotni saqlash uchun xodim sessiyasi talab qilinadi';
+        return false;
+    }
+    if (strict) {
+        if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+        if (_syncRetryTimer) { clearTimeout(_syncRetryTimer); _syncRetryTimer = null; }
+    }
     _syncDirty = true;
-    const ok = await _pushSync();
+    const ok = await _pushSync(strict);
     if (ok) {
         _syncDirty = false;
         _syncRetryDelay = 1500;
         if (_syncRetryTimer) { clearTimeout(_syncRetryTimer); _syncRetryTimer = null; }
+    } else if (_syncDirty && strict) {
+        _syncDirty = false;
     } else if (_syncDirty) {
         _scheduleSyncRetry();
     }
@@ -1651,6 +1681,10 @@ function scheduleSyncWithBackend(delay = 1000) {
 }
 
 async function loadFromBackend() {
+    if (!products.length) {
+        productLoadState = 'loading';
+        renderProducts();
+    }
     try {
         // Fetch config from .env via Python API
         try {
@@ -1690,8 +1724,13 @@ async function loadFromBackend() {
             await loadPublicCatalog();
             return;
         }
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.message || `Ma'lumotlarni yuklashda xatolik (HTTP ${response.status})`);
+        }
         const data = await response.json();
         serverOnline = true;
+        productLoadState = 'ready';
         // Bazadagi rasmlar haqiqiy holat — takror yuborish hisobini tozalaymiz
         _syncedImageKeys.clear();
         _pendingImageKeys = [];
@@ -1775,9 +1814,13 @@ async function loadFromBackend() {
             console.log('Loaded data from backend successfully');
         } else {
             console.log('Backend database is empty. Seeding defaults...');
+            productLoadState = 'ready';
+            renderProducts();
             await syncWithBackend();
         }
     } catch (e) {
+        productLoadState = products.length ? 'ready' : 'error';
+        renderProducts();
         console.warn('Failed to load from backend. Using local storage:', e);
     }
 }
@@ -1790,8 +1833,12 @@ async function loadFromBackend() {
 async function loadPublicCatalog() {
     try {
         const res = await fetch('/api/catalog');
+        if (!res.ok) {
+            throw new Error(`Katalogni yuklashda xatolik (HTTP ${res.status})`);
+        }
         const data = await res.json().catch(() => null);
-        if (!data) return;
+        if (!data) throw new Error('Katalog javobi noto\'g\'ri');
+        productLoadState = 'ready';
         if (Array.isArray(data.products)) {
             products = data.products.map(normalizeProduct);
             localStorage.setItem('tp_products', JSON.stringify(products.map(productForCache)));
@@ -1811,6 +1858,8 @@ async function loadPublicCatalog() {
         renderWarehousePage();
         console.log('Ommaviy katalog yuklandi (mehmon rejimi)');
     } catch (e) {
+        productLoadState = products.length ? 'ready' : 'error';
+        renderProducts();
         console.warn('Katalogni yuklab bo\'lmadi:', e);
     }
 }
@@ -2319,7 +2368,10 @@ function setupRoleBasedNav() {
     // Sozlamalar BOSHLIQ menyusiga kirmaydi — bu talabga ko'ra faqat boss
     // bo'limlari ko'rinadi, qolgan rollar o'z `data-role` ro'yxati bilan cheklanadi.
     const boss = isBoss();
-    document.querySelectorAll('.nav-item, .nav-section').forEach(el => {
+    // `.nav-item-wrapper` (masalan, Xodimlar dropdown konteyneri) ham
+    // qayta ishlanadi — aks holda wrapper ichidagi data-role e'tiborsiz
+    // qoladi va yashirilgan menyu bo'sh blok bo'lib ko'rinib qoladi.
+    document.querySelectorAll('.nav-item, .nav-section, .nav-item-wrapper').forEach(el => {
         const raw = el.getAttribute('data-role') || 'admin,cashier,manager';
         const roles = raw.split(',').map(r => r.trim()).filter(Boolean);
         let visible;
@@ -3340,7 +3392,7 @@ function shopProductCardHTML(p) {
         <button type="button" class="pc-wish${wished ? ' on' : ''}" data-wish="${p.id}" title="Xohishlar ro'yxati" onclick="toggleWishlist(event, ${p.id})"><i class="fa${wished ? 's' : 'r'} fa-heart"></i></button>
         <img class="product-card-img" src="${escapeHTML(imgSrc)}" alt="${escapeHTML(p.name)}" onerror="this.parentNode.querySelector('.product-card-img-placeholder').style.display='flex';this.style.display='none'">
         <div class="product-card-img-placeholder" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:36px;background:var(--border)">
-          ${CATEGORY_EMOJI[p.cat] || '📦'}
+          ${categoryEmoji(p.cat) || '📦'}
         </div>
       </div>
       <div class="product-card-body">
@@ -4435,17 +4487,21 @@ function newSale() {
 // PRODUCTS PAGE
 // ============================================================
 let currentCategory = '', productFilter2 = '';
+let productLoadState = 'ready';
 
 function renderProducts() {
     // Filtrda doim barcha kategoriyalar turadi (doimiy ro'yxat)
     const sel = document.getElementById('catFilter');
     if (sel) {
-        sel.innerHTML = '<option value="">Barcha</option>' + CATEGORIES
+        const categories = [...new Set([...CATEGORIES, ...products.map(p => p.cat).filter(Boolean)])];
+        sel.innerHTML = '<option value="">Barcha</option>' + categories
             .map(c => `<option value="${escapeHTML(c)}"${currentCategory === c ? ' selected' : ''}>${escapeHTML(c)}</option>`)
             .join('');
     }
     const cnt = document.getElementById('productCount');
-    const list = visibleProducts().filter(p =>
+    const table = document.getElementById('productsTable');
+    if (!table) return;
+    const list = products.filter(p =>
         (!currentCategory || p.cat === currentCategory) &&
         (!productFilter2 || p.name.toLowerCase().includes(productFilter2.toLowerCase()))
     );
@@ -4454,33 +4510,46 @@ function renderProducts() {
     // Jadval sarlavhasi 10 ustunli: Rasm | Nomi | Kategoriya | Filial | Narxi (sotuv) |
     // Tan narxi | Foyda | Qoldiq | Holati | Amallar. Shu sababli har bir qator ham
     // 10 ta katak chiqaradi — aks holda oxirgi ustunlar siljib ketadi.
-    document.getElementById('productsTable').innerHTML = list.map(p => {
+    table.innerHTML = list.map(p => {
         const imgSrc = productImageSrc(p.img);
         const branch = getBranchById(p.branchId);
         const cost = Number(p.cost) || 0;
         const profitUnit = (Number(p.price) || 0) - cost;
         return `<tr>
-    <td>
+    <td data-label="Rasm">
       ${imgSrc
                 ? `<img src="${escapeHTML(imgSrc)}" style="width:46px;height:36px;border-radius:8px;object-fit:cover;background:var(--border)" onerror="this.style.display='none'">`
                 : `<div style="width:46px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px">${icons[p.cat] || '📦'}</div>`}
     </td>
-    <td><strong>${escapeHTML(p.name)}</strong>${p.ikpu ? '' : ' <span class="badge badge-red" title="Fiskal chek chiqmaydi">IKPU yo\'q</span>'}<br><small style="color:var(--muted)">${escapeHTML(p.desc || '')}</small></td>
-    <td><span class="badge badge-blue">${escapeHTML(p.cat)}</span></td>
-    <td>${branch
+    <td data-label="Nomi"><strong>${escapeHTML(p.name)}</strong>${p.ikpu ? '' : ' <span class="badge badge-red" title="Fiskal chek chiqmaydi">IKPU yo\'q</span>'}<br><small style="color:var(--muted)">${escapeHTML(p.desc || '')}</small></td>
+    <td data-label="Kategoriya"><span class="badge badge-blue" title="${escapeHTML(p.cat)}">${escapeHTML(p.cat)}</span></td>
+    <td data-label="Filial">${branch
                 ? '<span class="badge" style="background:' + escapeHTML(branch.markerColor) + '22;color:' + escapeHTML(branch.markerColor) + '">' + escapeHTML(branch.markerIcon + ' ' + branch.name) + '</span>'
                 : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
-    <td style="font-weight:700;color:var(--primary)">${fmt(p.price)} so'm</td>
-    <td style="color:var(--muted)">${cost > 0 ? fmt(cost) + " so'm" : '—'}</td>
-    <td style="font-weight:700;color:${profitUnit < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(profitUnit)} so'm${cost > 0 ? `<br><small style="color:var(--muted)">${((profitUnit / cost) * 100).toFixed(1)}%</small>` : ''}</td>
-    <td><span class="${p.stock < 5 ? 'badge badge-red' : 'badge badge-green'}">${p.stock} dona</span></td>
-    <td><span class="badge ${p.stock > 0 ? 'badge-green' : 'badge-red'}">${p.stock > 0 ? 'Bor' : 'Tugagan'}</span></td>
-    <td>
-      <button class="btn btn-outline btn-sm" onclick="openProductModal(${p.id})"><i class="fas fa-edit"></i></button>
-      <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteProduct(${p.id})"><i class="fas fa-trash"></i></button>
+    <td data-label="Narxi" style="font-weight:700;color:var(--primary)">${fmt(p.price)} so'm</td>
+    <td data-label="Tannarx">${p.cost > 0 ? fmt(p.cost) + " so'm" : '<span style="color:var(--muted)">—</span>'}</td>
+    <td data-label="Foyda">${p.cost > 0
+                ? `<span style="font-weight:700;color:${(p.price - p.cost) >= 0 ? '#10b981' : '#ef4444'}">${fmt(p.price - p.cost)} so'm</span><br><small style="color:var(--muted)">${(((p.price - p.cost) / p.cost) * 100).toFixed(1)}%</small>`
+                : '<span style="color:var(--muted)">—</span>'}</td>
+    <td data-label="Qoldiq"><span class="${p.stock < 5 ? 'badge badge-red' : 'badge badge-green'}">${p.stock} dona</span></td>
+    <td data-label="Holati"><span class="badge ${p.stock > 0 ? 'badge-green' : 'badge-red'}">${p.stock > 0 ? 'Bor' : 'Tugagan'}</span></td>
+    <td data-label="Amallar" class="product-actions-td">
+      <button type="button" class="btn btn-outline btn-sm" title="Tahrirlash" aria-label="${escapeHTML(p.name)} mahsulotini tahrirlash" onclick="openProductModalWithEvent(event, ${Number(p.id)})"><i class="fas fa-edit"></i></button>
+      <button type="button" class="btn btn-danger btn-sm" title="O'chirish" aria-label="${escapeHTML(p.name)} mahsulotini o'chirish" onclick="deleteProductWithEvent(event, ${Number(p.id)})"><i class="fas fa-trash"></i></button>
     </td>
   </tr>`;
-    }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing</td></tr>';
+    }).join('');
+    if (list.length) return;
+
+    if (productLoadState === 'loading') {
+        table.innerHTML = '<tr><td colspan="10" class="products-empty-state" role="status"><i class="fas fa-spinner fa-spin"></i> Mahsulotlar yuklanmoqda...</td></tr>';
+    } else if (productLoadState === 'error') {
+        table.innerHTML = '<tr><td colspan="10" class="products-empty-state" role="alert">Mahsulotlarni yuklab bo\'lmadi. <button type="button" class="btn btn-outline btn-sm" onclick="loadFromBackend()">Qayta urinish</button></td></tr>';
+    } else if (products.length && (currentCategory || productFilter2)) {
+        table.innerHTML = '<tr><td colspan="10" class="products-empty-state">Filtrga mos mahsulot topilmadi.</td></tr>';
+    } else {
+        table.innerHTML = '<tr><td colspan="10" class="products-empty-state">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing.</td></tr>';
+    }
 }
 
 function filterByCategory(val) { currentCategory = val; renderProducts(); }
@@ -4516,8 +4585,14 @@ function fillProductBranchSelect(currentId) {
 
 function openProductModal(id) {
     if (!requireRole('admin')) return;
-    editingProductId = id || null;
-    const editing = editingProductId ? (products.find(x => x.id === editingProductId) || null) : null;
+    const requestedId = id == null || id === '' ? null : Number(id);
+    const found = requestedId == null ? null : products.find(x => Number(x.id) === requestedId);
+    if (requestedId != null && !found) {
+        showNotif('error', 'Mahsulot topilmadi', 'Tahrirlanadigan mahsulot ro\'yxatda yo\'q. Ro\'yxatni yangilang.');
+        return;
+    }
+    editingProductId = found ? found.id : null;
+    const editing = found;
 
     // Maydonlar mavjudligiga ishonch hosil qilamiz — yo'q maydon butun oynani buzmasin.
     const setVal = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
@@ -4526,6 +4601,19 @@ function openProductModal(id) {
 
     fillProductCategorySelect(editing ? editing.cat : '');
     fillProductBranchSelect(editing ? editing.branchId : '');
+    // Yo'qolgan filial ham saqlanadi: helper buni qilmaydi — aks holda mahsulot
+    // saqlashda tasodifan boshqa filialga ko'chib ketardi.
+    if (editing) {
+        const bSel = document.getElementById('p-branchId');
+        const bId = editing.branchId == null ? '' : String(editing.branchId);
+        if (bSel && bId && !Array.from(bSel.options).some(o => o.value === bId)) {
+            const opt = document.createElement('option');
+            opt.value = bId;
+            opt.textContent = `Noma'lum filial (${bId})`;
+            bSel.add(opt);
+            bSel.value = bId;
+        }
+    }
 
     if (editing) {
         setVal('p-name', editing.name);
@@ -4590,22 +4678,43 @@ function calcProfit(fromPrice) {
     box.innerHTML = `<span>${pr < 0 ? 'Zarar' : 'Foyda'}: 1 dona — ${fmt(pr)} so'm (${pct.toFixed(1)}%)</span><span>Qoldiq bo'yicha jami: ${fmt(pr * stock)} so'm</span>`;
 }
 
-function saveProduct() {
+async function saveProduct() {
     if (!requireRole('admin')) return;
     const name = validateSafeInput('Mahsulot nomi', document.getElementById('p-name').value, 120);
     const cat = validateSafeInput('Kategoriya', document.getElementById('p-cat').value, 80);
-    const price = parseInt(document.getElementById('p-price').value) || 0;
-    const stock = parseInt(document.getElementById('p-stock').value) || 0;
+    const price = Number(document.getElementById('p-price').value);
+    const stock = Number(document.getElementById('p-stock').value);
+    const cost = Number(document.getElementById('p-cost').value);
     const img = safeImageUrl(document.getElementById('p-img').value);
     const desc = validateSafeInput('Tavsif', document.getElementById('p-desc').value, 300);
     const barcode = validateSafeInput('Barkod', document.getElementById('p-barcode').value, 64);
     if (name === null || cat === null || desc === null || barcode === null) return;
-    if (!name || !price) { playError(); showNotif('error', 'Xato!', 'Nomi va narxini to\'ldiring'); return; }
+    if (!name || !cat) { playError(); showNotif('error', 'Xato!', 'Mahsulot nomi va kategoriyasini kiriting'); return; }
+    if (!Number.isSafeInteger(price) || price <= 0) {
+        playError();
+        showNotif('error', 'Narx xato', 'Sotuv narxi 0 dan katta butun son bo\'lishi kerak');
+        return;
+    }
+    if (!Number.isSafeInteger(stock) || stock < 0) {
+        playError();
+        showNotif('error', 'Qoldiq xato', 'Qoldiq manfiy bo\'lmagan butun son bo\'lishi kerak');
+        return;
+    }
+    if (!Number.isSafeInteger(cost) || cost <= 0) {
+        playError();
+        showNotif('error', 'Tannarx xato', 'Tannarx 0 dan katta butun son bo\'lishi kerak');
+        return;
+    }
     // ── Soliq maydonlari: fiskal chek (QR-kod) chiqishi uchun majburiy ──
     const ikpu = (document.getElementById('p-ikpu').value || '').replace(/\D/g, '').slice(0, 17);
     const packageCode = (document.getElementById('p-package').value || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
     const vatParsed = parseFloat(document.getElementById('p-vat').value);
-    const vatPercent = Number.isFinite(vatParsed) ? vatParsed : 12;
+    if (!Number.isFinite(vatParsed) || vatParsed < 0 || vatParsed > 100) {
+        playError();
+        showNotif('error', 'QQS stavkasi xato', 'QQS stavkasi 0–100 oralig\'ida bo\'lishi kerak');
+        return;
+    }
+    const vatPercent = vatParsed;
     if (ikpu.length !== 17) {
         playError();
         showNotif('error', 'IKPU (MXIK) xato',
@@ -4617,44 +4726,121 @@ function saveProduct() {
         showNotif('error', 'Qadoqlash kodi yo\'q', 'Fiskal chek uchun qadoqlash kodi kiritilishi shart');
         return;
     }
-    const cost = parseInt(document.getElementById('p-cost').value) || 0;
-    if (cost <= 0) { playError(); showNotif('error', 'Olingan narx yo\'q', 'Mahsulot olingan narxini kiriting'); return; }
     if (price < cost) { if (!confirm('Sotilish narxi olingan narxdan past — zarar bo\'ladi. Baribir saqlansinmi?')) return; }
     const mtype = document.getElementById('p-mtype').value === 'sum' ? 'sum' : 'pct';
     const markup = parseFloat(document.getElementById('p-markup').value) || 0;
-    const taxFields = { ikpu, packageCode, vatPercent, cost, mtype, markup };
-    // Filial (ombor) — mahsulot qaysi filialga tegishli ekani saqlanadi.
-    const branchEl = document.getElementById('p-branchId');
-    const branchId = branchEl ? String(branchEl.value || '') : '';
-    if (editingProductId) {
-        const p = products.find(x => x.id === editingProductId);
-        if (p) Object.assign(p, { name, cat, price, stock, img, desc, barcode, branchId }, taxFields);
-        addLog('Mahsulot', `"${name}" tahrirlandi`);
-        showNotif('success', 'Saqlandi!', 'Mahsulot yangilandi');
-    } else {
-        products.push(Object.assign({ id: Date.now(), name, cat, price, stock, img, desc, barcode, branchId }, taxFields));
-        addLog('Mahsulot', `"${name}" qo'shildi`);
-        showNotif('success', 'Qo\'shildi!', name + ' mahsulot qo\'shildi');
+    if (!Number.isFinite(markup) || markup < 0) {
+        playError();
+        showNotif('error', 'Ustama xato', 'Ustama manfiy bo\'lmasligi kerak');
+        return;
     }
-    saveToStorage();
-    closeModal('productModal');
-    renderProducts();
-    renderCatTabs();
-    renderProductGrid();
-    // Filial bo'limidagi mahsulot/qoldiq ko'rsatkichlari darhol yangilanadi.
-    try { if (typeof Branches !== 'undefined') { Branches.render(); Branches.updateNavBadge(); } } catch (e) { }
+    const branchIdEl = document.getElementById('p-branchId');
+    const branchId = branchIdEl ? (branchIdEl.value || '') : '';
+    if (branchId.length > 40) {
+        playError();
+        showNotif('error', 'Filial xato', 'Filial identifikatori yaroqsiz');
+        return;
+    }
+    const taxFields = { ikpu, packageCode, vatPercent, cost, mtype, markup, branchId };
+    const previousProducts = products.map(p => ({ ...p }));
+    const previousLogs = logs.slice();
+    const isEditing = editingProductId != null;
+    let productId = editingProductId;
+    if (isEditing) {
+        const existing = products.find(x => Number(x.id) === Number(productId));
+        if (!existing) {
+            showNotif('error', 'Mahsulot topilmadi', 'Saqlashdan oldin ro\'yxatni yangilang');
+            return;
+        }
+        products = products.map(p => Number(p.id) === Number(productId)
+            ? { ...p, name, cat, price, stock, img, desc, barcode, ...taxFields }
+            : p);
+    } else {
+        productId = Date.now();
+        while (products.some(p => Number(p.id) === productId)) productId += 1;
+        products = [...products, { id: productId, name, cat, price, stock, img, desc, barcode, ...taxFields }];
+    }
+
+    const saveButton = document.getElementById('productSaveBtn');
+    const originalButtonHtml = saveButton?.innerHTML || '';
+    if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saqlanmoqda...';
+    }
+    try {
+        addLog('Mahsulot', isEditing
+            ? `"${name}" tahrirlandi`
+            : `"${name}" qo'shildi`, false);
+        saveToStorage(false);
+        if (!await syncWithBackend(true)) {
+            products = previousProducts;
+            logs = previousLogs;
+            saveToStorage(false);
+            renderProducts();
+            renderLogs();
+            showNotif('error', 'Saqlanmadi', _lastSyncError || 'Mahsulot bazaga yozilmadi. Qayta urinib ko\'ring.');
+            return;
+        }
+        closeModal('productModal');
+        renderProducts();
+        renderCatTabs();
+        renderProductGrid();
+        // Filial bo'limidagi mahsulot/qoldiq ko'rsatkichlari darhol yangilanadi.
+        try { if (typeof Branches !== 'undefined') { Branches.render(); Branches.updateNavBadge(); } } catch (e) { }
+        showNotif('success', 'Saqlandi!', isEditing
+            ? 'Mahsulot yangilandi'
+            : name + ' mahsulot qo\'shildi');
+        editingProductId = null;
+    } catch (error) {
+        products = previousProducts;
+        logs = previousLogs;
+        saveToStorage(false);
+        renderProducts();
+        renderLogs();
+        showNotif('error', 'Saqlanmadi', error?.message || 'Mahsulotni saqlashda xatolik yuz berdi');
+    } finally {
+        if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.innerHTML = originalButtonHtml;
+        }
+    }
 }
 
-function deleteProduct(id) {
+async function deleteProduct(id) {
     if (!requireRole('admin')) return;
-    if (!confirm('Mahsulotni o\'chirishni xohlaysizmi?')) return;
-    const p = products.find(x => x.id === id);
-    products = products.filter(x => x.id !== id);
-    saveToStorage();
-    addLog('Mahsulot', `"${p?.name}" o'chirildi`);
-    showNotif('info', 'O\'chirildi!', 'Mahsulot o\'chirildi');
-    renderProducts();
-    renderProductGrid();
+    const product = products.find(x => Number(x.id) === Number(id));
+    if (!product) {
+        showNotif('error', 'Mahsulot topilmadi', 'O\'chiriladigan mahsulot ro\'yxatda yo\'q. Ro\'yxatni yangilang.');
+        return;
+    }
+    if (!confirm(`"${product.name}" mahsulotini o'chirishni xohlaysizmi?`)) return;
+
+    const previousProducts = products.map(p => ({ ...p }));
+    const previousLogs = logs.slice();
+    products = products.filter(x => Number(x.id) !== Number(product.id));
+    try {
+        addLog('Mahsulot', `"${product.name}" o'chirildi`, false);
+        saveToStorage(false);
+        if (!await syncWithBackend(true)) {
+            products = previousProducts;
+            logs = previousLogs;
+            saveToStorage(false);
+            renderProducts();
+            renderLogs();
+            showNotif('error', 'O\'chirilmadi', _lastSyncError || 'Mahsulot bazadan o\'chirilmadi. Qayta urinib ko\'ring.');
+            return;
+        }
+        renderProducts();
+        renderProductGrid();
+        showNotif('info', 'O\'chirildi!', 'Mahsulot o\'chirildi');
+    } catch (error) {
+        products = previousProducts;
+        logs = previousLogs;
+        saveToStorage(false);
+        renderProducts();
+        renderLogs();
+        showNotif('error', 'O\'chirilmadi', error?.message || 'Mahsulotni o\'chirishda xatolik yuz berdi');
+    }
 }
 
 // ============================================================
@@ -4744,6 +4930,9 @@ function sendSMSTo(phone, name) {
 // EMPLOYEES
 // ============================================================
 function renderEmployees() {
+    // Xodimlar jadvali faqat bu sahifaga ruxsati bor rollarda chiziladi
+    // (kassir uchun DOM'da ham bo'sh turgan jadval qolmaydi).
+    if (currentUser && !canAccessPage('page-employees')) return;
     const list = employees.map(e => ({ ...e, ...employeeStats(e) }));
     const maxTotal = Math.max(...list.map(e => e.total), 1);
     uiSetHtml('employeesTable', list.map(e => `<tr>
@@ -4935,7 +5124,7 @@ function sendSMS() {
 // ============================================================
 // LOGS
 // ============================================================
-function addLog(action, detail) {
+function addLog(action, detail, syncBackend = true) {
     logs.unshift({
         time: new Date().toLocaleTimeString('uz-UZ'),
         user: cleanText(currentUser?.name || 'Tizim', 120),
@@ -4944,7 +5133,7 @@ function addLog(action, detail) {
     });
     if (logs.length > 200) logs.pop();
     localStorage.setItem('tp_logs', JSON.stringify(logs));
-    scheduleSyncWithBackend(); // bazaga ham yoziladi
+    if (syncBackend) scheduleSyncWithBackend();
     const logsTable = document.getElementById('logsTable');
     if (logsTable) renderLogs();
 }
@@ -8594,18 +8783,24 @@ function renderCategoriesPage() {
     if (!tbody) return;
     const list = Object.keys(counts).map((cat, i) => {
         const arg = escapeHTML(JSON.stringify(cat));
+        const n = counts[cat];
         return `
         <tr>
-            <td>${i + 1}</td>
-            <td><strong>${categoryEmoji(cat)} ${escapeHTML(cat)}</strong></td>
-            <td>${counts[cat]} ta mahsulot</td>
-            <td><div class="cat-actions">
-                <button class="btn btn-outline btn-sm" onclick="viewCategoryProducts(${arg})"><i class="fas fa-eye"></i> Ko'rish</button>
-                <button class="btn btn-outline btn-sm" onclick="openCategoryModal(${arg})"><i class="fas fa-pen"></i> Tahrirlash</button>
-                <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteCategory(${arg})"><i class="fas fa-trash"></i></button>
+            <td class="cat-td-index" data-label="">${i + 1}</td>
+            <td class="cat-td-name" data-label="Kategoriya"><span class="cat-name">
+                <span class="cat-name-emoji" aria-hidden="true">${escapeHTML(categoryEmoji(cat))}</span>
+                <span class="cat-name-text" title="${escapeHTML(cat)}">${escapeHTML(cat)}</span>
+            </span></td>
+            <td class="cat-td-count" data-label="Mahsulotlar"><span class="badge ${n ? 'badge-blue' : 'badge-gray'} cat-count-badge">${n}</span></td>
+            <td class="cat-td-actions" data-label="Amallar"><div class="cat-actions">
+                <button class="btn btn-outline btn-sm" title="Ko'rish" onclick="viewCategoryProducts(${arg})"><i class="fas fa-eye"></i> Ko'rish</button>
+                <button class="btn btn-outline btn-sm" title="Tahrirlash" onclick="openCategoryModal(${arg})"><i class="fas fa-pen"></i> Tahrirlash</button>
+                <button class="btn btn-outline btn-sm cat-btn-danger" title="O'chirish" onclick="deleteCategory(${arg})"><i class="fas fa-trash"></i></button>
             </div></td>
         </tr>`;
     }).join('');
+    const chip = document.getElementById('categoriesCountChip');
+    if (chip) chip.textContent = String(Object.keys(counts).length);
     tbody.innerHTML = list || '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Kategoriyalar yo\'q — "Yangi kategoriya" tugmasini bosing</td></tr>';
 }
 
@@ -8616,8 +8811,12 @@ function openCategoryModal(name) {
     }
     editingCategory = typeof name === 'string' ? name : null;
     const input = document.getElementById('categoryNameInput');
+    const emojiInput = document.getElementById('categoryEmojiInput');
     const title = document.getElementById('categoryModalTitle');
     if (input) input.value = editingCategory || '';
+    if (emojiInput) emojiInput.value = editingCategory
+        ? ((systemSettings.categoryEmojis || {})[editingCategory] || '')
+        : '';
     if (title) title.innerHTML = editingCategory
         ? '<i class="fas fa-pen"></i> Kategoriyani tahrirlash'
         : '<i class="fas fa-folder-plus"></i> Yangi kategoriya';
@@ -8640,6 +8839,15 @@ function saveCategoryFromModal() {
     const exists = CATEGORIES.some(c => c.toLowerCase() === name.toLowerCase() && c !== editingCategory);
     if (exists) { playError(); showNotif('error', 'Xato!', 'Bunday kategoriya allaqachon bor'); return; }
 
+    // Icon/emoji (ixtiyoriy) — mavjud `settings` kaliti ichida saqlanadi,
+    // /api/sync → validate_sync_payload → db_manager.save_keys orqali bazaga yoziladi
+    const emojiInput = document.getElementById('categoryEmojiInput');
+    const emoji = emojiInput ? cleanText(emojiInput.value, 8).trim() : '';
+    if (!systemSettings.categoryEmojis || typeof systemSettings.categoryEmojis !== 'object') {
+        systemSettings.categoryEmojis = {};
+    }
+    const emojis = systemSettings.categoryEmojis;
+
     if (editingCategory) {
         const i = CATEGORIES.indexOf(editingCategory);
         if (i >= 0) CATEGORIES[i] = name;
@@ -8649,6 +8857,15 @@ function saveCategoryFromModal() {
         CATEGORIES.push(name);
         addLog('Kategoriya', `Yangi kategoriya yaratildi: ${name}`);
     }
+    // Emoji'ni qo'llash: tahrirlashda eski nom kalitini yangi nomga ko'chiramiz,
+    // so'ng yangi qiymatni yozamiz yoki bo'sh bo'lsa tozalamiz
+    if (editingCategory && editingCategory !== name && emojis[editingCategory]) {
+        emojis[name] = emojis[editingCategory];
+        delete emojis[editingCategory];
+    }
+    if (emoji) emojis[name] = emoji;
+    else delete emojis[name];
+    try { localStorage.setItem('tp_settings', JSON.stringify(systemSettings)); } catch (e) { }
     closeModal('categoryModal');
     refreshCategoryViews();
     playSuccess();
@@ -8668,6 +8885,10 @@ function deleteCategory(name) {
     }
     if (!confirm(`"${name}" kategoriyasini o'chirmoqchimisiz?`)) return;
     CATEGORIES = CATEGORIES.filter(c => c !== name);
+    if (systemSettings.categoryEmojis && typeof systemSettings.categoryEmojis === 'object') {
+        delete systemSettings.categoryEmojis[name];
+        try { localStorage.setItem('tp_settings', JSON.stringify(systemSettings)); } catch (e) { }
+    }
     addLog('Kategoriya', `Kategoriya o'chirildi: ${name}`);
     refreshCategoryViews();
     showNotif('success', 'O\'chirildi', name);
@@ -8709,15 +8930,15 @@ function renderWarehousePage() {
         const b = getBranchById(p.branchId);
         return `
         <tr>
-            <td>${i + 1}</td>
-            <td><strong>${escapeHTML(p.name)}</strong></td>
-            <td><span class="badge">${escapeHTML(p.cat)}</span></td>
-            <td>${b
+            <td data-label="#">${i + 1}</td>
+            <td data-label="Nomi"><strong>${escapeHTML(p.name)}</strong></td>
+            <td data-label="Kategoriya"><span class="badge">${escapeHTML(p.cat)}</span></td>
+            <td data-label="Filial">${b
                 ? '<span class="badge" style="background:' + escapeHTML(b.markerColor) + '22;color:' + escapeHTML(b.markerColor) + '">' + escapeHTML(b.markerIcon + ' ' + b.name) + '</span>'
                 : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
-            <td style="font-weight:700;color:${p.stock < 5 ? 'var(--danger)' : 'var(--success)'}">${p.stock} ta</td>
-            <td>${fmt(p.price)} so'm</td>
-            <td style="font-weight:700">${fmt(p.price * p.stock)} so'm</td>
+            <td data-label="Qoldiq" style="font-weight:700;color:${p.stock < 5 ? 'var(--danger)' : 'var(--success)'}">${p.stock} ta</td>
+            <td data-label="Baho">${fmt(p.price)} so'm</td>
+            <td data-label="Jami Qiymat" style="font-weight:700">${fmt(p.price * p.stock)} so'm</td>
         </tr>
     `;
     }).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Mahsulot yo\'q</td></tr>';

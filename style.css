@@ -86,6 +86,19 @@
         radial-gradient(ellipse 42% 190% at 8% 50%, rgba(225, 29, 46, .26), transparent 70%),
         radial-gradient(ellipse 34% 190% at 94% 0%, rgba(255, 122, 26, .16), transparent 72%),
         linear-gradient(96deg, rgba(40, 7, 11, .86), rgba(24, 4, 8, .78));
+
+    /* ===== SIDEBAR (admin panel) — yagona manba =====
+       Dark qiymatlar avvalgi hardcoded qiymatlarning o'z'i;
+       [data-theme="light"] faqat shu tokenlarni almashtiradi. */
+    --side-bg: linear-gradient(180deg, #1a0508, #0e0607);
+    --side-border: rgba(255, 70, 50, .28);
+    --side-hover-bg: rgba(255, 90, 60, .12);
+    --side-active-bg: linear-gradient(135deg, rgba(255, 122, 26, .3), rgba(225, 29, 46, .3));
+    --side-active-fg: #fff;
+    --side-active-shadow: inset 3px 0 0 #ff5a3c, 0 6px 18px rgba(225, 29, 46, .22);
+    --side-card-bg: rgba(255, 255, 255, .04);
+    --side-card-hover-bg: rgba(255, 255, 255, .08);
+    --side-badge-ring: rgba(22, 7, 9, .95);
 }
 
 [data-theme="light"] {
@@ -137,6 +150,17 @@
     --glass-bg: rgba(255, 255, 255, 0.82);
     --glass-border: rgba(15, 23, 42, 0.08);
     --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.10);
+
+    /* ===== SIDEBAR (admin panel) — light ===== */
+    --side-bg: var(--surface);
+    --side-border: var(--border);
+    --side-hover-bg: var(--primary-subtle);
+    --side-active-bg: linear-gradient(135deg, rgba(255, 106, 31, .14), rgba(225, 29, 46, .10));
+    --side-active-fg: var(--primary);
+    --side-active-shadow: inset 3px 0 0 var(--primary), 0 4px 14px rgba(230, 59, 31, .18);
+    --side-card-bg: rgba(15, 23, 42, .04);
+    --side-card-hover-bg: rgba(15, 23, 42, .07);
+    --side-badge-ring: rgba(255, 255, 255, .95);
 }
 
 [data-theme="blue"] {
@@ -625,7 +649,7 @@ body {
     align-items: center;
     gap: 12px;
     padding: 14px;
-    background: rgba(255, 255, 255, .04);
+    background: var(--side-card-bg);
     border-radius: 14px;
     cursor: pointer;
     transition: all .2s cubic-bezier(.4, 0, .2, 1);
@@ -633,7 +657,7 @@ body {
 }
 
 .user-card:hover {
-    background: rgba(255, 255, 255, .08);
+    background: var(--side-card-hover-bg);
     border-color: var(--border);
     transform: translateY(-1px);
 }
@@ -1254,6 +1278,145 @@ body {
 
 #page-categories table {
     width: 100%;
+}
+
+/* --- Professional jadval: ustun balansi (colgroup), ixcham qatorlar,
+       action-group va chip — products jadvali bilan bir xil tokenlar --- */
+#page-categories .categories-table {
+    width: 100%;
+    min-width: 640px;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+#page-categories .categories-table .cat-col-index { width: 64px; }
+#page-categories .categories-table .cat-col-name { width: auto; }
+#page-categories .categories-table .cat-col-count { width: 150px; }
+#page-categories .categories-table .cat-col-actions { width: 280px; }
+
+/* Header: body'dan aniq ajralib turadi (fon, border, hierarchy) */
+#page-categories .categories-table thead th {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-weight: 800;
+    letter-spacing: .6px;
+    white-space: nowrap;
+}
+
+/* Qatorlar: ixcham padding, yupqa separator, yengil hover feedback */
+#page-categories .categories-table tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+#page-categories .categories-table tbody tr:hover td {
+    background: var(--card-hover);
+}
+
+/* Ustun alignmentlari — header va body bir xil (index/markaz, nom/chap,
+   son/markaz, amallar/o'ng) */
+#page-categories .categories-table .cat-td-index {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+#page-categories .categories-table .cat-td-count { text-align: center; }
+
+#page-categories .categories-table .cat-td-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Kategoriya nomi: bir xil o'lchamli emoji kvadrat + bitta qator matn
+   (uzun nom layoutni buzmaydi — ellipsis + title) */
+#page-categories .cat-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+#page-categories .cat-name-emoji {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--primary-subtle);
+    font-size: 14px;
+    line-height: 1;
+}
+
+#page-categories .cat-name-text {
+    min-width: 0;
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Mahsulotlar soni — ixcham chip (0 ta bo'lsa neytral) */
+#page-categories .cat-count-badge {
+    min-width: 36px;
+    justify-content: center;
+}
+
+/* Amallar — bitta tartibli action-group: bir xil height/radius, o'ngga tekis */
+#page-categories .cat-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+#page-categories .cat-actions .btn {
+    padding: 7px 12px;
+    font-size: 12px;
+    gap: 6px;
+    line-height: 1.25;
+    min-height: 30px; /* icon-only delete ham xuddi shu balandlikda bo'lsin */
+}
+
+#page-categories .cat-actions .btn i { font-size: 12px; }
+
+/* Delete — alohida destructive style (outline qizil, hover'da to'liq qizil) */
+#page-categories .cat-actions .cat-btn-danger {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+#page-categories .cat-actions .cat-btn-danger:hover {
+    color: #fff;
+    background: var(--danger);
+    border-color: var(--danger);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, .3);
+}
+
+#page-categories .cat-actions .cat-btn-danger:active { filter: brightness(.92); }
+
+/* Panel header: "+ qo'shish" tugmasi wrap bo'lmasin, sarlavhadan ajralsin */
+#page-categories .panel-header .btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+#page-categories .panel-header h3 {
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+/* Mobil: "+ Kategoriya qo'shish" tugmasi panel sarlavhasida
+   to'liq kenglikda, bosish qulay bo'lsin */
+@media (max-width: 600px) {
+    #page-categories .panel-header .btn {
+        width: 100%;
+    }
 }
 
 /* ------------------------------------------------------------
@@ -3132,6 +3295,48 @@ tbody tr:last-child td {
     margin-bottom: 6px;
 }
 
+/* ===== CASHFLOW TYPE SELECTOR (Kirim / Chiqim / Harajat) ===== */
+.cf-type-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 18px;
+}
+.cf-type-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 10px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .2s ease;
+    min-height: 52px;
+    white-space: nowrap;
+}
+.cf-type-btn i {
+    font-size: 16px;
+}
+.cf-type-btn:hover {
+    border-color: var(--primary);
+    color: var(--text);
+    background: var(--card-hover);
+}
+.cf-type-btn.active {
+    border-color: var(--primary);
+    background: var(--primary-gradient);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(255, 106, 31, .3);
+}
+.cf-type-btn.active i {
+    color: #fff;
+}
+
 /* ===== FORMS ===== */
 .form-row {
     display: grid;
@@ -4034,6 +4239,43 @@ body:has(#loginPage.active) .menu-toggle {
     .form-row {
         grid-template-columns: 1fr;
         gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .form-col {
+        margin-bottom: 0 !important;
+    }
+
+    /* Page header flex — mobile: stack vertically */
+    .page > div[style*="display:flex"] {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+    }
+    .page > div[style*="display:flex"] > button,
+    .page > div[style*="display:flex"] > div:last-child button {
+        width: 100%;
+    }
+    .page > div > div:first-child > h2,
+    .page > div > div:first-child > p {
+        font-size: 16px !important;
+    }
+    /* Panel header — mobile: full width search/filter */
+    .panel-header {
+        padding: 12px 14px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .panel-header > div > select,
+    .panel-header > div > input {
+        width: 100% !important;
+        min-height: 44px;
+    }
+    .panel-header > div {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+        flex-wrap: wrap;
     }
 
     .product-grid {
@@ -10066,15 +10308,15 @@ body {
 
 /* Admin panel: sidebar, topbar, kartalar, jadval */
 #app:not(.market-mode) .sidebar {
-    background: linear-gradient(180deg, #1a0508, #0e0607);
-    border-right: 1px solid rgba(255, 70, 50, .28);
+    background: var(--side-bg);
+    border-right: 1px solid var(--side-border);
 }
 #app:not(.market-mode) .nav-item { border-radius: 12px; transition: background .16s, color .16s; }
-#app:not(.market-mode) .nav-item:hover { background: rgba(255, 90, 60, .12); }
+#app:not(.market-mode) .nav-item:hover { background: var(--side-hover-bg); }
 #app:not(.market-mode) .nav-item.active {
-    background: linear-gradient(135deg, rgba(255, 122, 26, .3), rgba(225, 29, 46, .3));
-    color: #fff;
-    box-shadow: inset 3px 0 0 #ff5a3c, 0 6px 18px rgba(225, 29, 46, .22);
+    background: var(--side-active-bg);
+    color: var(--side-active-fg);
+    box-shadow: var(--side-active-shadow);
 }
 #app:not(.market-mode) .topbar {
     backdrop-filter: blur(14px);
@@ -11526,7 +11768,7 @@ body.drawer-open {
         line-height: 1.4;
         min-width: 16px;
         text-align: center;
-        box-shadow: 0 0 0 2px rgba(22, 7, 9, .95);
+        box-shadow: 0 0 0 2px var(--side-badge-ring);
     }
 
     /* Foydalanuvchi kartasi: faqat avatar */
@@ -11548,6 +11790,232 @@ body.drawer-open {
     /* Submenu yig'ilgan holatda ochilmaydi (JS Xodimlar bosilganda sidebarni ochadi) */
     .sidebar.collapsed .nav-submenu {
         display: none !important;
+    }
+}
+
+/* Products management table: fixed columns keep each header aligned with its cell. */
+#page-products {
+    min-width: 0;
+    padding-bottom: 92px !important;
+}
+
+#page-products .products-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    min-width: 0;
+}
+
+#page-products .products-page-header > div,
+#page-products .products-panel-header h3 {
+    min-width: 0;
+}
+
+#page-products .products-page-header .btn {
+    flex: 0 0 auto;
+}
+
+#page-products .products-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+
+#page-products .products-filters {
+    display: flex;
+    flex: 0 1 390px;
+    gap: 8px;
+    min-width: 0;
+}
+
+#page-products .products-filters select {
+    flex: 0 0 150px;
+    min-width: 0;
+}
+
+#page-products .products-filters input {
+    flex: 1 1 200px;
+    min-width: 120px;
+}
+
+#page-products .products-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+#page-products .products-table {
+    width: 100%;
+    min-width: 1125px;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+#page-products .products-table .product-col-image { width: 56px; }
+#page-products .products-table .product-col-name { width: 200px; }
+#page-products .products-table .product-col-category { width: 130px; }
+/* Kategoriya badge'i: yagona kenglik (ustun to'liq), yagona balandlik (2 qator),
+   ortiqcha matn badge ichida ketyapti — xar bir qator tekis ko'rinadi. */
+#page-products .products-table td[data-label="Kategoriya"] .badge {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    height: 41px; /* 2 qator: 11px * 1.4 * 2 + 4+4 padding + 1+1 border */
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    margin: 0;
+}
+
+#page-products .products-table .product-col-branch { width: 130px; }
+#page-products .products-table .product-col-price { width: 125px; }
+#page-products .products-table .product-col-cost { width: 115px; }
+#page-products .products-table .product-col-profit { width: 110px; }
+#page-products .products-table .product-col-stock { width: 90px; }
+#page-products .products-table .product-col-status { width: 85px; }
+#page-products .products-table .product-col-actions { width: 84px; }
+
+#page-products .products-table th,
+#page-products .products-table td {
+    box-sizing: border-box;
+    padding: 12px 10px;
+    vertical-align: middle;
+}
+
+#page-products .products-table th {
+    white-space: nowrap;
+}
+
+#page-products .products-table td[data-label="Nomi"] {
+    overflow-wrap: anywhere;
+}
+
+#page-products .products-table td[data-label="Filial"],
+#page-products .products-table td[data-label="Narxi"],
+#page-products .products-table td[data-label="Tannarx"],
+#page-products .products-table td[data-label="Foyda"],
+#page-products .products-table td[data-label="Qoldiq"],
+#page-products .products-table td[data-label="Holati"] {
+    white-space: nowrap;
+}
+
+#page-products .products-table .product-actions-td {
+    white-space: nowrap;
+    text-align: right;
+}
+
+#page-products .product-actions-td button {
+    margin: 0 0 0 4px !important;
+}
+
+#page-products .products-empty-state {
+    padding: 28px 16px;
+    color: var(--muted);
+    text-align: center;
+}
+
+#page-products .products-empty-state .btn {
+    margin-left: 8px;
+}
+
+@media (max-width: 1024px) {
+    #page-products .products-page-header {
+      align-items: flex-start;
+    }
+
+    #page-products .products-page-header .btn {
+      white-space: nowrap;
+    }
+
+    #page-products .products-panel-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    #page-products .products-filters {
+      flex: 1 1 auto;
+      width: 100%;
+    }
+
+    #page-products .products-table-scroll {
+      overflow-x: auto !important;
+    }
+
+    #page-products table.products-table {
+      display: table !important;
+      width: 1125px !important;
+      min-width: 1125px !important;
+      border-collapse: collapse !important;
+      border-spacing: 0 !important;
+    }
+
+    #page-products .products-table thead {
+      display: table-header-group !important;
+    }
+
+    #page-products .products-table tbody {
+      display: table-row-group !important;
+    }
+
+    #page-products .products-table tbody tr {
+      display: table-row !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+
+    #page-products .products-table tbody td,
+    #page-products .products-table thead th {
+      display: table-cell !important;
+      width: auto !important;
+      min-height: 0 !important;
+      padding: 10px 8px !important;
+      text-align: left !important;
+      border-bottom: 1px solid var(--border) !important;
+    }
+
+    #page-products .products-table tbody td::before {
+      display: none !important;
+      content: none !important;
+    }
+
+    #page-products .products-table .product-actions-td {
+      text-align: right !important;
+      white-space: nowrap;
+    }
+}
+
+@media (max-width: 600px) {
+    #page-products .products-page-header {
+      flex-direction: column;
+    }
+
+    #page-products .products-page-header .btn {
+      width: 100%;
+    }
+
+    #page-products .products-filters {
+      flex-direction: column;
+    }
+
+    #page-products .products-filters select,
+    #page-products .products-filters input {
+      width: 100% !important;
+      min-width: 0;
+      flex-basis: auto;
     }
 }
 
@@ -12364,6 +12832,179 @@ body {
   .table-wrap tbody td[colspan] { justify-content: center; text-align: center; font-style: italic; color: var(--muted); padding: 16px 0 !important; }
   .table-wrap tbody td[colspan]::before { display: none; content: ""; }
 
+  /* ============== PRODUCTS PAGE — MOBILE CARD ENHANCEMENTS ============== */
+  #page-products .panel-header {
+    padding: 10px 12px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  #page-products .panel-header > div {
+    display: flex !important;
+    gap: 8px !important;
+    width: 100% !important;
+    flex-wrap: wrap !important;
+  }
+  #page-products .panel-header > div > select,
+  #page-products .panel-header > div > input {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 44px !important;
+    flex: 1 1 100% !important;
+  }
+  #page-products .panel-header h3 {
+    font-size: 14px !important;
+    margin-bottom: 4px !important;
+  }
+  /* Product image in mobile card — compact */
+  #page-products .table-wrap tbody td[data-label="Rasm"],
+  #page-products table tbody td[data-label="Rasm"] {
+    justify-content: flex-start !important;
+    padding: 4px 0 8px !important;
+  }
+  #page-products .table-wrap tbody td[data-label="Rasm"] img,
+  #page-products table tbody td[data-label="Rasm"] img {
+    width: 48px !important;
+    height: 40px !important;
+    border-radius: 8px !important;
+    object-fit: cover !important;
+  }
+  #page-products .table-wrap tbody td[data-label="Rasm"] > div,
+  #page-products table tbody td[data-label="Rasm"] > div {
+    width: 48px !important;
+    height: 40px !important;
+    border-radius: 8px !important;
+    font-size: 22px !important;
+  }
+  /* Product name — prominent in mobile card */
+  #page-products .table-wrap tbody td[data-label="Nomi"],
+  #page-products table tbody td[data-label="Nomi"] {
+    padding: 6px 0 8px !important;
+    min-height: auto !important;
+  }
+  #page-products .table-wrap tbody td[data-label="Nomi"] strong,
+  #page-products table tbody td[data-label="Nomi"] strong {
+    font-size: 14px !important;
+    display: block;
+    margin-bottom: 2px;
+  }
+  #page-products .table-wrap tbody td[data-label="Nomi"] small,
+  #page-products table tbody td[data-label="Nomi"] small {
+    font-size: 11px !important;
+    display: block;
+    margin-top: 2px;
+  }
+  /* Price — highlight in mobile card */
+  #page-products .table-wrap tbody td[data-label="Narxi"],
+  #page-products table tbody td[data-label="Narxi"] {
+    font-size: 15px !important;
+  }
+  /* Action buttons — touch-friendly, side by side */
+  #page-products .table-wrap tbody td.product-actions-td,
+  #page-products table tbody td.product-actions-td {
+    justify-content: flex-end !important;
+    padding-top: 8px !important;
+    border-top: 1px solid var(--border) !important;
+    margin-top: 4px;
+  }
+  #page-products .table-wrap tbody td.product-actions-td::before,
+  #page-products table tbody td.product-actions-td::before {
+    display: none !important;
+    content: none !important;
+  }
+  #page-products .table-wrap tbody td.product-actions-td button,
+  #page-products table tbody td.product-actions-td button {
+    min-width: 44px !important;
+    min-height: 40px !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    border-radius: 10px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+  }
+  #page-products .table-wrap tbody td.product-actions-td button i,
+  #page-products table tbody td.product-actions-td button i {
+    font-size: 14px !important;
+  }
+  /* Warehouse table — mobile card tweaks */
+  #page-warehouse .table-wrap tbody td[data-label="#"],
+  #page-warehouse table tbody td[data-label="#"] {
+    font-size: 11px !important;
+    color: var(--muted) !important;
+    padding: 2px 0 4px !important;
+  }
+  #page-warehouse .table-wrap tbody td[data-label="Nomi"],
+  #page-warehouse table tbody td[data-label="Nomi"] {
+    padding: 4px 0 8px !important;
+  }
+  #page-warehouse .table-wrap tbody td[data-label="Nomi"] strong,
+  #page-warehouse table tbody td[data-label="Nomi"] strong {
+    font-size: 14px !important;
+  }
+
+  /* ============== CATEGORIES PAGE — MOBILE CARD ============== */
+  #page-categories .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 16px;
+  }
+  #page-categories .panel-header .btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  #page-categories .categories-table .cat-name {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px 8px;
+  }
+  #page-categories .categories-table .cat-name-text {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+  #page-categories .categories-table td.cat-td-count {
+    align-items: center !important;
+  }
+  #page-categories .categories-table td.cat-td-actions {
+    justify-content: flex-end !important;
+    padding-top: 8px !important;
+    border-top: 1px solid var(--border) !important;
+    margin-top: 4px;
+    text-align: right !important;
+  }
+  #page-categories .categories-table td.cat-td-actions::before {
+    display: none !important;
+    content: none !important;
+  }
+  #page-categories .categories-table .cat-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    width: 100%;
+    margin-left: auto;
+  }
+  #page-categories .categories-table .cat-actions .btn {
+    min-width: 44px !important;
+    min-height: 40px !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    border-radius: 10px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+  }
+  #page-categories .categories-table .cat-actions .btn i {
+    font-size: 14px !important;
+  }
+
   /* ============== CHARTS ============== */
   .chart-wrap, .chart-container, .chart-box {
     width: 100% !important;
@@ -12455,6 +13096,14 @@ body {
     border-bottom: 0;
   }
   @keyframes mSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  /* Pastki sheet qoidasi faqat OCHIQ overlay'ga nisbatan ishlasin.
+     Aks holda [class*="modal"] / [id$="Modal"] yopiq `.modal-overlay` ni
+     ham ushlab, `display:flex !important` beradi — yopiq modallar ekran
+     pastida noyob chiziq bo'lib ko'rinib qoladi. (Teng specifika — bu
+     qoida keyinroq kelgani uchun g'olib bo'ladi.) */
+  .modal-overlay:not(.open):not(.sidebar-overlay) {
+    display: none !important;
+  }
   .modal .modal-header, modal .modal-header, [class*="modal"]:not(.sidebar-overlay) .modal-header,
   [id$="Modal"] .modal-header, [role="dialog"] .modal-header,
   .payment-modal .modal-header, .product-modal .modal-header {
@@ -13366,6 +14015,17 @@ body {
     max-width: 40%;
     font-size: 10px;
   }
+  /* Cashflow type buttons — mobile: stack vertically */
+  .cf-type-group {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .cf-type-btn {
+    padding: 12px 8px;
+    font-size: 12px;
+    min-height: 48px;
+  }
+  .cf-type-btn i { font-size: 14px; }
   h1 { font-size: 18px; }
   h2 { font-size: 16px; }
   h3 { font-size: 14px; }
@@ -13459,5 +14119,102 @@ body {
     max-height: 86vh !important;
     inset: auto !important;
     border-radius: 18px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  #productModal.modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    display: none !important;
+    align-items: flex-end !important;
+    justify-content: center !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    overflow-y: auto !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: rgba(0, 0, 0, .65) !important;
+    box-shadow: none !important;
+    z-index: 10000 !important;
+  }
+
+  #productModal.modal-overlay.open {
+    display: flex !important;
+  }
+
+  #productModal > .modal[role="dialog"] {
+    position: relative !important;
+    inset: auto !important;
+    width: min(100%, 680px) !important;
+    max-width: 680px !important;
+    height: auto !important;
+    max-height: calc(100vh - 16px - env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(100dvh - 16px - env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    overflow-y: auto !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 18px !important;
+    background: var(--card) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .45) !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  #page-products .products-table-scroll {
+    overflow-x: auto !important;
+  }
+
+  #page-products .products-table-scroll table.products-table {
+    display: table !important;
+    width: 1125px !important;
+    min-width: 1125px !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
+  }
+
+  #page-products .products-table thead {
+    display: table-header-group !important;
+  }
+
+  #page-products .products-table tbody {
+    display: table-row-group !important;
+  }
+
+  #page-products .products-table tbody tr {
+    display: table-row !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    gap: 0 !important;
+  }
+
+  #page-products .products-table tbody td,
+  #page-products .products-table thead th {
+    display: table-cell !important;
+    min-height: 0 !important;
+    padding: 10px 8px !important;
+    text-align: left !important;
+    border-bottom: 1px solid var(--border) !important;
+    justify-content: normal !important;
+  }
+
+  #page-products .products-table tbody td::before {
+    display: none !important;
+    content: none !important;
+  }
+
+  #page-products .products-table .product-actions-td {
+    text-align: right !important;
+    white-space: nowrap;
   }
 }

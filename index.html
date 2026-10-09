@@ -14,7 +14,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.10.4">
+  <link rel="stylesheet" href="style.css?v=5.10.5">
   <link rel="stylesheet" href="boss.css?v=2.1.0">
 </head>
 
@@ -52,7 +52,7 @@
             aria-describedby="loginPhoneError">
           <span class="phone-prefix" aria-hidden="true">+998</span>
           <i class="fas fa-mobile-screen input-icon"></i>
-     ?   </div>
+        </div>
         <p class="login-error" id="loginPhoneError" role="alert" aria-live="polite"></p>
       </div>
       <div class="form-group">
@@ -126,8 +126,8 @@
         <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
           <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
-        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin" style="width:100%">
-          <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees">
+        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin,manager" style="width:100%">
+          <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees" data-role="admin,manager">
             <i class="fas fa-id-badge"></i><span>Xodimlar</span>
             <i class="fas fa-chevron-down submenu-arrow" style="margin-left:auto;transition:transform 0.2s"></i>
           </div>
@@ -1030,7 +1030,7 @@
 
       <!-- ===== PRODUCTS ===== -->
       <div class="page" id="page-products">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div class="products-page-header">
           <div>
             <h2 style="font-size:20px;font-weight:700">Mahsulotlar Boshqaruvi</h2>
             <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulot qo'shish, tahrirlash va o'chirish</p>
@@ -1039,29 +1039,42 @@
             Mahsulot</button>
         </div>
         <div class="panel">
-          <div class="panel-header">
+          <div class="panel-header products-panel-header">
             <h3><i class="fas fa-tv" style="color:var(--primary)"></i> Mahsulotlar Ro'yxati (<span
                 id="productCount">0</span>)</h3>
-            <div style="display:flex;gap:8px">
-              <select class="form-control" style="width:150px;padding:7px 12px" onchange="filterByCategory(this.value)"
+            <div class="products-filters">
+              <select class="form-control" onchange="filterByCategory(this.value)"
                 id="catFilter">
                 <option value="">Barcha</option>
               </select>
-              <input type="text" class="form-control" placeholder="Qidirish..." style="width:200px;padding:7px 12px"
+              <input type="search" class="form-control" id="productSearch" placeholder="Mahsulot qidirish..."
+                aria-label="Mahsulot qidirish"
                 oninput="debouncedFilterProducts(this.value)">
             </div>
           </div>
           <div class="panel-body" style="padding:0">
-            <div class="table-wrap">
-              <table>
+            <div class="table-wrap products-table-scroll">
+              <table class="products-table">
+                <colgroup>
+                  <col class="product-col-image">
+                  <col class="product-col-name">
+                  <col class="product-col-category">
+                  <col class="product-col-branch">
+                  <col class="product-col-price">
+                  <col class="product-col-cost">
+                  <col class="product-col-profit">
+                  <col class="product-col-stock">
+                  <col class="product-col-status">
+                  <col class="product-col-actions">
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Rasm</th>
                     <th>Nomi</th>
                     <th>Kategoriya</th>
                     <th>Filial</th>
-                    <th>Narxi (sotuv)</th>
-                    <th>Tan narxi</th>
+                    <th>Sotuv narxi</th>
+                    <th>Tannarx</th>
                     <th>Foyda</th>
                     <th>Qoldiq</th>
                     <th>Holati</th>
@@ -1675,7 +1688,7 @@
           </div>
         </div>
 
-        <div class="stat-grid" style="grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+        <div class="stat-grid" style="gap:14px;margin-bottom:20px">
           <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
             <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
                 class="fas fa-cash-register"></i></div>
@@ -2073,28 +2086,33 @@
         </div>
       </div>
 
-      <!-- ===== KATEGORIYALAR ===== -->        <div class="page" id="page-categories">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-          <div>
-            <h2 style="font-size:20px;font-weight:700">📂 Kategoriyalar</h2>
-            <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulotlar kategoriyalari ro'yxati</p>
-          </div>
-          <button class="btn btn-primary" onclick="openCategoryModal()"><i class="fas fa-folder-plus"></i> Yangi
-            kategoriya</button>
+      <!-- ===== KATEGORIYALAR ===== -->
+      <div class="page" id="page-categories">
+        <div style="margin-bottom:20px">
+          <h2 style="font-size:20px;font-weight:700">📂 Kategoriyalar</h2>
+          <p style="color:var(--text-secondary);font-size:13px;margin-top:3px">Mahsulotlar kategoriyalari ro'yxati</p>
         </div>
         <div class="panel">
           <div class="panel-header">
-            <h3>Tizimda mavjud kategoriyalar</h3>
+            <h3>Tizimda mavjud kategoriyalar <span class="badge badge-blue" id="categoriesCountChip">0</span></h3>
+            <button type="button" class="btn btn-primary" onclick="openCategoryModal()"
+              id="addCategoryBtn"><i class="fas fa-plus"></i> Kategoriya qo'shish</button>
           </div>
           <div class="panel-body" style="padding:0">
             <div class="table-wrap">
-              <table>
+              <table class="categories-table">
+                <colgroup>
+                  <col class="cat-col-index">
+                  <col class="cat-col-name">
+                  <col class="cat-col-count">
+                  <col class="cat-col-actions">
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>Kategoriya Nomi</th>
-                    <th>Mahsulotlar Soni</th>
-                    <th>Amallar</th>
+                    <th class="cat-td-index">#</th>
+                    <th class="cat-td-name">Kategoriya Nomi</th>
+                    <th class="cat-td-count">Mahsulotlar Soni</th>
+                    <th class="cat-td-actions">Amallar</th>
                   </tr>
                 </thead>
                 <tbody id="categoriesTableBody"></tbody>
@@ -2115,7 +2133,7 @@
               tanlanganda faqat shu filial ombori)</p>
           </div>
         </div>
-        <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:20px">
+        <div class="stat-grid" style="gap:16px;margin-bottom:20px">
           <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
             <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i class="fas fa-coins"></i>
             </div>
@@ -2983,16 +3001,16 @@
 
   <!-- ===== EXISTING MODALS ===== -->
   <div class="modal-overlay" id="productModal">
-    <div class="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="productModalTitle">
       <div class="modal-header">
         <h3 id="productModalTitle">Yangi Mahsulot</h3>
         <button class="modal-close" onclick="closeModal('productModal')">✕</button>
       </div>
       <div class="form-row">
         <div class="form-col"><label>Mahsulot Nomi *</label><input class="form-control" id="p-name"
-            placeholder="Nomi..."></div>
+            placeholder="Nomi..." required maxlength="120"></div>
         <div class="form-col"><label>Kategoriya *</label>
-          <select class="form-control" id="p-cat">
+          <select class="form-control" id="p-cat" required>
             <option>Muzlatgichlar</option>
             <option>Kir Yuvish Mashinalari</option>
             <option>Konditsionerlar</option>
@@ -3007,11 +3025,11 @@
       </div>
       <div class="form-row">
         <div class="form-col"><label>Narxi (sotuv, so'm) *</label><input class="form-control" id="p-price" type="number"
-            placeholder="0" oninput="calcProfit(true)"></div>
+            min="1" step="1" placeholder="0" required oninput="calcProfit(true)"></div>
         <div class="form-col"><label>Tan narxi (sotib olish, so'm)</label><input class="form-control" id="p-cost" type="number"
-            placeholder="0" oninput="calcProfit(true)"></div>
+            min="0" step="1" placeholder="0" oninput="calcProfit(true)"></div>
         <div class="form-col"><label>Qoldiq (dona) *</label><input class="form-control" id="p-stock" type="number"
-            placeholder="0" oninput="calcProfit()"></div>
+            min="0" step="1" placeholder="0" required oninput="calcProfit()"></div>
       </div>
       <div class="form-row">
         <div class="form-col"><label>Ustama turi</label>
@@ -3025,8 +3043,8 @@
             oninput="calcPrice()">
         </div>
       </div>
-      <div class="profit-box" id="p-profit-box">
-        <span>Foyda: 1 dona — 0 so'm (0.0%)</span><span>Qoldiq bo'yicha jami: 0 so'm</span>
+      <div id="p-profit-box"
+        style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(16,185,129,.12);color:#10b981;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px">
       </div>
       <div class="form-col" style="margin-bottom:14px">
         <label>Filial (ombor) — mahsulot qaysi filialga tegishli</label>
@@ -3084,7 +3102,7 @@
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="closeModal('productModal')">Bekor</button>
-        <button class="btn btn-primary" onclick="saveProduct()"><i class="fas fa-save"></i> Saqlash</button>
+        <button class="btn btn-primary" id="productSaveBtn" onclick="saveProduct()"><i class="fas fa-save"></i> Saqlash</button>
       </div>
     </div>
   </div>
@@ -3130,6 +3148,33 @@
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="closeModal('customerModal')">Bekor</button>
         <button class="btn btn-primary" onclick="saveCustomer()"><i class="fas fa-save"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== KATEGORIYA: qo'shish / tahrirlash (Kategoriyalar sahifasi) ===== -->
+  <div class="modal-overlay" id="categoryModal">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-header">
+        <h3 id="categoryModalTitle"><i class="fas fa-folder-plus"></i> Yangi kategoriya</h3>
+        <button class="modal-close" onclick="closeModal('categoryModal')">✕</button>
+      </div>
+      <div class="form-col" style="margin-bottom:16px">
+        <label>Kategoriya nomi *</label>
+        <input class="form-control" id="categoryNameInput" maxlength="60" autocomplete="off"
+          placeholder="Masalan: Elektronika"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();saveCategoryFromModal();}">
+      </div>
+      <div class="form-col" style="margin-bottom:16px">
+        <label>Icon / emoji <span style="font-weight:400;color:var(--muted)">(ixtiyoriy)</span></label>
+        <input class="form-control" id="categoryEmojiInput" maxlength="8" autocomplete="off"
+          placeholder="Masalan: 🍕" style="font-size:18px"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();saveCategoryFromModal();}">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('categoryModal')">Bekor</button>
+        <button class="btn btn-primary" onclick="saveCategoryFromModal()"><i class="fas fa-save"></i>
+          Saqlash</button>
       </div>
     </div>
   </div>
@@ -3675,7 +3720,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.10-costfix"></script>
+  <script src="scripts.js?v=1.4.11"></script>
   <script src="boss.js?v=2.1.0"></script>
   <script>
     /* Header: surilganda ixchamlashadi */

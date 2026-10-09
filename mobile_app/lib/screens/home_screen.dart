@@ -37,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             CircleAvatar(
               backgroundColor: _parseColor(user.color),
@@ -44,25 +45,43 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Text(user.name.isNotEmpty ? user.name[0] : 'U', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(user.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                Text(user.role.toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey)),
-              ],
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user.name,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    user.role.toUpperCase(),
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_outlined),
-            onPressed: () {
-              appState.logout();
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
-            },
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: IconButton(
+              icon: const Icon(Icons.logout_outlined, size: 22),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                appState.logout();
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              },
+            ),
           )
         ],
       ),
@@ -87,13 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
           child: TextField(
             decoration: InputDecoration(
               hintText: 'Qidirish...',
               prefixIcon: const Icon(Icons.search),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
             ),
             onChanged: (val) {
               // Local search logic if needed
@@ -102,10 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Expanded(
           child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              childAspectRatio: 0.8,
+              childAspectRatio: 0.75,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -113,38 +132,62 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, idx) {
               final prod = appState.products[idx];
               return Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 1,
                 child: Padding(
-                  padding: const EdgeInsets.all(10.0),
+                  padding: const EdgeInsets.all(8.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
+                      SizedBox(
+                        height: 80,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.grey.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Center(
-                            child: Icon(Icons.devices_other, size: 40, color: Colors.grey),
+                            child: Icon(Icons.devices_other, size: 36, color: Colors.grey),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1),
-                      Text('${prod.price.toStringAsFixed(0)} so\'m', style: const TextStyle(color: Colors.deepOrange, fontSize: 12, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      Text(
+                        prod.name,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, height: 1.3),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${prod.price.toStringAsFixed(0)} so\'m',
+                        style: const TextStyle(color: Colors.deepOrange, fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Qoldiq: ${prod.stock}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                          IconButton(
-                            icon: const Icon(Icons.add_shopping_cart, size: 18),
-                            onPressed: () {
-                              appState.addToCart(prod);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('${prod.name} savatga qo\'shildi'), duration: const Duration(seconds: 1)),
-                              );
-                            },
+                          Flexible(
+                            child: Text(
+                              'Qoldiq: ${prod.stock}',
+                              style: const TextStyle(fontSize: 10, color: Colors.grey),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: IconButton(
+                              icon: const Icon(Icons.add_shopping_cart, size: 20),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () {
+                                appState.addToCart(prod);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('${prod.name} savatga qo\'shildi'), duration: const Duration(seconds: 1)),
+                                );
+                              },
+                            ),
                           )
                         ],
                       )
@@ -166,118 +209,171 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey),
+            Icon(Icons.shopping_cart_outlined, size: 72, color: Colors.grey),
             SizedBox(height: 16),
-            Text('Savat bo\'sh', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            Text('Savat bo\'sh', style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w500)),
+            SizedBox(height: 4),
+            Text('Mahsulotlarni katalogdan qo\'shing', style: TextStyle(color: Colors.grey, fontSize: 13)),
           ],
         ),
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: ListView.builder(
-              itemCount: appState.cart.length,
-              itemBuilder: (context, idx) {
-                final item = appState.cart[idx];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text('${item.price.toStringAsFixed(0)} so\'m', style: const TextStyle(color: Colors.deepOrange)),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle_outline, size: 20),
-                          onPressed: () => appState.updateCartQty(item.id, -1),
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            itemCount: appState.cart.length,
+            itemBuilder: (context, idx) {
+              final item = appState.cart[idx];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.name,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${item.price.toStringAsFixed(0)} so\'m',
+                              style: const TextStyle(color: Colors.deepOrange, fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ],
                         ),
-                        Text('${item.qty}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline, size: 20),
-                          onPressed: () => appState.updateCartQty(item.id, 1),
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 8),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, size: 22),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () => appState.updateCartQty(item.id, -1),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 36,
+                            child: Center(
+                              child: Text('${item.qty}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: IconButton(
+                              icon: const Icon(Icons.add_circle_outline, size: 22),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () => appState.updateCartQty(item.id, 1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
-          ),
-          const Divider(),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Jami Summa:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                Text('${appState.total.toStringAsFixed(0)} so\'m', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepOrange)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          
-          // Customer Phone
-          TextField(
-            controller: _phoneController,
-            decoration: InputDecoration(
-              labelText: 'Mijoz telefon raqami',
-              prefixIcon: const Icon(Icons.phone),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            keyboardType: TextInputType.phone,
-          ),
-          const SizedBox(height: 12),
-          
-          // Pay Type
-          DropdownButtonFormField<String>(
-            value: _payType,
-            decoration: InputDecoration(
-              labelText: 'To\'lov turi',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            items: const [
-              DropdownMenuItem(value: 'click', child: Text('Click (Onlayn)')),
-              DropdownMenuItem(value: 'card', child: Text('Plastik Karta')),
-              DropdownMenuItem(value: 'cash', child: Text('Naqd Pul')),
-            ],
-            onChanged: (val) => setState(() => _payType = val ?? 'click'),
-          ),
-          const SizedBox(height: 16),
-          
-          ElevatedButton(
-            onPressed: () async {
-              final phone = _phoneController.text.trim();
-              if (phone.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Iltimos, mijoz telefon raqamini kiriting')),
-                );
-                return;
-              }
-              
-              final sale = await appState.checkout(_payType, phone);
-              if (sale != null) {
-                _phoneController.clear();
-                if (mounted) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => ReceiptScreen(sale: sale)),
-                  );
-                }
-              }
+                ),
+              );
             },
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('To\'lovni rasmiylashtirish', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
-        ],
-      ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, -4)),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Jami Summa:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text('${appState.total.toStringAsFixed(0)} so\'m', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepOrange)),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Customer Phone
+              TextField(
+                controller: _phoneController,
+                decoration: InputDecoration(
+                  labelText: 'Mijoz telefon raqami',
+                  prefixIcon: const Icon(Icons.phone),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 12),
+
+              // Pay Type
+              DropdownButtonFormField<String>(
+                value: _payType,
+                decoration: InputDecoration(
+                  labelText: 'To\'lov turi',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'click', child: Text('Click (Onlayn)')),
+                  DropdownMenuItem(value: 'card', child: Text('Plastik Karta')),
+                  DropdownMenuItem(value: 'cash', child: Text('Naqd Pul')),
+                ],
+                onChanged: (val) => setState(() => _payType = val ?? 'click'),
+              ),
+              const SizedBox(height: 16),
+
+              ElevatedButton(
+                onPressed: () async {
+                  final phone = _phoneController.text.trim();
+                  if (phone.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Iltimos, mijoz telefon raqamini kiriting')),
+                    );
+                    return;
+                  }
+
+                  final sale = await appState.checkout(_payType, phone);
+                  if (sale != null) {
+                    _phoneController.clear();
+                    if (mounted) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => ReceiptScreen(sale: sale)),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  minimumSize: const Size(0, 52),
+                ),
+                child: const Text('To\'lovni rasmiylashtirish', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -287,20 +383,28 @@ class _HomeScreenState extends State<HomeScreen> {
     final todayOrders = appState.sales.where((s) => s.status == 'paid').length;
 
     return ListView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
       children: [
         Row(
           children: [
             Expanded(
               child: Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 color: Colors.deepOrange.withOpacity(0.06),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(14.0),
                   child: Column(
                     children: [
-                      const Icon(Icons.monetization_on_outlined, color: Colors.deepOrange),
+                      const Icon(Icons.monetization_on_outlined, size: 28, color: Colors.deepOrange),
                       const SizedBox(height: 8),
-                      Text('${todaySales.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                      Text(
+                        '${todaySales.toStringAsFixed(0)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
                       const Text('Bugungi Savdo', style: TextStyle(fontSize: 11, color: Colors.grey)),
                     ],
                   ),
@@ -310,14 +414,17 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 color: Colors.green.withOpacity(0.06),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(14.0),
                   child: Column(
                     children: [
-                      const Icon(Icons.shopping_bag_outlined, color: Colors.green),
+                      const Icon(Icons.shopping_bag_outlined, size: 28, color: Colors.green),
                       const SizedBox(height: 8),
                       Text('$todayOrders', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                      const SizedBox(height: 2),
                       const Text('Buyurtmalar soni', style: TextStyle(fontSize: 11, color: Colors.grey)),
                     ],
                   ),
@@ -326,14 +433,52 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 20),
-        const Text('Oxirgi sotuvlar logi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 16),
+        const Text('Oxirgi sotuvlar logi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
         const SizedBox(height: 8),
-        ...appState.logs.reversed.take(10).map((log) => ListTile(
-              leading: const Icon(Icons.history_toggle_off, size: 20),
-              title: Text(log['desc'] ?? '', style: const TextStyle(fontSize: 13)),
-              subtitle: Text(log['time'] ?? '', style: const TextStyle(fontSize: 11)),
-            )),
+        if (appState.logs.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32.0),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.receipt_long, size: 48, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text('Hali sotuvlar yo\'q', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                ],
+              ),
+            ),
+          )
+        else
+          ...appState.logs.reversed.take(10).map((log) => Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.history_toggle_off, size: 18, color: Colors.grey),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              log['desc'] ?? '',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(log['time'] ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )),
       ],
     );
   }
@@ -341,25 +486,75 @@ class _HomeScreenState extends State<HomeScreen> {
   // 4. SETTINGS TAB
   Widget _buildSettingsTab(AppState appState) {
     return ListView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
       children: [
-        const ListTile(
-          title: Text('Xizmat Sozlamalari', style: TextStyle(fontWeight: FontWeight.bold)),
-          leading: Icon(Icons.settings),
+        Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.settings, size: 22, color: Colors.grey),
+                    const SizedBox(width: 12),
+                    const Text('Xizmat Sozlamalari', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ],
+                ),
+                const Divider(height: 24),
+                InkWell(
+                  onTap: () async {
+                    await appState.loadData();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Ma\'lumotlar muvaffaqiyatli sinxronlandi!')),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.sync, size: 22),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Ma\'lumotlarni sinxronlash', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                              SizedBox(height: 2),
+                              Text('Serverdan yangi tovarlar va hisobotlarni olish', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: Colors.grey.withOpacity(0.5)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        const Divider(),
-        ListTile(
-          title: const Text('Ma\'lumotlarni server bilan sinxronlash'),
-          subtitle: const Text('Serverdan yangi tovarlar va hisobotlarni olish'),
-          trailing: const Icon(Icons.sync),
-          onTap: () async {
-            await appState.loadData();
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Ma\'lumotlar muvaffaqiyatli sinxronlandi!')),
-              );
-            }
-          },
+        const SizedBox(height: 16),
+        Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Ilova haqida', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                const SizedBox(height: 8),
+                const Text('Texno Park N1 POS', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const Text('Versiya: 1.0.0', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
         ),
       ],
     );
