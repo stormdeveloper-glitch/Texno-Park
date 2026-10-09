@@ -963,6 +963,16 @@
                 <button class="btn btn-outline btn-sm" onclick="clearCart()" title="Savatni tozalash"><i
                     class="fas fa-trash"></i></button>
               </div>
+              <div class="form-col" style="margin-bottom:12px">
+                <label>Promo kod</label>
+                <div style="display:flex;gap:8px">
+                  <input class="form-control" id="posPromoCode" placeholder="Masalan: SALE10" maxlength="24"
+                    autocomplete="off" style="text-transform:uppercase"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();posApplyPromoCode();}">
+                  <button type="button" class="btn btn-outline btn-sm" onclick="posApplyPromoCode()"><i
+                      class="fas fa-tag"></i> Qo'llash</button>
+                </div>
+              </div>
               <div class="form-col" style="margin-bottom:10px">
                 <label>To'lov tizimi</label>
               </div>
@@ -2180,6 +2190,8 @@
         <div class="panel">
           <div class="panel-header">
             <h3>Chegirma kampaniyalari</h3>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openDiscountModal()"
+              id="addDiscountBtn"><i class="fas fa-plus"></i> Yangi chegirma</button>
           </div>
           <div class="panel-body" style="padding:0">
             <div class="table-wrap">
@@ -2191,6 +2203,7 @@
                     <th>Promo Kod</th>
                     <th>Chegirma foizi</th>
                     <th>Holat</th>
+                    <th>Amallar</th>
                   </tr>
                 </thead>
                 <tbody id="discountsTableBody"></tbody>
@@ -3108,23 +3121,6 @@
   </div>
 
   <!-- Kategoriya qo'shish / tahrirlash oynasi -->
-  <div class="modal-overlay" id="categoryModal">
-    <div class="modal" style="width:460px">
-      <div class="modal-header">
-        <h3 id="categoryModalTitle"><i class="fas fa-folder-plus"></i> Yangi kategoriya</h3>
-        <button class="modal-close" onclick="closeModal('categoryModal')">✕</button>
-      </div>
-      <div class="form-col" style="margin-bottom:18px">
-        <label>Kategoriya nomi *</label>
-        <input class="form-control" id="categoryNameInput" maxlength="60" placeholder="Masalan: Muzlatgichlar"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();saveCategoryFromModal();}">
-      </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button class="btn btn-outline" onclick="closeModal('categoryModal')">Bekor</button>
-        <button class="btn btn-primary" onclick="saveCategoryFromModal()"><i class="fas fa-save"></i> Saqlash</button>
-      </div>
-    </div>
-  </div>
 
   <div class="modal-overlay" id="customerModal">
     <div class="modal">
@@ -3153,6 +3149,47 @@
   </div>
 
   <!-- ===== KATEGORIYA: qo'shish / tahrirlash (Kategoriyalar sahifasi) ===== -->
+  <!-- ===== YANGI CHEGIRMA / PROMO-KOD ===== -->
+  <div class="modal-overlay" id="discountModal">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <h3 id="discountModalTitle"><i class="fas fa-gift"></i> Yangi chegirma / promo-kod</h3>
+        <button class="modal-close" onclick="closeModal('discountModal')">✕</button>
+      </div>
+      <div class="form-col" style="margin-bottom:14px">
+        <label>Kampaniya nomi *</label>
+        <input class="form-control" id="dc-name" maxlength="80" autocomplete="off"
+          placeholder="Masalan: Yozgi aksiya"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();saveDiscountCampaign();}">
+      </div>
+      <div class="form-row">
+        <div class="form-col">
+          <label>Promo kod *</label>
+          <input class="form-control" id="dc-code" maxlength="24" autocomplete="off" placeholder="SALE10"
+            style="text-transform:uppercase" onkeydown="if(event.key==='Enter'){event.preventDefault();saveDiscountCampaign();}">
+        </div>
+        <div class="form-col">
+          <label>Chegirma foizi (%) *</label>
+          <input type="number" class="form-control" id="dc-pct" min="1" max="100" step="1" placeholder="10"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();saveDiscountCampaign();}">
+        </div>
+      </div>
+      <div class="form-col" style="margin-bottom:14px">
+        <label>Holat</label>
+        <select class="form-control" id="dc-status">
+          <option value="Faol" selected>Faol</option>
+          <option value="Nofaol">Nofaol</option>
+        </select>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Promo kodni kassadagi «Promo kod»
+        maydoniga kiritib qo'llash mumkin — u faqat holati «Faol» bo'lganda ishlaydi.</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('discountModal')">Bekor</button>
+        <button class="btn btn-primary" onclick="saveDiscountCampaign()"><i class="fas fa-save"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="categoryModal">
     <div class="modal" style="max-width:440px">
       <div class="modal-header">
@@ -3720,7 +3757,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.11"></script>
+  <script src="scripts.js?v=1.4.14"></script>
   <script src="boss.js?v=2.1.0"></script>
   <script>
     /* Header: surilganda ixchamlashadi */

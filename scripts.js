@@ -4715,13 +4715,21 @@ async function saveProduct() {
         return;
     }
     const vatPercent = vatParsed;
-    if (ikpu.length !== 17) {
+    // ── Fiskal maydonlar: IKPU (MXIK) va qadoqlash kodi FAQAT fiskal
+    //    modul sozlangan (OFD ulangan) holatda majburiy. Modul
+    //    o'chirilgan bo'lsa (FISCAL_PROVIDER=disabled) ular mahsulot
+    //    saqlanishiga to'sqinlik qilmaydi — chek chiqmaydi, xolos.
+    const fiscalEnforced = (typeof Fiscal !== 'undefined')
+        && typeof Fiscal.isRequired === 'function'
+        && typeof Fiscal.isConfigured === 'function'
+        && Fiscal.isRequired() && Fiscal.isConfigured();
+    if (fiscalEnforced && ikpu.length !== 17) {
         playError();
         showNotif('error', 'IKPU (MXIK) xato',
             'IKPU kodi 17 xonali bo\'lishi shart — soliq organi talab qiladi');
         return;
     }
-    if (!packageCode) {
+    if (fiscalEnforced && !packageCode) {
         playError();
         showNotif('error', 'Qadoqlash kodi yo\'q', 'Fiskal chek uchun qadoqlash kodi kiritilishi shart');
         return;
@@ -8947,12 +8955,171 @@ function renderWarehousePage() {
 // Chegirma kampaniyalari — faqat real kiritilgan kampaniyalar (demo yo'q)
 let discountCampaigns = safeJsonParse(localStorage.getItem('tp_discounts') || '[]', []);
 if (!Array.isArray(discountCampaigns)) discountCampaigns = [];
+// Saqlangan yozuvlarni xavfsiz shaklga keltiramiz (yaroqsizlari tashlanadi).
+discountCampaigns = discountCampaigns.map(normalizeDiscount).filter(Boolean);
+
+let editingDiscountId = null;
+
+/** Promo kodni yagona ko'rinishga keltiradi: katta harf, faqat A-Z 0-9 _ - */
+function discountNormalizeCode(value) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24);
+}
+
+/** Yaroqli holat qiymatlari (funksiya — yuklanish paytida ham xavfsiz). */
+function discountStatusList() {
+    return ['Faol', 'Nofaol'];
+}
+
+/** Kampaniyani saqlash uchun xavfsiz shaklga keltiradi. */
+function normalizeDiscount(d) {
+    if (!d || typeof d !== 'object') return null;
+    const name = cleanText(d.name, 80).trim();
+    const code = discountNormalizeCode(d.code);
+    const rawPct = Number(d.pct);
+    if (!name || !code || !Number.isFinite(rawPct)) return null;
+    return {
+        id: String(d.id || ('dc-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8))).slice(0, 60),
+        name,
+        code,
+        pct: Math.min(100, Math.max(0, Math.round(rawPct * 100) / 100)),
+        status: discountStatusList().includes(String(d.status)) ? String(d.status) : 'Faol',
+        createdAt: cleanText(d.createdAt, 30) || new Date().toLocaleString('uz-UZ'),
+        createdBy: cleanText(d.createdBy, 120),
+    };
+}
+
+/**
+ * Chegirmani saqlaydi: localStorage + server.
+ * MUHIM: buildSyncPayload() `tp_discounts` kalitini AYNAN localStorage dan
+ * o'qiydi — shuning uchun avval localStorage yoziladi, keyin sinxronlanadi.
+ */
+function persistDiscounts() {
+    try {
+        localStorage.setItem('tp_discounts', JSON.stringify(discountCampaigns));
+    } catch (e) {
+        console.warn('Chegirmani saqlab bo\'lmadi:', e);
+    }
+    if (typeof saveToStorage === 'function') saveToStorage();
+}
+
+/** Yangi yoki tahrirlash uchun modalni ochadi (id berilmasa — yangi). */
+function openDiscountModal(id) {
+    if (!requireRole('admin', 'manager')) return;
+    const editing = (id === undefined || id === null || id === '')
+        ? null
+        : discountCampaigns.find(d => String(d.id) === String(id)) || null;
+    editingDiscountId = editing ? editing.id : null;
+    const title = document.getElementById('discountModalTitle');
+    if (title) {
+        title.innerHTML = editing
+            ? '<i class="fas fa-pen"></i> Chegirmani tahrirlash'
+            : '<i class="fas fa-gift"></i> Yangi chegirma / promo-kod';
+    }
+    const setField = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val === undefined || val === null ? '' : String(val);
+    };
+    setField('dc-name', editing ? editing.name : '');
+    setField('dc-code', editing ? editing.code : '');
+    setField('dc-pct', editing ? String(editing.pct) : '10');
+    setField('dc-status', editing ? editing.status : 'Faol');
+    openModal('discountModal');
+}
+
+function saveDiscountCampaign() {
+    if (!requireRole('admin', 'manager')) return;
+    const name = cleanText(document.getElementById('dc-name')?.value || '', 80).trim();
+    const code = discountNormalizeCode(document.getElementById('dc-code')?.value);
+    const pct = Number(String(document.getElementById('dc-pct')?.value ?? '').replace(',', '.'));
+    const statusRaw = document.getElementById('dc-status')?.value;
+    const status = discountStatusList().includes(String(statusRaw)) ? String(statusRaw) : 'Faol';
+
+    if (!name) {
+        playError(); showNotif('error', 'Xato!', 'Kampaniya nomini kiriting'); return;
+    }
+    if (code.length < 3) {
+        playError();
+        showNotif('error', 'Promo kod xato',
+            'Promo kod kamida 3 belgidan iborat bo\'lsin (A-Z, 0-9, -)');
+        return;
+    }
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+        playError();
+        showNotif('error', 'Chegirma xato',
+            'Chegirma foizi 0 dan katta va 100 dan oshmasligi kerak');
+        return;
+    }
+    const clash = discountCampaigns.find(d => d.code === code && String(d.id) !== String(editingDiscountId));
+    if (clash) {
+        playError();
+        showNotif('error', 'Promo kod band',
+            `"${code}" kodi "${clash.name}" kampaniyasida ishlatilgan`);
+        return;
+    }
+
+    if (editingDiscountId != null) {
+        discountCampaigns = discountCampaigns.map(d => String(d.id) === String(editingDiscountId)
+            ? { ...d, name, code, pct, status } : d);
+        addLog('Chegirma', `"${name}" kampaniyasi tahrirlandi — ${code} (${pct}%)`);
+    } else {
+        const payload = normalizeDiscount({
+            name, code, pct, status,
+            createdBy: (currentUser && currentUser.name) || '—',
+        });
+        if (!payload) {
+            playError(); showNotif('error', 'Xato!', 'Ma\'lumotlar yaroqsiz'); return;
+        }
+        discountCampaigns = [payload, ...discountCampaigns];
+        addLog('Chegirma', `Yangi promo-kod: ${code} — ${pct}% (${name})`);
+    }
+    editingDiscountId = null;
+    persistDiscounts();
+    renderDiscountsPage();
+    closeModal('discountModal');
+    playSuccess();
+    showNotif('success', 'Saqlandi!', `${name} — ${pct}% (promo kod: ${code})`);
+}
+
+function deleteDiscountCampaign(id) {
+    if (!requireRole('admin', 'manager')) return;
+    const camp = discountCampaigns.find(d => String(d.id) === String(id));
+    if (!camp) return;
+    if (!confirm(`"${camp.name}" kampaniyasini o'chirasizmi? (promo kod: ${camp.code})`)) return;
+    discountCampaigns = discountCampaigns.filter(d => String(d.id) !== String(id));
+    persistDiscounts();
+    renderDiscountsPage();
+    addLog('Chegirma', `"${camp.name}" kampaniyasi o'chirildi`);
+    showNotif('info', 'O\'chirildi', 'Chegirma kampaniyasi o\'chirildi');
+}
+
+/**
+ * Kassada promo kodni qo'llaydi.
+ * Mavjud chegirma mexanizmidan foydalanadi (`posSetDiscount`) — savdo
+ * hisob-kitobi va chek mantig'i o'zgarmaydi.
+ */
+function posApplyPromoCode() {
+    const input = document.getElementById('posPromoCode');
+    const code = discountNormalizeCode(input ? input.value : '');
+    if (!code) { showNotif('warning', 'Promo kod', 'Promo kodni kiriting'); return; }
+    const camp = discountCampaigns.find(d => d.code === code && d.status === 'Faol');
+    if (!camp) {
+        const exists = discountCampaigns.some(d => d.code === code);
+        playError();
+        showNotif('error', exists ? 'Kampaniya faol emas' : 'Promo kod topilmadi',
+            exists ? `"${code}" kampaniyasi hozir faol emas` : `"${code}" kodi bo'yicha chegirma yo'q`);
+        return;
+    }
+    posSetDiscount(camp.pct);
+    if (input) input.value = camp.code;
+    playSuccess();
+    showNotif('success', 'Promo kod qo\'llandi', `${camp.name} — ${camp.pct}% chegirma`);
+}
 
 function renderDiscountsPage() {
     const tbody = document.getElementById('discountsTableBody');
     if (!tbody) return;
     if (discountCampaigns.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Hali chegirma kampaniyalari yo\'q</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Hali chegirma kampaniyalari yo\'q — "Yangi chegirma" tugmasini bosing</td></tr>';
         return;
     }
     tbody.innerHTML = discountCampaigns.map((d, i) => `
@@ -8960,8 +9127,12 @@ function renderDiscountsPage() {
             <td>${i + 1}</td>
             <td><strong>${escapeHTML(d.name)}</strong></td>
             <td><code style="padding:4px 8px;background:var(--bg);border-radius:6px;font-weight:700;color:var(--primary)">${escapeHTML(d.code)}</code></td>
-            <td style="font-weight:700;color:var(--accent)">${d.pct}%</td>
-            <td><span class="badge ${d.status === 'Faol' ? 'badge-green' : 'badge-red'}">${d.status}</span></td>
+            <td style="font-weight:700;color:var(--accent)">${Number(d.pct) || 0}%</td>
+            <td><span class="badge ${d.status === 'Faol' ? 'badge-green' : 'badge-red'}">${escapeHTML(d.status)}</span></td>
+            <td style="white-space:nowrap">
+                <button class="btn btn-sm btn-outline" onclick="openDiscountModal('${escapeHTML(String(d.id))}')" title="Tahrirlash"><i class="fas fa-pen"></i></button>
+                <button class="btn btn-sm btn-outline" onclick="deleteDiscountCampaign('${escapeHTML(String(d.id))}')" title="O'chirish"><i class="fas fa-trash"></i></button>
+            </td>
         </tr>
     `).join('');
 }

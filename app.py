@@ -3440,9 +3440,38 @@ def api_health():
     })
 
 
+# ── Statik fayllar: QAT'IY oq ro'yxat ─────────────────────────────────
+# MUHIM (xavfsizlik): ilgari bu yerda `send_from_directory('.', path)`
+# turgan edi — natijada loyiha ILDIZIDAGI har qanday fayl tashqi tarmoqqa
+# chiqar edi: `.env` (barcha maxfiy kalitlar: to'lov, S3, CF_API_TOKEN,
+# boshliq paroli), `.git/` (butun tarix va eski kalitlar), `app.py`,
+# `fiscal.py`, `Data/database.db` (butun baza) va h.k.
+# Endi faqat sayt ishlashi uchun ZARUR bo'lgan fayllar beriladi.
+STATIC_FILES = frozenset({
+    'index.html', 'style.css', 'boss.css', 'scripts.js', 'boss.js',
+    'tour.js', 'qrcode.min.js', 'favicon.png',
+})
+STATIC_ASSET_DIRS = frozenset({'assets'})
+
+
 @app.route('/<path:path>')
 def serve_static(path):
-    return send_from_directory('.', path)
+    """Sayt statik fayllari (faqat oq ro'yxat bo'yicha).
+
+    Boshqa har qanday yo'l — 404. Ikki qatlamli himoya:
+      1) nuqta bilan boshlanadigan yoki `..` segment — rad etiladi
+         (`.env`, `.git`, `.freebuff`, `.gitignore`);
+      2) fayl nomi oq ro'yxatda yoki `assets/` papkasida bo'lishi shart.
+    """
+    clean = str(path or '').replace('\\', '/').strip('/')
+    segments = [s for s in clean.split('/') if s not in ('', '.')]
+    if not segments or any(s == '..' or s.startswith('.') for s in segments):
+        abort(404)
+    if len(segments) == 1 and segments[0] in STATIC_FILES:
+        return send_from_directory('.', segments[0])
+    if len(segments) == 2 and segments[0] in STATIC_ASSET_DIRS:
+        return send_from_directory(segments[0], segments[1])
+    abort(404)
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
