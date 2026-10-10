@@ -41,8 +41,14 @@ const Boss = (() => {
             return null;
         }
         if (res.status === 401) {
+            // Sessiya hali yopilmagan bo'lsa — `handleSessionExpired` o'zi
+            // "Sessiya tugadi" bildirishnomasini ko'rsatadi va login ekranga
+            // qaytaradi. Parallel so'rovlar (dashboard5 ta so'rov bir vaqtda)
+            // ketma-ket401 qaytarganda HAR BIRI uchun alohida xabar chiqmasligi
+            // uchun qo'shimcha notif faqat sessiya yopilmagan bo'lsa chiqadi.
+            const hadSession = !!staffToken;
             if (typeof handleSessionExpired === 'function') handleSessionExpired();
-            showNotif('error', 'Sessiya tugadi', 'Qayta kiring');
+            if (hadSession && staffToken) showNotif('error', 'Sessiya tugadi', 'Qayta kiring');
             return null;
         }
         if (res.status === 403) {
@@ -168,6 +174,10 @@ function setPeriod(value) {
         if (!isBoss()) return;
         const data = await api('/api/boss/overview');
         if (data) { state.cache.overview = data; render(); }
+        // Kirishda sidebar'dagi xodimlar badge'i ham haqiqiy sonni ko'rsatsin
+        // (faqat Xodimlar sahifasi ochilda yangilanishi avvalgi kamchilik edi).
+        const navBadge = document.getElementById('navBossStaffBadge');
+        if (navBadge && data && data.kpi) navBadge.textContent = String(data.kpi.staff || 0);
     }
 
     function render() {
@@ -344,6 +354,10 @@ function setPeriod(value) {
         if (box) box.innerHTML = staffRowsHtml(data.staff || []);
         const head = document.getElementById('boss-staff-count');
         if (head) head.textContent = `${data.total || 0} ta xodim`;
+        // Sidebar'dagi xodimlar badge'i ham shu ma'lumotdan yangilanadi
+        // (oldingi versiyada HTMLda doimiy "0" qolgan — hech kim yangilamagan).
+        const navBadge = document.getElementById('navBossStaffBadge');
+        if (navBadge) navBadge.textContent = String(data.total || (data.staff || []).length || 0);
     }
 
     function staffRowsHtml(rows) {
@@ -853,8 +867,8 @@ function setPeriod(value) {
                     <th>Mahsulot</th><th>Soni</th><th>Narxi</th><th>Jami</th>
                 </tr></thead><tbody>
                 ${(r.items || []).map(i => `<tr>
-                    <td>${escapeHTML(i.name)}</td><td>${i.qty}</td>
-                    <td>${fmt(i.price)} so'm</td><td>${fmt(i.total)} so'm</td></tr>`).join('')}
+                    <td data-label="Mahsulot">${escapeHTML(i.name)}</td><td data-label="Soni">${i.qty}</td>
+                    <td data-label="Narxi">${fmt(i.price)} so'm</td><td data-label="Jami">${fmt(i.total)} so'm</td></tr>`).join('')}
                 </tbody></table></div></div>`).join('')
                 : emptyState('Bu davrda savdo yozuvi yo\'q')}`;
     }
@@ -1055,14 +1069,14 @@ function setPeriod(value) {
                 <th>Chek</th><th>Sana</th><th>Xodim</th><th>Filial</th>
                 <th>Mijoz</th><th>Dona</th><th>Savdo</th><th>Foyda</th></tr></thead>
                 <tbody>${rows.length ? rows.map(r => `<tr>
-                    <td>#${escapeHTML(String(r.saleId))}</td>
-                    <td>${escapeHTML(r.date)} <small>${escapeHTML(r.time)}</small></td>
-                    <td>${escapeHTML(r.staff)}</td>
-                    <td>${escapeHTML(r.branchName || '—')}</td>
-                    <td>${escapeHTML(r.customer || '—')}</td>
-                    <td>${r.items}</td>
-                    <td><strong>${fmt(r.total)}</strong></td>
-                    <td>${fmt(r.profit)}</td></tr>`).join('')
+                    <td data-label="Chek">#${escapeHTML(String(r.saleId))}</td>
+                    <td data-label="Sana">${escapeHTML(r.date)} <small>${escapeHTML(r.time)}</small></td>
+                    <td data-label="Xodim">${escapeHTML(r.staff)}</td>
+                    <td data-label="Filial">${escapeHTML(r.branchName || '—')}</td>
+                    <td data-label="Mijoz">${escapeHTML(r.customer || '—')}</td>
+                    <td data-label="Dona">${r.items}</td>
+                    <td data-label="Savdo"><strong>${fmt(r.total)}</strong></td>
+                    <td data-label="Foyda">${fmt(r.profit)}</td></tr>`).join('')
                     : `<tr><td colspan="8">${emptyState('Bu filtrlar bo\'yicha savdo yo\'q')}</td></tr>`}
                 </tbody></table></div>`;
     }
@@ -1455,8 +1469,8 @@ function setPeriod(value) {
                     <th>Mahsulot</th><th>Soni</th><th>Narxi</th><th>Jami</th>
                 </tr></thead><tbody>
                 ${(r.items || []).map(i => `<tr>
-                    <td>${escapeHTML(i.name)}</td><td>${i.qty}</td>
-                    <td>${fmt(i.price)} so'm</td><td>${fmt(i.total)} so'm</td></tr>`).join('')
+                    <td data-label="Mahsulot">${escapeHTML(i.name)}</td><td data-label="Soni">${i.qty}</td>
+                    <td data-label="Narxi">${fmt(i.price)} so'm</td><td data-label="Jami">${fmt(i.total)} so'm</td></tr>`).join('')
                 || `<tr><td colspan="4">${emptyState('Mahsulot qatorlari yo\'q')}</td></tr>`}
                 </tbody></table></div>`;
         }

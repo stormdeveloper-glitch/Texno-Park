@@ -1570,6 +1570,11 @@ function buildSyncPayload() {
  */
 async function _pushSync(strict = false) {
     _lastSyncError = '';
+    // Katalog-fallback holatidagi payload bazani buzib yuborishi mumkin
+    // (branchId/tannarx/savdo tarixi kam) — `/api/data` dan to'liq holat
+    // kelgunga qadar yozish to'xtatiladi. Bu yozuv keyingi sinxronizatsiyada
+    // to'liq holat bilan bajariladi.
+    if (catalogFallbackActive) return true;
     try {
         const res = await fetchWithTimeout('/api/sync', {
             method: 'POST',
@@ -1680,6 +1685,14 @@ function scheduleSyncWithBackend(delay = 1000) {
     }, delay);
 }
 
+// Ommaviy katalog faqat public maydonlarni qaytaradi: `branchId`, `cost`,
+// `barcode` u yerda BO'LMAYDI va savdo tarixi umuman YUBORILMAYDI. Sessiya
+// eskirgandan keyin shu holatga tushsak, sinxronizatsiya vaqtincha
+// to'xtatiladi — aks holda keyingi yozuv butun bazani (mahsulot filtri,
+// tannarx, savdo tarixi) bu kam ma'lumotli holatga ko'proq yozadi.
+// Faqat `/api/data` muvaffaqiyatli yuklanganda belgi o'chadi.
+let catalogFallbackActive = false;
+
 async function loadFromBackend() {
     if (!products.length) {
         productLoadState = 'loading';
@@ -1731,6 +1744,8 @@ async function loadFromBackend() {
         const data = await response.json();
         serverOnline = true;
         productLoadState = 'ready';
+        // To'liq bazaviy holat keldi — sinxronizatsiya qayta ochiladi
+        catalogFallbackActive = false;
         // Bazadagi rasmlar haqiqiy holat — takror yuborish hisobini tozalaymiz
         _syncedImageKeys.clear();
         _pendingImageKeys = [];
@@ -1831,6 +1846,8 @@ async function loadFromBackend() {
  * mijoz shaxsiy ma'lumotlari, savdo tarixi va jurnal YUBORILMAYDI.
  */
 async function loadPublicCatalog() {
+    // Katalogda filial/tannarx/savdo yo'q — bazaga yozish uchun xavfsiz emas
+    catalogFallbackActive = true;
     try {
         const res = await fetch('/api/catalog');
         if (!res.ok) {
@@ -2223,6 +2240,11 @@ function finishLogin(user) {
     Security.startSession(user);
     addLog('Kirish', `${user.name} tizimga kirdi`);
     initApp();
+    // Sessiya eskirgandan keyingi qayta kirishda ma'lumotlar ommaviy
+    // katalogdan kelgan bo'lishi mumkin (branchId/tannarx/savdo tarixisiz) —
+    // to'liq bazaviy holatni serverdan qayta yuklaymiz, shunda keyingi
+    // sinxronizatsiya eski/kam holatni bazaga yozmaydi.
+    if (user.role !== 'customer') loadFromBackend().catch(() => { });
     // Xodim kirganda eng asosiy bo'lim ochiladi (do'kon yon panelning oxirida turadi)
     if (user.role !== 'customer') {
         // BOSHLIQ kirganda uning o'z "Boshliq Dashboard"i ochiladi (page-boss),
@@ -2256,6 +2278,11 @@ function doLogout(force = false) {
     // Server tokenini ham o'chiramiz (sessiya to'liq yopiladi)
     clearStaffToken();
     Security.endSession(force ? 'majburiy' : 'foydalanuvchi');
+    // Faol filial tanlovi faqat shu sessiyaga tegishli: keyingi kirishda
+    // boshqa xodim bo'lishi mumkin — eski tanlov qolmasin (Kassa bo'sh ko'rinmasin).
+    activeBranchId = '';
+    try { localStorage.removeItem('tp_active_branch'); } catch (e) { }
+    try { Branches.refreshBranchSwitcher(); } catch (e) { }
     currentUser = null; cart = []; shopCart = [];
 
     const topName = document.getElementById('topbarEmployeeName');
@@ -3199,12 +3226,29 @@ function loadPOS() {
 
 // POS kategoriya tugmalari — doimiy CATEGORIES ro'yxatidan quriladi,
 // shuning uchun mahsulot bo'lmasa ham barcha bo'limlar ko'rinadi.
+/**
+ * POS ro'yxati va kategoriya hisoblagichining umumiy filtri (kategoriyasiz):
+ * faol filial (visibleProducts) + qidiruv + "faqat bor" holati.
+ * Ikkala render shu yerdan o'tgani uchun tab soni va grid har doim mos keladi.
+ */
+function posFilteredBase() {
+    const q = cleanText(posFilter, 80).toLowerCase();
+    const onlyStock = !!document.getElementById('posOnlyInStock')?.checked;
+    return visibleProducts().filter(p =>
+        (!onlyStock || p.stock > 0) &&
+        (!q || p.name.toLowerCase().includes(q) || (p.barcode || '').includes(q))
+    );
+}
+
 function renderCatTabs() {
     const el = document.getElementById('catTabs');
     if (!el) return;
     const cats = ['Barchasi', ...CATEGORIES];
+    // Hisoblagich ham aynan grid bilan bir xil shartlardan o'tadi
+    // (filial + qidiruv + qoldiq) — faqat kategoriya bo'yicha ajratiladi.
+    const base = posFilteredBase();
     el.innerHTML = cats.map(c => {
-        const count = c === 'Barchasi' ? products.length : products.filter(p => p.cat === c).length;
+        const count = c === 'Barchasi' ? base.length : base.filter(p => p.cat === c).length;
         const active = (c === 'Barchasi' && !posCat) || posCat === c;
         return `<button type="button" class="cat-tab ${active ? 'active' : ''}" data-cat="${escapeHTML(c)}" onclick='filterCat(${JSON.stringify(c)}, this)'>
             <i class="fas ${categoryFaIcon(c)}" style="margin-right:6px;font-size:11px"></i>${escapeHTML(c)}
@@ -3220,7 +3264,7 @@ function filterCat(cat, el) {
     renderProductGrid();
 }
 
-function searchProducts(q) { posFilter = q; renderProductGrid(); }
+function searchProducts(q) { posFilter = q; renderCatTabs(); renderProductGrid(); }
 const debouncedSearch = debounce(searchProducts, 300);
 const debouncedSearchProducts = debouncedSearch;
 
@@ -3834,14 +3878,8 @@ function checkoutUzumOrder() {
 function renderProductGrid() {
     const el = document.getElementById('productGrid');
     if (!el) return;
-    const q = cleanText(posFilter, 80).toLowerCase();
     const branch = selectedBranch();
-    const onlyStock = !!document.getElementById('posOnlyInStock')?.checked;
-    const list = visibleProducts().filter(p =>
-        (!posCat || p.cat === posCat) &&
-        (!onlyStock || p.stock > 0) &&
-        (!q || p.name.toLowerCase().includes(q) || (p.barcode || '').includes(q))
-    );
+    const list = posFilteredBase().filter(p => (!posCat || p.cat === posCat));
     const sortVal = document.getElementById('posSort')?.value || '';
     if (sortVal === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
     else if (sortVal === 'price-asc') list.sort((a, b) => a.price - b.price);
@@ -4179,6 +4217,23 @@ function readCreditInfo() {
 function checkout() {
     if (!requireRole('admin', 'cashier', 'manager')) return;
     if (cart.length === 0) { playError(); showNotif('error', 'Savat bo\'sh!', 'Mahsulot qo\'shing'); return; }
+
+    // Sotuvdan OLDIN qoldiq qayta tekshiriladi: savat tuzilgandan beri
+    // qoldiq kamaygan bo'lsa (boshqa qurilmada sotuv yoki tahrir) yoki
+    // mahsulot o'chirilgan bo'lsa — sotuv rad etiladi, ombor kamaymaydi.
+    for (const ci of cart) {
+        const cur = products.find(x => x.id === ci.id);
+        if (!cur) {
+            playError();
+            showNotif('error', 'Sotuv rad etildi', `${ci.name} — mahsulot ro'yxatdan olib tashlangan`);
+            return;
+        }
+        if ((Number(cur.stock) || 0) < ci.qty) {
+            playError();
+            showNotif('error', 'Yetarli qoldiq yo\'q', `${ci.name} — qoldiq: ${cur.stock}, savatda: ${ci.qty}`);
+            return;
+        }
+    }
 
     const providerId = PAYMENT_PROVIDERS[payType] ? payType : 'cash';
     const provider = PAYMENT_PROVIDERS[providerId];
@@ -4524,7 +4579,7 @@ function renderProducts() {
     <td data-label="Nomi"><strong>${escapeHTML(p.name)}</strong>${p.ikpu ? '' : ' <span class="badge badge-red" title="Fiskal chek chiqmaydi">IKPU yo\'q</span>'}<br><small style="color:var(--muted)">${escapeHTML(p.desc || '')}</small></td>
     <td data-label="Kategoriya"><span class="badge badge-blue" title="${escapeHTML(p.cat)}">${escapeHTML(p.cat)}</span></td>
     <td data-label="Filial">${branch
-                ? '<span class="badge" style="background:' + escapeHTML(branch.markerColor) + '22;color:' + escapeHTML(branch.markerColor) + '">' + escapeHTML(branch.markerIcon + ' ' + branch.name) + '</span>'
+                ? '<span class="badge" title="' + escapeHTML(branch.name) + '" style="background:' + escapeHTML(branch.markerColor) + '22;color:' + escapeHTML(branch.markerColor) + '">' + escapeHTML(branch.markerIcon + ' ' + branch.name) + '</span>'
                 : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
     <td data-label="Narxi" style="font-weight:700;color:var(--primary)">${fmt(p.price)} so'm</td>
     <td data-label="Tannarx">${p.cost > 0 ? fmt(p.cost) + " so'm" : '<span style="color:var(--muted)">—</span>'}</td>
@@ -9508,6 +9563,42 @@ const Branches = {
         } catch (e) { /* offline — lokal nusxa ishlaydi */ }
     },
 
+    /* ── KPI: HAQIQIY database manbasi (/api/branches/summary) ── */
+    _kpi: {},
+    _kpiMeta: null,
+
+    /**
+     * Filial KPI'larini serverdan oladi (backend `branches_summary`:
+     * mahsulot, zaxira qiymati, savdo, kirim, chiqim, harajat, sof natija).
+     * Muvaffaqiyatsiz bo'lsa (offline/401) — false, jadval lokal hisobga o'tadi.
+     */
+    async loadKpiFromServer() {
+        try {
+            const res = await fetchWithTimeout('/api/branches/summary',
+                { headers: authHeaders() }, 10000);
+            if (!res.ok) return false;
+            const data = await res.json();
+            if (!data || !Array.isArray(data.branches)) return false;
+            const map = {};
+            data.branches.forEach(it => {
+                if (it && typeof it === 'object') map[String(it.branchId || '')] = it;
+            });
+            this._kpi = map;
+            this._kpiMeta = {
+                time: String(data.serverTime || new Date().toLocaleTimeString('uz-UZ')),
+            };
+            return true;
+        } catch (e) { return false; }
+    },
+
+    renderKpiMeta() {
+        const el = document.getElementById('branchKpiMeta');
+        if (!el) return;
+        el.textContent = this._kpiMeta
+            ? "KPI manbasi: server (" + this._kpiMeta.time + ")"
+            : "KPI manbasi: lokal hisob (serverga ulanmadi)";
+    },
+
     /* ── YARLIOQ BADGE va FAOL FILIAL TANLAGICH ──────────────── */
     updateNavBadge() {
         const badge = document.getElementById('navBranchesBadge');
@@ -9517,13 +9608,15 @@ const Branches = {
     refreshBranchSwitcher() {
         const sel = document.getElementById('branchSwitcher');
         if (!sel) return;
-        const active = getActiveBranch();
+        // Dropdown tanlovning o'zini aks ettiradi: activeBranchId bo'sh bo'lsa —
+        // "Barcha filiallar" (getActiveBranch fallback'i faqat KPI uchun).
+        const activeId = String(activeBranchId || '');
         const options = ['<option value="">Barcha filiallar</option>'].concat(
             branches.map(b => '<option value="' + escapeHTML(b.id) + '"' +
-                (String(b.id) === String(active ? active.id : '') ? ' selected' : '') + '>' +
+                (String(b.id) === activeId ? ' selected' : '') + '>' +
                 escapeHTML(b.name) + '</option>'));
         sel.innerHTML = options.join('');
-        if (!active && sel.value !== '') sel.value = '';
+        if (sel.value !== activeId) sel.value = activeId;
     },
 
     setActive(id) {
@@ -9532,10 +9625,14 @@ const Branches = {
             if (activeBranchId) localStorage.setItem('tp_active_branch', activeBranchId);
             else localStorage.removeItem('tp_active_branch');
         } catch (e) { }
-        const b = getActiveBranch();
+        const b = activeBranchId ? getActiveBranch() : null;
         showNotif('info', 'Faol filial', b ? (b.name + ' tanlandi — savdo va ombor shu filialga tegishli bo\'ladi') : 'Barcha filiallar ko\'rsatilmoqda');
         this.refreshBranchSwitcher();
         this.render();
+        // Ochiq Kassa va ombor filial almashganda darhol yangilanadi
+        try { if (typeof renderCatTabs === 'function') renderCatTabs(); } catch (e) { }
+        try { if (typeof renderProductGrid === 'function') renderProductGrid(); } catch (e) { }
+        try { if (typeof renderWarehousePage === 'function') renderWarehousePage(); } catch (e) { }
     },
 
     /* ── SAHIFA RENDER: statistika + jadval + taqsimot ───────── */
@@ -9544,6 +9641,7 @@ const Branches = {
         this.renderStats();
         this.renderTable();
         this.renderDistribution();
+        this.renderKpiMeta();
         this.updateNavBadge();
         this.refreshBranchSwitcher();
     },
@@ -9580,23 +9678,77 @@ const Branches = {
         });
     },
 
+    /** Savdo qaysi filialga tegishli — backend `sale_branch()` bilan bir xil mantiq. */
+    saleBranchId(sale) {
+        const direct = String(sale?.branchId || '').trim();
+        if (direct) return direct;
+        const ids = new Set();
+        (Array.isArray(sale?.items) ? sale.items : []).forEach(it => {
+            const p = products.find(x => String(x?.id) === String(it?.id));
+            if (p && p.branchId) ids.add(String(p.branchId));
+        });
+        return ids.size === 1 ? Array.from(ids)[0] : '';
+    },
+
+    /**
+     * Filial KPI: server summary (database manba) bo'lsa — undan, aks holda
+     * lokal sinxron ma'lumotdan BIR XIL formula bilan (offline rejim):
+     * sof natija = savdo + kirim − chiqim − harajat.
+     */
+    kpiFor(b) {
+        const cached = this._kpi[String(b?.id)];
+        if (cached) {
+            return {
+                products: Number(cached.products) || 0,
+                stockValue: Number(cached.stockValue) || 0,
+                salesCount: Number(cached.salesCount) || 0,
+                revenue: Number(cached.revenue) || 0,
+                income: Number(cached.income) || 0,
+                expense: Number(cached.expense) || 0,
+                harajat: Number(cached.harajat) || 0,
+                profit: Number(cached.profit) || 0,
+            };
+        }
+        const bid = String(b?.id || '');
+        const bProducts = products.filter(p => String(p?.branchId || '') === bid);
+        const stockValue = bProducts.reduce((s, p) =>
+            s + (Number(p?.price) || 0) * (Number(p?.stock) || 0), 0);
+        const paid = salesHistory.filter(s => isPaidSale(s) && this.saleBranchId(s) === bid);
+        const revenue = paid.reduce((s, x) => s + (Number(x?.total) || 0), 0);
+        const flows = (Array.isArray(cashFlow) ? cashFlow : [])
+            .filter(c => String(c?.branchId || '') === bid);
+        const sumBy = (types) => flows.reduce((s, c) =>
+            s + (types.includes(String(c?.type || '')) ? (Number(c?.amount) || 0) : 0), 0);
+        const income = sumBy(['kirim', 'income']);
+        // Eski yozuvlarda `type` bo'sh — backend uni 'chiqim' deb oladi
+        const expense = sumBy(['chiqim', 'expense', '']);
+        const harajat = sumBy(['harajat']);
+        return {
+            products: bProducts.length,
+            stockValue,
+            salesCount: paid.length,
+            revenue,
+            income,
+            expense,
+            harajat,
+            profit: revenue + income - expense - harajat,
+        };
+    },
+
     renderTable() {
         const tbody = document.getElementById('branchesTable');
         if (!tbody) return;
         const list = this.filteredBranches();
         if (!list.length) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--muted)">' +
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:28px;color:var(--muted)">' +
                 (branches.length ? 'Qidiruv natijasi topilmadi' : 'Hali filial qo\'shilmagan — "Yangi filial" tugmasini bosing') + '</td></tr>';
             return;
         }
+        const canManage = requireRoleSilent('admin', 'manager');
         tbody.innerHTML = list.map(b => {
-            const prodCount = products.filter(p => String(p.branchId || '') === String(b.id)).length;
-            const stockValue = products.filter(p => String(p.branchId || '') === String(b.id))
-                .reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.stock) || 0), 0);
-            const soldCount = salesHistory.filter(s => isPaidSale(s) && String(s.branchId || '') === String(b.id)).length;
-            const soldTotal = salesHistory.filter(s => isPaidSale(s) && String(s.branchId || '') === String(b.id))
-                .reduce((s, x) => s + (Number(x.total) || 0), 0);
+            const k = this.kpiFor(b);
             const isMain = b.isMain ? '<span class="branch-main-tag"><i class="fas fa-star"></i> Asosiy</span>' : '';
+            const profitColor = k.profit >= 0 ? 'var(--success)' : 'var(--danger)';
             return '<tr>' +
                 '<td><div class="branch-badge" style="background:' + escapeHTML(b.markerColor) + '">' +
                 '<span>' + escapeHTML(b.markerIcon) + '</span></div></td>' +
@@ -9605,15 +9757,23 @@ const Branches = {
                 '<td>' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
                 '<td>' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
                 (b.hours ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.hours) + '</div>' : '') + '</td>' +
-                '<td>' + prodCount + '</td>' +
-                '<td>' + fmt(stockValue) + ' so\'m</td>' +
-                '<td>' + soldCount + ' ta / ' + fmt(soldTotal) + ' so\'m</td>' +
+                '<td>' + k.products + '</td>' +
+                '<td>' + fmt(k.stockValue) + ' so\'m</td>' +
+                '<td>' + k.salesCount + ' ta / ' + fmt(k.revenue) + ' so\'m</td>' +
+                '<td style="color:var(--success)">' + fmt(k.income) + ' so\'m</td>' +
+                '<td style="color:var(--danger)" title="Chiqim: ' + fmt(k.expense) + ' so\'m · Harajat: ' + fmt(k.harajat) + ' so\'m">' +
+                fmt(k.expense + k.harajat) + ' so\'m</td>' +
+                '<td style="font-weight:700;color:' + profitColor + '">' +
+                (k.profit < 0 ? '−' : '') + fmt(Math.abs(k.profit)) + ' so\'m</td>' +
                 '<td>' + (b.status === 'active'
                     ? '<span style="color:var(--success)"><i class="fas fa-circle-check"></i> Faol</span>'
-                    : '<span style="color:var(--muted)"><i class="fas fa-circle-pause"></i> Nofaol</span>') + '</td>' +
+                    : '<span style="color:var(--muted)"><i class="fas fa-circle-pause"></i> Nofaol</span>') +
+                (canManage ? '<button type="button" class="btn btn-outline btn-sm" style="margin-left:6px" ' +
+                    'title="Holatni almashtirish" onclick="Branches.toggleStatus(\'' + escapeHTML(b.id) + '\')">' +
+                    '<i class="fas fa-arrows-rotate"></i></button>' : '') + '</td>' +
                 '<td><div style="display:flex;gap:6px">' +
                 '<button class="btn btn-outline btn-sm" onclick="Branches.view(\'' + escapeHTML(b.id) + '\')" title="Batafsil"><i class="fas fa-eye"></i></button>' +
-                (requireRoleSilent('admin', 'manager')
+                (canManage
                     ? '<button class="btn btn-outline btn-sm" onclick="Branches.edit(\'' + escapeHTML(b.id) + '\')" title="Tahrirlash"><i class="fas fa-pen"></i></button>' +
                     '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'' + escapeHTML(b.id) + '\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
                     : '') +
@@ -9639,11 +9799,16 @@ const Branches = {
             '<span class="branch-dist-count">' + count + '</span></div>').join('');
     },
 
-    /* ── KPI yuklash (server /api/branches dan) ──────────────── */
+    /* ── KPI yuklash (server: /api/branches + /api/branches/summary) ── */
     async loadSummary(showNotifOnDone) {
         await this.loadFromServer();
+        const fromServer = await this.loadKpiFromServer();
         this.render();
-        if (showNotifOnDone) showNotif('success', 'Yangilandi', 'Filial ma\'lumotlari serverdan olindi');
+        if (showNotifOnDone) {
+            showNotif('success', 'Yangilandi', fromServer
+                ? "Filial KPI database'dan yangilandi (" + (this._kpiMeta ? this._kpiMeta.time : '') + ")"
+                : "KPI serverdan olindi emas — lokal hisob ko'rsatilmoqda");
+        }
     },
 
     /* ── KO'RISH / TAHRIRLASH / O'CHIRISH ────────────────────── */
@@ -9654,12 +9819,21 @@ const Branches = {
         if (!body) return;
         document.getElementById('branchViewTitle').innerHTML =
             '<i class="fas fa-map-location-dot" style="color:var(--primary);margin-right:8px"></i>' + escapeHTML(b.name);
+        const k = this.kpiFor(b);
+        const profitSpan = '<span style="font-weight:700;color:' +
+            (k.profit >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(k.profit) + " so'm</span>";
         const rows = [
             ['Kod', b.code || '—'], ['Shahar', b.city || '—'], ['Manzil', b.address || '—'],
             ['Telefon', b.phone || '—'], ['Ish vaqti', b.hours || '—'],
             ['Holat', b.status === 'active' ? 'Faol' : 'Nofaol'],
             ['Asosiy filial', b.isMain ? 'Ha' : 'Yo\'q'],
-            ['Koordinata', (b.lat != null && b.lng != null) ? (b.lat.toFixed(6) + ', ' + b.lng.toFixed(6)) : '—']
+            ['Koordinata', (b.lat != null && b.lng != null) ? (b.lat.toFixed(6) + ', ' + b.lng.toFixed(6)) : '—'],
+            ['Mahsulot', k.products + ' ta'],
+            ['Zaxira qiymati', fmt(k.stockValue) + " so'm"],
+            ['Savdo / Tushum', k.salesCount + ' ta chek / ' + fmt(k.revenue) + " so'm"],
+            ['Kirim', fmt(k.income) + " so'm"],
+            ['Chiqim / Harajat', fmt(k.expense + k.harajat) + " so'm"],
+            ['Sof natija', profitSpan],
         ];
         body.innerHTML = '<div class="branch-view-grid">' + rows.map(([k, v]) => {
             const safeVal = (typeof v === 'string' && v.startsWith('<')) ? v : escapeHTML(v);
@@ -9714,18 +9888,119 @@ const Branches = {
         openModal('branchModal');
     },
 
-    remove(id) {
+    /** Lokal tezkor tekshiruv: filialga bog'liq yozuvlar (yakuniy tekshiruv serverda). */
+    refCounts(bid) {
+        const key = String(bid || '');
+        return {
+            products: products.filter(p => String(p?.branchId || '') === key).length,
+            sales: salesHistory.filter(s => String(s?.branchId || '') === key).length,
+            cashFlow: (Array.isArray(cashFlow) ? cashFlow : [])
+                .filter(c => String(c?.branchId || '') === key).length,
+            staff: (Array.isArray(employees) ? employees : [])
+                .filter(u => String(u?.branchId || '') === key).length,
+        };
+    },
+
+    refText(r) {
+        const parts = [];
+        if (r.products) parts.push(r.products + ' mahsulot');
+        if (r.sales) parts.push(r.sales + ' savdo');
+        if (r.cashFlow) parts.push(r.cashFlow + ' kirim/chiqim');
+        if (r.staff) parts.push(r.staff + ' xodim');
+        return parts.join(', ');
+    },
+
+    async toggleStatus(id) {
+        const b = getBranchById(id);
+        if (!b) return;
+        await this.setStatus(id, b.status === 'active' ? 'inactive' : 'active');
+    },
+
+    /** Holatni BACKEND orqali saqlash — database'da yangilanadi, reload'da saqlanadi. */
+    async setStatus(id, status) {
+        if (!requireRole('admin', 'manager')) return false;
+        const b = getBranchById(id);
+        if (!b) return false;
+        const next = status === 'inactive' ? 'inactive' : 'active';
+        try {
+            const res = await fetchWithTimeout('/api/branches/' + encodeURIComponent(b.id) + '/status', {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ status: next })
+            }, 8000);
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data || data.status !== 'success') {
+                playError();
+                showNotif('error', 'Saqlanmadi', (data && data.message) || 'Holatni o\'zgartirib bo\'lmadi');
+                return false;
+            }
+            // Lokal nusxa — keyingi sync bilan ham mos qoladi (server allaqachon yangi)
+            b.status = next;
+            try { localStorage.setItem('tp_branches', JSON.stringify(branches)); } catch (e) { }
+            this.render();
+            addLog('Filial holati', b.name + ' — ' + (next === 'active' ? 'faol' : 'nofaol'));
+            playSuccess();
+            showNotif('success', 'Holat yangilandi', '"' + b.name + '" — ' + (next === 'active' ? 'Faol' : 'Nofaol'));
+            return true;
+        } catch (e) {
+            playError();
+            showNotif('error', 'Serverga ulanib bo\'lmadi', 'Holat saqlanmadi — o\'zgarish amalga oshmadi');
+            return false;
+        }
+    },
+
+    async remove(id) {
         if (!requireRole('admin', 'manager')) return;
         const b = getBranchById(id);
         if (!b) return;
-        if (!confirm('"' + b.name + '" filialini o\'chirmoqchimisiz?')) return;
-        branches = branches.filter(x => String(x.id) !== String(id));
-        if (activeBranchId === String(id)) { activeBranchId = ''; try { localStorage.removeItem('tp_active_branch'); } catch (e) { } }
-        saveBranches();
-        this.render();
-        addLog('Filial o\'chirildi', b.name);
-        playSuccess();
-        showNotif('success', 'O\'chirildi', '"' + b.name + '" filiali o\'chirildi');
+        // Tekshiruv 1: lokal tezkor hisob — bog'liq ma'lumot bo'lsa o'chirish
+        // o'rnina nofaol qilish taklif qilinadi (tarix himoyalanadi).
+        const localRefs = this.refCounts(b.id);
+        if (Object.values(localRefs).reduce((a, n) => a + n, 0)) {
+            if (confirm('"' + b.name + '" filialida bog\'liq ma\'lumotlar bor:\n' +
+                this.refText(localRefs) + '.\n\n' +
+                'Tarix yo\'qolmasligi uchun o\'chirish o\'rnina filialni NOFAOL qilish tavsiya etiladi.\n' +
+                'Filialni nofaol qilasizmi? (OK — ha, Bekor — hech narsa)')) {
+                await this.setStatus(id, 'inactive');
+            }
+            return;
+        }
+        if (!confirm('"' + b.name + '" filialini bazadan o\'chirmoqchimisiz?')) return;
+        try {
+            // Tekshiruv 2: serverda yakuniy yaxlitlik tekshiruvi (frontend
+            // hisobi yangi bo'lishi mumkin — server qarori yakuniy).
+            const res = await fetchWithTimeout('/api/branches/' + encodeURIComponent(b.id), {
+                method: 'DELETE',
+                headers: authHeaders()
+            }, 8000);
+            const data = await res.json().catch(() => null);
+            if (res.status === 409) {
+                playError();
+                showNotif('error', 'O\'chirib bo\'lmadi',
+                    (data && data.message) || ('Bog\'liq ma\'lumotlar bor: ' + this.refText((data && data.related) || localRefs)));
+                return;
+            }
+            if (!res.ok || !data || data.status !== 'success') {
+                playError();
+                showNotif('error', 'O\'chirilmadi', (data && data.message) || 'Server xatosi — filial o\'chirilmadi');
+                return;
+            }
+            branches = branches.filter(x => String(x.id) !== String(b.id));
+            if (activeBranchId === String(b.id)) {
+                activeBranchId = '';
+                try { localStorage.removeItem('tp_active_branch'); } catch (e) { }
+                try { this.refreshBranchSwitcher(); } catch (e) { }
+            }
+            delete this._kpi[String(b.id)];
+            saveBranches();
+            this.render();
+            addLog('Filial o\'chirildi', b.name);
+            playSuccess();
+            showNotif('success', 'O\'chirildi', '"' + b.name + '" filiali bazadan o\'chirildi');
+        } catch (e) {
+            playError();
+            showNotif('error', 'Serverga ulanib bo\'lmadi', 'O\'chirish bajarilmadi — filial saqlanib qoldi');
+        }
     },
 
     save() {
@@ -9756,6 +10031,8 @@ const Branches = {
         playSuccess();
         showNotif('success', 'Saqlandi', '"' + norm.name + '" filiali saqlandi');
         this._editingId = null;
+        // KPI serverga sync dan keyin yangilansin (yangi filial summary'da paydo bo'ladi)
+        setTimeout(() => { this.loadSummary(false); }, 1500);
     },
 
     /* ── MARKER PICKER (emoji + rang) ────────────────────────── */
@@ -9794,23 +10071,30 @@ const Branches = {
             '<span>' + escapeHTML(branchPickIcon) + '</span></div>';
     },
 
-    /* ── CSV EKSPORT ─────────────────────────────────────────── */
+    /* ── CSV EKSPORT (ko'rsatilayotgan FILTRLANGAN ro'yxat + KPI) ── */
     exportCSV() {
-        if (!branches.length) { showNotif('warning', 'Bo\'sh', 'Eksport uchun filial yo\'q'); return; }
+        const list = this.filteredBranches();
+        if (!list.length) { showNotif('warning', 'Bo\'sh', 'Eksport uchun filial yo\'q'); return; }
         const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-        const head = ['Nomi', 'Kod', 'Shahar', 'Manzil', 'Telefon', 'Ish vaqti', 'Kenglik', 'Uzunlik', 'Holat', 'Mahsulot'].join(';');
-        const lines = branches.map(b => [
-            b.name, b.code, b.city, b.address, b.phone, b.hours,
-            b.lat, b.lng, b.status === 'active' ? 'Faol' : 'Nofaol',
-            products.filter(p => String(p.branchId || '') === String(b.id)).length
-        ].map(esc).join(';'));
+        const head = ['Nomi', 'Kod', 'Shahar', 'Manzil', 'Telefon', 'Ish vaqti',
+            'Holat', 'Mahsulot', 'Zaxira qiymati', 'Savdo (chek)', 'Savdo tushumi',
+            'Kirim', 'Chiqim', 'Harajat', 'Sof natija'].join(';');
+        const lines = list.map(b => {
+            const k = this.kpiFor(b);
+            return [
+                b.name, b.code, b.city, b.address, b.phone, b.hours,
+                b.status === 'active' ? 'Faol' : 'Nofaol',
+                k.products, k.stockValue, k.salesCount, k.revenue,
+                k.income, k.expense, k.harajat, k.profit
+            ].map(esc).join(';');
+        });
         const csv = '\ufeff' + head + '\n' + lines.join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = 'filiallar-' + new Date().toISOString().slice(0, 10) + '.csv';
         document.body.appendChild(a); a.click(); a.remove();
-        showNotif('success', 'CSV yuklab olindi', branches.length + ' ta filial eksport qilindi');
+        showNotif('success', 'CSV yuklab olindi', list.length + ' ta filial eksport qilindi');
     }
 };
 
@@ -10558,6 +10842,7 @@ async function submitReport(event) {
         window.goTo = function (pageId, el) {
             const r = _origGoToPos.call(this, pageId, el);
             if (pageId === 'page-pos') setTimeout(function () {
+                try { if (typeof renderCatTabs === 'function') renderCatTabs(); } catch (_) {}
                 try { if (typeof renderProductGrid === 'function') renderProductGrid(); } catch (_) {}
                 try { if (typeof refreshAllProductCardsInGrid === 'function') refreshAllProductCardsInGrid(); } catch (_) {}
             }, 120);

@@ -11853,7 +11853,7 @@ body.drawer-open {
 
 #page-products .products-table {
     width: 100%;
-    min-width: 1125px;
+    min-width: 1191px;
     table-layout: fixed;
     border-collapse: collapse;
 }
@@ -11884,7 +11884,7 @@ body.drawer-open {
 #page-products .products-table .product-col-profit { width: 110px; }
 #page-products .products-table .product-col-stock { width: 90px; }
 #page-products .products-table .product-col-status { width: 85px; }
-#page-products .products-table .product-col-actions { width: 84px; }
+#page-products .products-table .product-col-actions { width: 150px; }
 
 #page-products .products-table th,
 #page-products .products-table td {
@@ -11901,13 +11901,30 @@ body.drawer-open {
     overflow-wrap: anywhere;
 }
 
-#page-products .products-table td[data-label="Filial"],
 #page-products .products-table td[data-label="Narxi"],
 #page-products .products-table td[data-label="Tannarx"],
 #page-products .products-table td[data-label="Foyda"],
 #page-products .products-table td[data-label="Qoldiq"],
 #page-products .products-table td[data-label="Holati"] {
     white-space: nowrap;
+    /* Ustun chegarasidan tashqari chiqmasin — uzun qiymat qo'shni
+       katakka kirib ketmaydi (ustma-ust tushish oldini oladi). */
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Filial nomi uzun bo'lsa katak ichida bir nechta qatorda to'liq ko'rinadi
+   (badge wrap) — "Narxi" ustuni bilan ustma-ust tushmaydi. */
+#page-products .products-table td[data-label="Filial"] {
+    white-space: normal;
+    overflow: hidden;
+}
+#page-products .products-table td[data-label="Filial"] .badge {
+    display: inline-flex;
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 #page-products .products-table .product-actions-td {
@@ -11954,8 +11971,8 @@ body.drawer-open {
 
     #page-products table.products-table {
       display: table !important;
-      width: 1125px !important;
-      min-width: 1125px !important;
+      width: 1191px !important;
+      min-width: 1191px !important;
       border-collapse: collapse !important;
       border-spacing: 0 !important;
     }
@@ -14173,8 +14190,8 @@ body {
 
   #page-products .products-table-scroll table.products-table {
     display: table !important;
-    width: 1125px !important;
-    min-width: 1125px !important;
+    width: 1191px !important;
+    min-width: 1191px !important;
     table-layout: fixed !important;
     border-collapse: collapse !important;
     border-spacing: 0 !important;

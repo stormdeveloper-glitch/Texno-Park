@@ -14,7 +14,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.10.5">
+  <link rel="stylesheet" href="style.css?v=5.10.6">
   <link rel="stylesheet" href="boss.css?v=2.1.0">
 </head>
 
@@ -1620,7 +1620,9 @@
 
         <div class="panel">
           <div class="panel-header" style="flex-wrap:wrap;gap:10px">
-            <h3><i class="fas fa-list-check" style="color:var(--primary)"></i> Filiallar ro'yxati va KPI</h3>
+            <h3><i class="fas fa-list-check" style="color:var(--primary)"></i> Filiallar ro'yxati va KPI
+              <small id="branchKpiMeta" style="display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:2px"></small>
+            </h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <input class="form-control" id="branchSearch" placeholder="Nomi / shahar / manzil..."
                 style="min-width:220px;height:38px" oninput="Branches.render()">
@@ -2159,6 +2161,7 @@
                     <th>#</th>
                     <th>Mahsulot Nomi</th>
                     <th>Kategoriya</th>
+                    <th>Filial</th>
                     <th>Qoldiq</th>
                     <th>Baho (Dona)</th>
                     <th>Jami Qiymat</th>
@@ -3720,7 +3723,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.11"></script>
+  <script src="scripts.js?v=1.4.14"></script>
   <script src="boss.js?v=2.1.0"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
