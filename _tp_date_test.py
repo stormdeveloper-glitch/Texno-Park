@@ -12,11 +12,22 @@ CASES = [
     ('2026-10-05 12:30:00', 'ISO space -> 2026-10-05'),
 ]
 
+# Kutilgan natija HAR BIR kirish uchun aniq (oldingi kod faqat '05.10' uchun
+# `want` hisoblab, qolgan to'g'ri javoblarni noto'g'ri FAIL deb ko'rsatgan edi).
+EXPECTED = {
+    '05.10.2026': datetime(2026, 10, 5),
+    '09.10.2026': datetime(2026, 10, 9),
+    '28.12.2025': datetime(2025, 12, 28),
+    '2026-10-05': datetime(2026, 10, 5),
+    '2026-10-05T12:30:00': datetime(2026, 10, 5),
+    '2026-10-05 12:30:00': datetime(2026, 10, 5),
+}
+
 print('=== SANA PARSINGI ===')
 bad = 0
 for raw, label in CASES:
     got = tp.parse_business_date(raw)
-    want = datetime(2026, 10, 5) if '10-05' in raw or '05.10' in raw else None
+    want = EXPECTED.get(raw)
     ok = got == want
     if not ok:
         bad += 1

@@ -318,7 +318,11 @@ def add_security_headers(response):
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; "
         "img-src 'self' data: blob: https:; "
         "connect-src 'self' https:; "
-        "frame-src https://challenges.cloudflare.com https://*.click.uz https://checkout.paycom.uz https://*.uzumbank.uz; "
+        # frame-src: o'z sahifamizdagi Google Maps manzil embed'i (index.html
+        # .store-map-frame) uchun ANIQ hostlar — embed avval maps.google.com'ga,
+        # keyin Google tomonidan www.google.com'ga redirect qiladi (jonli testda
+        # ikkala URL ham kuzatildi). Boshqa manbalar o'zgarmadi.
+        "frame-src https://challenges.cloudflare.com https://*.click.uz https://checkout.paycom.uz https://*.uzumbank.uz https://maps.google.com https://www.google.com; "
         "object-src 'none'; "
         "base-uri 'self'; "
         "form-action 'self'"
@@ -3992,13 +3996,15 @@ def _num_or_zero(value):
 
 
 @app.route('/api/branches/summary', methods=['GET'])
-@require_staff()
+@require_staff('admin', 'manager')
 def branches_summary():
     """Har bir filial bo'yicha real KPI.
 
     Ko'rsatkichlar: mahsulot soni, zaxira qiymati, savdo (tushum) hamda
     kirim / chiqim / harajat yozuvlari va sof natija. Admin shu jadval
     orqali BARCHA filiallarni bir vaqtda kuzatadi.
+    Filiallar moduli faqat admin/menejer uchun — kassir uchun yopiq
+    (BOSHLIQ rollar iyerarxiyasi orqali o'tadi).
     """
     data = db_manager.get_all() or {}
     products = [p for p in (data.get('products') or []) if isinstance(p, dict)]
@@ -4006,13 +4012,17 @@ def branches_summary():
              if isinstance(s, dict) and str(s.get('status') or 'paid') == 'paid']
     flow = [c for c in (data.get('cashFlow') or []) if isinstance(c, dict)]
     legacy_expenses = [c for c in (data.get('expenses') or []) if isinstance(c, dict)]
+    # Savdo filiali — butun tizimda qo'llanilgan `sale_branch()` yordamchisi
+    # orqali aniqlanadi (chekdagi to'g'ridan-to'g'ri `branchId`, aks holda
+    # mahsulotning `branchId` sidi) — boss/grafik endpointlari bilan bir xil.
+    products_by_id = products_index(data)
     branches = public_branches()
     out = []
     totals = {'revenue': 0.0, 'income': 0.0, 'expense': 0.0, 'harajat': 0.0, 'profit': 0.0}
     for branch in branches:
         bid = branch['id']
         b_products = [p for p in products if str(p.get('branchId') or '') == bid]
-        b_sales = [s for s in sales if str(s.get('branchId') or '') == bid]
+        b_sales = [s for s in sales if sale_branch(s, products_by_id) == bid]
         paid = [s for s in b_sales if str(s.get('status')) == 'paid']
         b_flow = [c for c in flow + legacy_expenses if str(c.get('branchId') or '') == bid]
         revenue = sum(_num_or_zero(s.get('total')) for s in paid)
@@ -4050,6 +4060,115 @@ def branches_summary():
                     'totalProducts': len(products),
                     'totalBranches': len(branches),
                     'serverTime': datetime.now().strftime('%d.%m.%Y %H:%M:%S')})
+
+
+def _branch_store_items(store):
+    """`branches` kalitidagi ro'yxat (har doim list, elementlar dict)."""
+    items = store.get(BRANCHES_KEY)
+    if not isinstance(items, list):
+        return []
+    return [i for i in items if isinstance(i, dict)]
+
+
+def _find_branch_item(items, bid):
+    key = str(bid or '').strip()[:40]
+    for item in items:
+        if str(item.get('id') or '') == key:
+            return item
+    return None
+
+
+def _branch_related_counts(store, bid):
+    """Filialga bog'liq ma'lumotlar soni — o'chirishdan oldin yaxlitlik tekshiruvi.
+
+    O'chirish faqat bog'liq yozuv BO'LMAGANDA ruxsat etiladi: mahsulot,
+    savdo, kirim/chiqim va xodimlar `branchId` orqali filialga ulangan,
+    tarix yo'qolib ketmasligi kerak.
+    """
+    key = str(bid or '').strip()[:40]
+    products = [p for p in (store.get('products') or []) if isinstance(p, dict)]
+    sales = [s for s in (store.get('sales') or []) if isinstance(s, dict)]
+    flow = [c for c in (store.get('cashFlow') or []) if isinstance(c, dict)]
+    legacy = [c for c in (store.get('expenses') or []) if isinstance(c, dict)]
+    staff = [u for u in (load_staff() or []) if isinstance(u, dict)]
+    return {
+        'products': len([p for p in products if str(p.get('branchId') or '') == key]),
+        'sales': len([s for s in sales if str(s.get('branchId') or '') == key]),
+        'cashFlow': len([c for c in flow + legacy if str(c.get('branchId') or '') == key]),
+        'staff': len([u for u in staff if str(u.get('branchId') or '') == key]),
+    }
+
+
+@app.route('/api/branches/<bid>/status', methods=['POST'])
+@require_staff('admin', 'manager')
+def branch_set_status(bid):
+    """Filial holatini yangilash (faol/nofaol) — database'da saqlanadi.
+
+    `{"status": "active"|"inactive"}` yuboriladi. Saqlangandan keyin
+    `/api/branches` (yangi sessiya) va KPI summary shu qiymatni ko'rsatadi.
+    """
+    body = request.get_json(silent=True) or {}
+    status = 'inactive' if str(body.get('status') or '') == 'inactive' else 'active'
+    store = db_manager.get_all() or {}
+    items = _branch_store_items(store)
+    target = _find_branch_item(items, bid)
+    if target is None:
+        return json_error('Filial topilmadi', 404)
+    current = 'inactive' if str(target.get('status')) == 'inactive' else 'active'
+    if current == status:
+        return jsonify({'status': 'success', 'changed': False,
+                        'branchId': str(target.get('id') or ''), 'branchStatus': status})
+    target['status'] = status
+    try:
+        db_manager.save_keys({BRANCHES_KEY: items})
+    except Exception as e:
+        print(f'[ERROR] /api/branches/{bid}/status: {e}')
+        return json_error('Holatni saqlashda xatolik', 500)
+    server_security_log('branch-status', 'low',
+                        f'Filial holati o\'zgardi: {target.get("name")} — {current} → {status}',
+                        request.staff.get('name', '—'))  # type: ignore[attr-defined]
+    return jsonify({'status': 'success', 'changed': True,
+                    'branchId': str(target.get('id') or ''), 'branchStatus': status})
+
+
+@app.route('/api/branches/<bid>', methods=['DELETE'])
+@require_staff('admin', 'manager')
+def branch_delete(bid):
+    """Filialni bazadan o'chirish (bog'liq ma'lumotlar himoyalangan).
+
+    Savdo/mahsulot/kirim-chiqim/xodim filialga bog'liq bo'lsa —409 va
+    sabab bilan rad etiladi (yaxlitlik buzilmaydi). Bog'liq yozuv
+    bo'lmasa — filial `branches` ro'yxatidan o'chiriladi va qayd etiladi.
+    """
+    store = db_manager.get_all() or {}
+    items = _branch_store_items(store)
+    target = _find_branch_item(items, bid)
+    if target is None:
+        return json_error('Filial topilmadi', 404)
+    refs = _branch_related_counts(store, bid)
+    total = sum(refs.values())
+    if total:
+        return jsonify({
+            'status': 'error',
+            'code': 'has_related_data',
+            'message': ('Filialda bog\'liq ma\'lumotlar bor: '
+                        f'{refs["products"]} mahsulot, {refs["sales"]} savdo, '
+                        f'{refs["cashFlow"]} kirim/chiqim, {refs["staff"]} xodim. '
+                        'Tarix yo\'qolmasligi uchun o\'chirish rad etildi — '
+                        'filialni avval nofaol qiling.'),
+            'related': refs,
+        }), 409
+    remaining = [i for i in items if i is not target]
+    try:
+        db_manager.save_keys({BRANCHES_KEY: remaining})
+    except Exception as e:
+        print(f'[ERROR] /api/branches/{bid} DELETE: {e}')
+        return json_error('Filialni o\'chirishda xatolik', 500)
+    server_security_log('branch-deleted', 'medium',
+                        f'Filial o\'chirildi: {target.get("name")} ({bid})',
+                        request.staff.get('name', '—'))  # type: ignore[attr-defined]
+    return jsonify({'status': 'success', 'deleted': str(target.get('id') or ''),
+                    'remaining': len(remaining)})
 
 
 @app.route('/api/data', methods=['GET'])

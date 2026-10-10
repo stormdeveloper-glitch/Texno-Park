@@ -93,13 +93,24 @@ def main():
         target = next((u for u in staff if str(u.get('role')) == role), None)
         if not target:
             continue
+        orig = {'salt': target.get('salt'), 'passHash': target.get('passHash'),
+                'status': target.get('status')}
         salt = tp.make_salt('tp-test-')
         target['salt'] = salt
         target['passHash'] = tp.hash_password('Test12345', salt)
         target['status'] = 'active'
         tp.db_manager.save_keys({'staff_users': staff})
-        r = client.post('/api/auth/login', json={'login': role, 'password': 'Test12345'})
-        tok = (r.get_json() or {}).get('token')
+        try:
+            r = client.post('/api/auth/login', json={'login': role, 'password': 'Test12345'})
+            tok = (r.get_json() or {}).get('token')
+        finally:
+            # Vaqtinchalik parolni DARHIL tiklaymiz — aks holda keyingi
+            # testlar (4accounts/auth) bu akkauntlar bilan kira olmaydi.
+            staff2 = tp.load_staff()
+            t2 = next((u for u in staff2 if u.get('id') == target.get('id')), None)
+            if t2:
+                t2.update(orig)
+                tp.db_manager.save_keys({'staff_users': staff2})
         r = client.get('/api/boss/charts', headers=auth(tok))
         check(f'{role} charts -> 403', r.status_code == 403, f'HTTP {r.status_code}')
 

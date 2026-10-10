@@ -47,6 +47,8 @@ def ensure_test_user(lname):
                    if str(u.get('login', '')).lower() == str(lname).lower()), None)
     if not target:
         return None
+    orig = {'salt': target.get('salt'), 'passHash': target.get('passHash'),
+            'status': target.get('status')}
     salt = tp.make_salt('tp-test-')
     target['salt'] = salt
     target['passHash'] = tp.hash_password('Test12345', salt)
@@ -54,6 +56,16 @@ def ensure_test_user(lname):
     # Muhim: aynan o'sh ro'yxatni saqlaymiz, yangisini emas.
     tp.db_manager.save_keys({'staff_users': staff})
     res = login(tp.app.test_client(), lname, 'Test12345')
+    # Vaqtinchalik parolni DARHIL tiklaymiz — token sessiyaga bog'liq,
+    # shuning uchun boshqa testlar (4accounts/auth) toza parol bilan o'tadi.
+    try:
+        staff2 = tp.load_staff()
+        t2 = next((u for u in staff2 if u.get('id') == target.get('id')), None)
+        if t2:
+            t2.update(orig)
+            tp.db_manager.save_keys({'staff_users': staff2})
+    except Exception:
+        pass
     if res.status_code != 200:
         print(f'      (login {lname} -> HTTP {res.status_code})')
         return None
