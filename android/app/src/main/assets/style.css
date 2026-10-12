@@ -1922,7 +1922,6 @@ button[class*="btn"] {
     align-items: center;
     gap: 8px;
     transition: var(--transition-spring);
-    will-change: transform;
     position: relative;
     overflow: hidden;
 }
@@ -2791,7 +2790,6 @@ tbody tr:last-child td {
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
-    will-change: transform;
 }
 
 .product-card::after {
@@ -11318,7 +11316,6 @@ html {
 #app.market-mode .shop-product-card {
     border-radius: 16px;
     transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
-    will-change: transform;
 }
 
 #app.market-mode .shop-product-card:hover {
@@ -11965,6 +11962,12 @@ body.drawer-open {
       width: 100%;
     }
 
+}
+
+/* Planshet (769–1024px): keng jadval gorizontal scroll ichida haqiqiy jadval
+   bo'lib qoladi. ≤768px uchun bu yerda HECH NARSA yozilmaydi — kichik
+   ekranlarda sahifa karta (stacked) rejimiga o'tadi (MOBILE REBUILD bo'limi). */
+@media (min-width: 769px) and (max-width: 1024px) {
     #page-products .products-table-scroll {
       overflow-x: auto !important;
     }
@@ -12435,8 +12438,21 @@ body {
     padding: env(safe-area-inset-top, 0px) 12px 8px 12px !important;
     transition: none;
   }
+  /* Mobil GPU: doimiy (fixed) glass elementlar scroll paytida har kadrl
+     qayta-blur qilinadi — radius mobil qurilmada kamaytiriladi, desktop o'zgarmaydi */
+  #app:not(.market-mode) .topbar,
+  #app.market-mode .market-top {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .sidebar {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
   .topbar .page-title {
-    padding-left: 0;
+    /* ☰ tugmasi fixed (12px, 48px) — sarlavha uning ostiga tushmasligi uchun
+       chapdan joy ajratiladi (12px topbar padding + 48px tugma + 8px bo'shliq). */
+    padding-left: 56px;
     font-size: 16px;
     flex: 1 1 0;
     min-width: 0;
@@ -12849,7 +12865,132 @@ body {
   .table-wrap tbody td[colspan] { justify-content: center; text-align: center; font-style: italic; color: var(--muted); padding: 16px 0 !important; }
   .table-wrap tbody td[colspan]::before { display: none; content: ""; }
 
+  /* ============== FILIALLAR — MOBIL KARTA (faqat #branchesTable) ==============
+     Umumiy mobil jadval-qoidasi filial qatorini yorliqsiz, o'ngga tekislangan
+     zich ustun qilib qo'ygan edi — summalar bir-biridan ajralmasdi. Bu yerda
+     filial kartasi qayta tartiblanadi (ma'lumotlar/summalar O'ZGARMADI,
+     faqat joylashuv): yuqorida A) ikona+nom, manzil, telefon, holat;
+     o'rtada B) 2 ustunli moliyaviy bloklar (nom tepada, qiymat pastda);
+     pastda C) to'liq kenglikdagi amallar tugmalari (44px touch). */
+  #page-branches #branchesTable tr {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 10px;
+    row-gap: 8px;
+    padding: 12px !important;
+  }
+  #page-branches #branchesTable td {
+    border-bottom: none !important;
+    padding: 0 !important;
+    width: auto !important; /* umumiy `width:100% !important` flex-bosimga xalaqit beras edi */
+  }
+  /* A. Filial ma'lumotlari */
+  #page-branches #branchesTable td:nth-child(1) {
+    flex: 0 0 auto;
+    justify-content: flex-start !important;
+    align-self: center;
+  }
+  #page-branches #branchesTable td:nth-child(1)::before,
+  #page-branches #branchesTable td:nth-child(2)::before {
+    display: none !important;
+  }
+  #page-branches #branchesTable td:nth-child(2) {
+    flex: 1 1 calc(100% - 54px);
+    min-width: 0;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    align-self: center;
+  }
+  #page-branches #branchesTable td:nth-child(2) strong {
+    font-size: 14.5px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  #page-branches #branchesTable td:nth-child(3),
+  #page-branches #branchesTable td:nth-child(4) {
+    flex: 1 1 100%;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  #page-branches #branchesTable td:nth-child(4) a {
+    word-break: break-all;
+    text-decoration: none;
+  }
+  #page-branches #branchesTable td:nth-child(3)::before,
+  #page-branches #branchesTable td:nth-child(4)::before,
+  #page-branches #branchesTable td:nth-child(11)::before {
+    width: auto;
+    max-width: none;
+    min-width: 58px;
+    padding-right: 10px;
+  }
+  /* B. Moliyaviy bloklar — 2 ustun; label tepada, qiymat pastida */
+  #page-branches #branchesTable td:nth-child(n+5):nth-child(-n+10) {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+    display: block !important;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px !important;
+    text-align: left !important;
+    font-size: 12.5px;
+    font-weight: 700;
+    word-break: break-word;
+  }
+  #page-branches #branchesTable td:nth-child(n+5):nth-child(-n+10)::before {
+    content: attr(data-label);
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    padding-right: 0;
+    margin-bottom: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  /* Holat — to'liq qator; toggle tugmasi 44px */
+  #page-branches #branchesTable td:nth-child(11) {
+    flex: 1 1 100%;
+    align-items: center !important;
+    font-size: 13px;
+  }
+  #page-branches #branchesTable td:nth-child(11) button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* C. Amallar — pastda, to'liq kenglikda, teng bo'lingan */
+  #page-branches #branchesTable td:nth-child(12) {
+    flex: 1 1 100%;
+  }
+  #page-branches #branchesTable td:nth-child(12) > div {
+    width: 100%;
+    justify-content: stretch;
+  }
+  #page-branches #branchesTable td:nth-child(12) button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    margin-left: 0;
+    font-size: 13px;
+  }
+
   /* ============== PRODUCTS PAGE — MOBILE CARD ENHANCEMENTS ============== */
+  /* ≤768px: mahsulotlar jadvali KARTA (stacked) rejimiga o'tadi. Desktop va
+     planshet uchun yozilgan qat'iy kenglik (1191px) va matn qisqartirish
+     cheklovlarini bekor qilamiz — aks holda butun sahifa gorizontal siljib,
+     "Amallar" (tahrirlash/o'chirish) tugmalari ekrandan chiqib ketadi. */
+  #page-products .products-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  #page-products .products-table tbody td[data-label] {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
   #page-products .panel-header {
     padding: 10px 12px !important;
     flex-direction: column !important;
@@ -13168,11 +13309,49 @@ body {
     background: transparent !important;
     transform: none !important;
     animation: none !important;
-    overflow: visible !important;
+    /* TUZATISH (mobil qo'shish oynalari):
+       1) `overflow: visible` → kontent sheet max-height (92vh) dan uzun bo'lsa,
+          uni root `.modal-overlay { overflow: hidden }` kesib qo'yardi va
+          Saqlash tugmasigacha scroll qilib bo'lmasdi (branchModal'da Saqlash
+          1546px da edi — ekrandan tashqarida, ya'man to'liq qirqilgan).
+          Endi ichki `.modal` o'zi scroll konteyneri (`.modal-body`li
+          modallarda esa o'zgartiruvchi ta'sir qilmaydi — body ichki
+          scroll bilan qoladi, `.modal` ortiqcha skrolllanmaydi).
+       2) `.modal-body`siz eski qurilgan modallar (branchModal, contractModal,
+          productModal, customerModal, categoryModal, maosh/chegirma modallari
+          — jami 11 ta) da forma qatorlari to'g'ridan-to'g'ri `.modal`
+          bolasi edi: `.modal` padding:0 bo'lgani uchun maydonlar sheet
+          chetlariga yopishib qolgan edi. Tegishli bolalar ichki
+          gorizontal padding oladi (quyidagi qoida). */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     z-index: auto !important;
     display: flex !important;
     flex-direction: column !important;
     flex: 1 1 auto;
+  }
+  /* `.modal-body`siz qurilgan modallarning to'g'ridan-to'g'ri bolalari
+     (form-row, form-col, matn, buttonsizsiz DIV) — ichki gorizontal padding.
+     `.modal-header`/`.modal-body`/`.modal-footer` o'z paddingini o'zi oladi;
+     inline-style yoki o'z klassi bilan padding qurilgan elementlar
+     (masalan `.salary-modal-emp-info`, rasm yuklash qutisi) bu ro'yxatda
+     yo'q. `productDetailModal` o'z maxsus dizayni uchun mustasno. */
+  .modal-overlay:not(#productDetailModal) .modal > .form-row,
+  .modal-overlay:not(#productDetailModal) .modal > .form-col,
+  .modal-overlay:not(#productDetailModal) .modal > .grid-2,
+  .modal-overlay:not(#productDetailModal) .modal > .grid-3,
+  .modal-overlay:not(#productDetailModal) .modal > p,
+  .modal-overlay:not(#productDetailModal) .modal > small,
+  .modal-overlay:not(#productDetailModal) .modal > div:not([class]) {
+    padding-left: 16px;
+    padding-right: 16px;
+    box-sizing: border-box;
+  }
+  /* Skroll oxirida oxirgi element pastki chetga yopishmasin */
+  .modal-overlay:not(#productDetailModal) .modal > *:last-child:not(.modal-header):not(.modal-footer) {
+    padding-bottom: 16px;
   }
   /* Boss modallar boshlig'i (.modal-head) dagi ✕ tugmasi ham44×44 bo'lsin
      (tegishli qoida faqat .modal-header uchun yozilgan edi). */
@@ -13240,6 +13419,33 @@ body {
     font-weight: 700;
   }
   .modal .modal-footer button:first-child:last-child { flex: 1 1 100%; }
+
+  /* ============== MODAL SHEET: SWIPE + LOCK ==============
+     Swipe-to-dismiss logikasi scripts.js `ModalSheet` modulida;
+     bu yerda faqat ikkita CSS qo'llab-quvvatlovchi qoida:
+     1) body.modal-locked — modal ochiqda orqa sahifa skrolli
+        qulflanadi (eski pozitsiya JS'da saqlanib yopilganda qaytariladi);
+     2) sarlavhadagi drag-handle chizig'i — pastga surishning
+        vizual ko'rsatkichi (faqat mobil sheet'larda). */
+  body.modal-locked {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+  [id$="Modal"] .modal-header::after,
+  [id$="Modal"] .modal-head::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 4px;
+    border-radius: 99px;
+    background: var(--border);
+    opacity: .85;
+    pointer-events: none;
+  }
+
   .modal-backdrop, .modal-bg, .overlay:not(.sidebar-overlay):not(.market-drawer-overlay),
   [class*="backdrop"] {
     background: rgba(0,0,0,.65);
@@ -13968,8 +14174,8 @@ body {
     height: calc(66px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--hdr-bg) !important;
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
     border-top: 1px solid var(--hdr-border);
     box-shadow: 0 -8px 28px rgba(0,0,0,.28);
     color: var(--hdr-fg);
@@ -14049,7 +14255,7 @@ body {
     --hdr-pad-x: 10px;
   }
   /* ≤480px: ☰ toggle ko'rinib turadi (≤768px qoidasiga qarang — drawer ochish yagona yo'li) */
-  .topbar .page-title { padding-left: 0; font-size: 15px; }
+  .topbar .page-title { padding-left: 56px; font-size: 15px; }
   .page { padding: 10px !important; }
   .login-box { padding: 16px; gap: 12px; }
   .stat-num { font-size: clamp(16px, 5vw, 20px); }
@@ -14247,7 +14453,9 @@ body {
   }
 }
 
-@media (max-width: 1024px) {
+/* Planshet (769–1024px) — mobil (≤768px) karta rejimi buzilmasligi uchun
+   bu blok faqat planshet kengligida ishlaydi. */
+@media (min-width: 769px) and (max-width: 1024px) {
   #page-products .products-table-scroll {
     overflow-x: auto !important;
   }
@@ -14299,3 +14507,1135 @@ body {
     white-space: nowrap;
   }
 }
+
+/* ============================================================
+   KASSIR DASHBOARD — MOBIL DIZAYN (faqat #cashier-dashboard
+   ichidagi #cashierMobile, ≤768px). Namuna asosida: qora-bordo
+   fon, orange/red aksent, yashil=faol, yumaloq kartochkalar.
+   Desktop ko'rinishi va boshqa sahifalar O'ZGARMAYDI: yangi
+   qoidalar faqat shu konteynerda va faqat mobil breakpointda.
+   ============================================================ */
+#cashierMobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Desktop bloklari mobilga yashiriladi (yangi mobil blok bundan mustasno) */
+  #cashier-dashboard > div:not(#cashierMobile) {
+    display: none !important;
+  }
+
+  #cashierMobile {
+    display: block;
+    color: #f5f1f2;
+    background:
+      radial-gradient(900px 300px at 12% -40px, rgba(150, 25, 45, .55), transparent 62%),
+      radial-gradient(760px 260px at 96% 2%, rgba(90, 12, 32, .5), transparent 65%),
+      #120a0d;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 20px;
+    padding: 14px 12px 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .28);
+  }
+  #cashierMobile *,
+  #cashierMobile *::before,
+  #cashierMobile *::after {
+    box-sizing: border-box;
+  }
+
+  /* ── Salomlashuv kartasi ── */
+  #cashierMobile .cd-hero {
+    background:
+      radial-gradient(circle at 90% 6%, rgba(255, 122, 47, .3), transparent 55%),
+      linear-gradient(135deg, #7a1226 0%, #4b0f1d 48%, #2a0a12 100%);
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 18px;
+    padding: 16px 14px;
+  }
+  #cashierMobile .cd-hero-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  #cashierMobile .cd-avatar {
+    width: 54px;
+    height: 54px;
+    flex: 0 0 54px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff7a2f, #ef3f2f);
+    color: #fff;
+    font-weight: 900;
+    font-size: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(255, 255, 255, .28);
+    box-shadow: 0 8px 18px rgba(239, 63, 47, .35);
+  }
+  #cashierMobile .cd-hero-txt {
+    min-width: 0;
+  }
+  #cashierMobile .cd-hello {
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, .72);
+  }
+  #cashierMobile .cd-name {
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  #cashierMobile .cd-meta {
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, .66);
+    overflow-wrap: anywhere;
+  }
+  #cashierMobile .cd-hero-date {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, .18);
+    font-size: 12px;
+    color: rgba(255, 255, 255, .82);
+  }
+  #cashierMobile .cd-hero-date i {
+    color: #ffb27a;
+  }
+
+  /* ── Davr filtrlari ── */
+  #cashierMobile .cd-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0;
+  }
+  #cashierMobile .cd-pill {
+    flex: 1 1 0;
+    min-width: 64px;
+    min-height: 44px;
+    padding: 8px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .1);
+    background: rgba(255, 255, 255, .06);
+    color: #b9adb2;
+    font-size: 13px;
+    font-weight: 700;
+    touch-action: manipulation;
+  }
+  #cashierMobile .cd-pill.on {
+    background: linear-gradient(135deg, #ff6b35, #e11d48);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(225, 29, 72, .35);
+  }
+
+  /* ── Statistika (2 ustun) ── */
+  #cashierMobile .cd-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  #cashierMobile .cd-stat {
+    min-width: 0;
+    background: #1b1116;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 16px;
+    padding: 12px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #cashierMobile .cd-stat-ico {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  #cashierMobile .cd-ico-green {
+    background: rgba(34, 197, 94, .16);
+    color: #34d399;
+  }
+  #cashierMobile .cd-ico-orange {
+    background: rgba(255, 107, 53, .16);
+    color: #ff8a5b;
+  }
+  #cashierMobile .cd-ico-purple {
+    background: rgba(168, 85, 247, .16);
+    color: #c084fc;
+  }
+  #cashierMobile .cd-ico-blue {
+    background: rgba(59, 130, 246, .16);
+    color: #60a5fa;
+  }
+  #cashierMobile .cd-ico-red {
+    background: rgba(239, 68, 68, .16);
+    color: #f87171;
+  }
+  #cashierMobile .cd-stat-num {
+    font-size: clamp(16px, 4.6vw, 21px);
+    font-weight: 900;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+  #cashierMobile .cd-stat-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #efe8ea;
+  }
+  #cashierMobile .cd-stat-sub {
+    font-size: 10.5px;
+    color: #9c8e93;
+    overflow-wrap: anywhere;
+  }
+
+  /* ── "Yangi savdo" asosiy tugmasi ── */
+  #cashierMobile .cd-new {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 54px;
+    margin: 12px 0;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #ff7a2f 0%, #f4472b 55%, #e11d48 100%);
+    color: #fff;
+    font-size: 15.5px;
+    font-weight: 800;
+    box-shadow: 0 12px 26px rgba(244, 71, 43, .35);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #cashierMobile .cd-new-plus {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .22);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  #cashierMobile .cd-new-label {
+    flex: 1;
+    text-align: left;
+  }
+  #cashierMobile .cd-new-chev {
+    font-size: 13px;
+    opacity: .85;
+  }
+
+  /* ── Tezkor havolalar ── */
+  #cashierMobile .cd-links {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  #cashierMobile .cd-link {
+    min-width: 0;
+    min-height: 84px;
+    padding: 10px 4px;
+    border-radius: 14px;
+    background: #1b1116;
+    border: 1px solid rgba(255, 255, 255, .08);
+    color: #cfc4c8;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    text-align: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #cashierMobile .cd-link-ico {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+  }
+  #cashierMobile .cd-link-label {
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  /* ── So'nggi savdolar ── */
+  #cashierMobile .cd-recent {
+    background: #1b1116;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 16px;
+    padding: 12px 12px 6px;
+  }
+  #cashierMobile .cd-recent-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  #cashierMobile .cd-recent-head h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 800;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #cashierMobile .cd-recent-head h3 i {
+    font-size: 13px;
+    color: #ff8a5b;
+  }
+  #cashierMobile .cd-recent-all {
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(255, 107, 53, .12);
+    border: 1px solid rgba(255, 107, 53, .35);
+    color: #ff8a5b;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  #cashierMobile .cd-recent-all.on {
+    background: linear-gradient(135deg, #ff6b35, #e11d48);
+    border-color: transparent;
+    color: #fff;
+  }
+  #cashierMobile .cd-recent-list {
+    display: flex;
+    flex-direction: column;
+  }
+  #cashierMobile .cd-sale {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) minmax(58px, auto) 12px;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 60px;
+    padding: 11px 2px;
+    background: transparent;
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 0;
+    color: inherit;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #cashierMobile .cd-sale:first-child {
+    border-top: none;
+  }
+  #cashierMobile .cd-sale-img {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .07);
+    color: #ff8a5b;
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #cashierMobile .cd-sale-img img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    object-fit: cover;
+  }
+  #cashierMobile .cd-sale-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  #cashierMobile .cd-sale-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #f3ecee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #cashierMobile .cd-sale-sub {
+    font-size: 11px;
+    color: #9c8e93;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #cashierMobile .cd-sale-right {
+    min-width: 0;
+    max-width: 46%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  #cashierMobile .cd-sale-time {
+    font-size: 10.5px;
+    color: #8d8186;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  #cashierMobile .cd-sale-price {
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  #cashierMobile .cd-pay {
+    max-width: 100%;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #cashierMobile .cd-pay-cash {
+    background: rgba(34, 197, 94, .16);
+    color: #4ade80;
+  }
+  #cashierMobile .cd-pay-card {
+    background: rgba(59, 130, 246, .16);
+    color: #60a5fa;
+  }
+  #cashierMobile .cd-pay-other {
+    background: rgba(255, 255, 255, .08);
+    color: #cfc4c8;
+  }
+  #cashierMobile .cd-sale-chev {
+    font-size: 11px;
+    color: #6f6367;
+    text-align: right;
+  }
+  #cashierMobile .cd-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 22px 8px;
+    text-align: center;
+    font-size: 12.5px;
+    color: #9c8e93;
+  }
+  #cashierMobile .cd-empty i {
+    font-size: 20px;
+    opacity: .7;
+  }
+}
+
+/* Kichik ekran (≤360px): zichroq joylashuv, kichikroq ikonlar */
+@media (max-width: 360px) {
+  #cashierMobile {
+    padding: 12px 10px 14px;
+    border-radius: 16px;
+  }
+  #cashierMobile .cd-links {
+    gap: 6px;
+  }
+  #cashierMobile .cd-link {
+    min-height: 78px;
+    font-size: 10.5px;
+    padding: 8px 3px;
+  }
+  #cashierMobile .cd-link-ico {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  #cashierMobile .cd-stat {
+    padding: 11px 9px;
+  }
+  #cashierMobile .cd-sale {
+    grid-template-columns: 40px minmax(0, 1fr) minmax(50px, auto) 12px;
+    gap: 8px;
+  }
+  #cashierMobile .cd-sale-img {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ============================================================
+   TP MOBIL KARTA TIZIMI (tpm-*) — Xodimlar/Mahsulotlar/
+   Kategoriyalar/Ombor/Mijozlar bo'limlari uchun yagona qolip.
+   ------------------------------------------------------------
+   Printsip: desktop jadval (#...Table) O'ZGARMAYDI — u
+   `data-tp-deskonly` bilan belgilanib, faqat ≤768px'da yashiriladi;
+   o'rniga shu blokdagi mobil kartalar chiziladi. Barcha rang/
+   fon/chegara style.css tokenlari orqali — shuning uchun light
+   va dark rejim avtomatik moslashadi. Yangi palitra kiritilmaydi.
+   ============================================================ */
+
+/* ── Umumiy mobil karta qismlari ───────────────────────────── */
+.tpm-list {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+}
+
+/* ============================================================
+   TEXNO PARK N1 — PROFESSIONAL MOBILE DESIGN SYSTEM (TPM)
+   100% Mos keluvchi Premium Kartochkalar, Chip'lar va Pill'lar
+   ============================================================ */
+
+/* ── Hero Bosh Harakat Tugmasi (+ Yangi ...) ──────────────── */
+.tpm-hero-btn {
+    display: none;
+    width: 100%;
+    min-height: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #ff4d00 0%, #ff1a00 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 14px;
+    font-size: 14.5px;
+    font-weight: 700;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 16px rgba(255, 69, 0, 0.35);
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.tpm-hero-btn:active {
+    transform: scale(0.98);
+}
+
+/* ── Qidiruv va Filtr Tugmasi Qatori ─────────────────────── */
+.tpm-search-row {
+    display: none;
+    gap: 8px;
+    margin-bottom: 12px;
+    align-items: center;
+}
+.tpm-search-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.tpm-search-wrap i {
+    position: absolute;
+    left: 14px;
+    color: var(--muted);
+    font-size: 13px;
+    pointer-events: none;
+}
+.tpm-search-wrap input {
+    width: 100%;
+    height: 44px;
+    padding: 0 14px 0 38px !important;
+    border-radius: 12px !important;
+    background: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    font-size: 13.5px !important;
+}
+.tpm-search-wrap input:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px var(--primary-subtle) !important;
+}
+.tpm-tune-btn {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+.tpm-tune-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+/* ── Statistika Chip'lari ─────────────────────────────────── */
+.tpm-chips {
+    display: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+    max-width: 680px;
+}
+.tpm-chip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 12px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    min-width: 0;
+    box-shadow: var(--shadow-sm);
+}
+.tpm-chip-wide {
+    min-width: 0;
+}
+.tpm-chip-ico {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+}
+.tpm-chip-ico.tone-blue { background: rgba(59, 130, 246, 0.12); color: #3b82f6; }
+.tpm-chip-ico.tone-green { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.tpm-chip-ico.tone-yellow { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
+.tpm-chip-ico.tone-red { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.tpm-chip-ico.tone-purple { background: rgba(168, 85, 247, 0.14); color: #a855f7; }
+
+.tpm-chip-txt { min-width: 0; }
+.tpm-chip-v {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1.2;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+.tpm-chip-l {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    line-height: 1.2;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Filtr Pill'lari (Gorizontal Scroll) ───────────────────── */
+.tpm-pills {
+    display: none;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 0 12px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+.tpm-pills::-webkit-scrollbar { display: none; }
+.tpm-pill {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    transition: all 0.18s ease;
+}
+.tpm-pill:hover { border-color: var(--primary); color: var(--text); }
+.tpm-pill.active {
+    background: linear-gradient(135deg, #ff4d00 0%, #ff1a00 100%) !important;
+    color: #ffffff !important;
+    border-color: transparent !important;
+    box-shadow: 0 4px 14px rgba(255, 69, 0, 0.35);
+}
+.tpm-pill-n {
+    background: rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+}
+.tpm-pill:not(.active) .tpm-pill-n {
+    background: var(--border);
+    color: var(--muted);
+}
+
+/* ── Kartochkalar Ro'yxati Konteyneri ─────────────────────── */
+.tpm-list {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 0 16px;
+}
+.tpm-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow-sm);
+    min-width: 0;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    cursor: pointer;
+}
+.tpm-card:active {
+    transform: scale(0.99);
+}
+
+/* ── 1. XODIM KARTOCHKASI ─────────────────────────────────── */
+.tpm-staff-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.tpm-ava {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 17px;
+    color: #ffffff;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+.tpm-staff-body {
+    flex: 1;
+    min-width: 0;
+}
+.tpm-staff-namerow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.tpm-name {
+    font-weight: 700;
+    font-size: 14.5px;
+    color: var(--text);
+    line-height: 1.3;
+}
+.tpm-role-pill {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+.tpm-role-pill.badge-purple { background: rgba(168, 85, 247, 0.14); color: #a855f7; }
+.tpm-role-pill.badge-blue { background: rgba(59, 130, 246, 0.14); color: #3b82f6; }
+.tpm-role-pill.badge-amber { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
+
+.tpm-staff-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 5px;
+}
+.tpm-info-item {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.tpm-info-item i {
+    font-size: 11px;
+    opacity: 0.8;
+}
+.tpm-staff-end {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.tpm-status-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ── 2. MAHSULOT KARTOCHKASI ──────────────────────────────── */
+.tpm-prod-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.tpm-prod-imgbox {
+    width: 62px;
+    height: 62px;
+    border-radius: 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+.tpm-prod-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 3px;
+}
+.tpm-prod-tile {
+    font-size: 26px;
+}
+.tpm-prod-body {
+    flex: 1;
+    min-width: 0;
+}
+.tpm-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+}
+.tpm-spec {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: 0.85;
+}
+.tpm-prod-end {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.tpm-prod-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.tpm-prod-price {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+    margin-top: 2px;
+}
+.tpm-prod-stock {
+    font-size: 11.5px;
+    color: var(--muted);
+}
+
+/* ── 3. KATEGORIYA KARTOCHKASI ────────────────────────────── */
+.tpm-cat-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.tpm-cat-iconbox {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 22px;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+}
+.tpm-cat-body {
+    flex: 1;
+    min-width: 0;
+}
+.tpm-cat-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tpm-cat-act-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.18s ease;
+}
+.tpm-cat-act-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.tpm-cat-act-btn.danger {
+    color: var(--danger);
+    border-color: rgba(239, 68, 68, 0.25);
+}
+.tpm-cat-act-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* ── 4. OMBOR KARTOCHKASI ─────────────────────────────────── */
+.tpm-wh-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.tpm-wh-imgbox {
+    width: 58px;
+    height: 58px;
+    border-radius: 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+.tpm-wh-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 3px;
+}
+.tpm-wh-tile {
+    font-size: 25px;
+}
+.tpm-wh-body {
+    flex: 1;
+    min-width: 0;
+}
+.tpm-wh-price {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-top: 3px;
+}
+.tpm-wh-end {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.tpm-wh-stock {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+}
+
+/* ── 5. MIJOZ KARTOCHKASI ─────────────────────────────────── */
+.tpm-cust-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.tpm-cust-body {
+    flex: 1;
+    min-width: 0;
+}
+.tpm-cust-stats {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 3px;
+}
+.tpm-cust-end {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.tpm-cust-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ── Umumiy Status Badge'lar ──────────────────────────────── */
+.tpm-status-pill {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+.tpm-status-pill i {
+    font-size: 6px;
+}
+.tpm-status-pill.tone-green {
+    background: rgba(16, 185, 129, 0.14);
+    color: #10b981;
+}
+.tpm-status-pill.tone-yellow {
+    background: rgba(245, 158, 11, 0.16);
+    color: #f59e0b;
+}
+.tpm-status-pill.tone-red {
+    background: rgba(239, 68, 68, 0.14);
+    color: #ef4444;
+}
+
+.tpm-menu-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 14px;
+    padding: 4px;
+    cursor: pointer;
+    line-height: 1;
+}
+.tpm-chevron {
+    color: var(--muted);
+    font-size: 12px;
+    opacity: 0.65;
+}
+
+.tpm-empty {
+    text-align: center;
+    padding: 28px 14px;
+    color: var(--muted);
+    font-size: 13.5px;
+    background: var(--card);
+    border: 1px dashed var(--border);
+    border-radius: 16px;
+}
+
+/* ── Light Mode Maxsus Bezaklari ──────────────────────────── */
+[data-theme="light"] .tpm-card {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.07);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+[data-theme="light"] .tpm-chip {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.07);
+}
+[data-theme="light"] .tpm-search-wrap input {
+    background: #ffffff !important;
+    border-color: rgba(0, 0, 0, 0.09) !important;
+}
+[data-theme="light"] .tpm-tune-btn {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.09);
+}
+[data-theme="light"] .tpm-pill:not(.active) {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .tpm-status-pill.tone-green { background: #ecfdf5; color: #059669; }
+[data-theme="light"] .tpm-status-pill.tone-yellow { background: #fffbeb; color: #d97706; }
+[data-theme="light"] .tpm-status-pill.tone-red { background: #fef2f2; color: #dc2626; }
+
+/* ── Dark Mode Maxsus Bezaklari ───────────────────────────── */
+[data-theme="dark"] .tpm-card,
+:root:not([data-theme="light"]) .tpm-card {
+    background: #181416;
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+[data-theme="dark"] .tpm-chip,
+:root:not([data-theme="light"]) .tpm-chip {
+    background: #181416;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .tpm-search-wrap input,
+:root:not([data-theme="light"]) .tpm-search-wrap input {
+    background: #131012 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .tpm-tune-btn,
+:root:not([data-theme="light"]) .tpm-tune-btn {
+    background: #181416;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+[data-theme="dark"] .tpm-status-pill.tone-green,
+:root:not([data-theme="light"]) .tpm-status-pill.tone-green {
+    background: rgba(16, 185, 129, 0.22);
+    color: #34d399;
+}
+[data-theme="dark"] .tpm-status-pill.tone-yellow,
+:root:not([data-theme="light"]) .tpm-status-pill.tone-yellow {
+    background: rgba(245, 158, 11, 0.22);
+    color: #fbbf24;
+}
+[data-theme="dark"] .tpm-status-pill.tone-red,
+:root:not([data-theme="light"]) .tpm-status-pill.tone-red {
+    background: rgba(239, 68, 68, 0.22);
+    color: #f87171;
+}
+
+/* ============ MOBIL (≤768px) KO'RINISH QOIDALARI ============ */
+@media (max-width: 768px) {
+    /* Desktop elementlar yashiriladi */
+    [data-tp-deskonly] { display: none !important; }
+    .products-page-header .btn-primary,
+    #page-customers > div > .btn-primary,
+    #page-employees > div > .btn-primary,
+    #page-categories .panel-header #addCategoryBtn {
+        display: none !important;
+    }
+
+    /* Mobil elementlar faollashadi */
+    .tpm-list { display: flex; }
+    .tpm-hero-btn { display: flex; }
+    .tpm-search-row { display: flex; }
+    .tpm-chips { display: grid; }
+    .tpm-pills { display: flex; }
+
+    .panel-header .tpm-search {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .tpm-chips {
+        max-width: none;
+        gap: 8px;
+    }
+
+    /* Kartochkalar gorizontal scroll bo'lmasligi uchun cheklov */
+    .tpm-card {
+        padding: 12px 14px;
+        box-sizing: border-box;
+        width: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    .tpm-chip { padding: 9px 8px; gap: 7px; }
+    .tpm-chip-ico { width: 32px; height: 32px; font-size: 13px; }
+    .tpm-chip-v { font-size: 13.5px; }
+    .tpm-chip-l { font-size: 9.5px; }
+    .tpm-name { font-size: 13.5px; }
+    .tpm-prod-imgbox { width: 54px; height: 54px; }
+    .tpm-wh-imgbox { width: 52px; height: 52px; }
+    .tpm-cat-iconbox { width: 46px; height: 46px; font-size: 19px; }
+}
+

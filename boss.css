@@ -572,3 +572,230 @@
 .boss-current-head i { color: var(--primary); }
 .boss-current-pass .boss-modal-note { margin: 0; }
 .boss-modal-sep { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+/* ============================================================
+   MOBIL: XODIMLAR BO'LIMI (faqat ≤768px ko'rinadi)
+   ============================================================
+   Desktop dizayniga TA'SIR QILMAYDI:
+     • yangi elementlar desktopda `display:none`;
+     • desktop jadvali/toolbar faqat kichik ekranlarda yashiriladi.
+   Ranglar — mavjud palitra: qora-bordo fon (--bg/--card),
+   orange/red aksent (--primary/--primary-gradient), yashil/qizil status.
+   ============================================================ */
+
+/* Desktop holati: yangi elementlar yashirin */
+.boss-staff-mobile,
+.boss-staff-cards,
+.boss-staff-profile { display: none; }
+
+/* Uch nuqtali boshqaruv menyusi — fixed, ekran chegarasi ichida */
+.boss-staff-menu {
+    position: fixed; z-index: 1200;
+    min-width: 214px; max-width: calc(100vw - 20px);
+    background: var(--card); border: 1px solid var(--border-mid);
+    border-radius: 14px; padding: 6px;
+    box-shadow: var(--shadow-lg);
+    display: grid; gap: 2px;
+}
+.boss-staff-menu[hidden] { display: none; }
+.boss-staff-menu button {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    padding: 11px 12px; min-height: 44px; border: none; border-radius: 9px;
+    background: none; color: var(--text);
+    font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.boss-staff-menu button:hover { background: var(--card-hover); }
+.boss-staff-menu button:active { background: var(--primary-subtle); }
+.boss-staff-menu button i { width: 18px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.boss-staff-menu button.danger { color: var(--danger); }
+.boss-staff-menu button.danger i { color: var(--danger); }
+
+@media (max-width: 768px) {
+    /* Desktop komponentlari joyini mobilga topshiradi */
+    #page-bossStaff .boss-toolbar { display: none; }
+    #page-bossStaff .boss-staff-tablepanel { display: none; }
+
+    /* ── Boshqaruv paneli ─────────────────────────────────── */
+    .boss-staff-mobile {
+        display: grid; gap: 10px; margin-bottom: 14px;
+    }
+
+    .bsm-stats {
+        display: flex; align-items: center; gap: 12px;
+        padding: 13px 14px;
+        background: linear-gradient(135deg, var(--card) 55%, rgba(193, 18, 31, 0.16));
+        border: 1px solid var(--border); border-radius: var(--radius-lg);
+    }
+    .bsm-stats-main { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .bsm-stats-icon {
+        width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0;
+        background: var(--primary-gradient); color: #fff;
+        display: flex; align-items: center; justify-content: center; font-size: 18px;
+    }
+    .bsm-stats-txt { min-width: 0; }
+    .bsm-stats-txt strong {
+        display: block; font-size: 17px; font-weight: 800;
+        color: var(--text); line-height: 1.25;
+    }
+    .bsm-stats-txt span { font-size: 11px; color: var(--text-muted); }
+    .bsm-stats-badges { margin-left: auto; display: grid; gap: 6px; justify-items: end; }
+    .bsm-mini {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
+        white-space: nowrap;
+    }
+    .bsm-mini i { font-size: 10px; }
+    .bsm-mini.ok { background: var(--success-bg); color: var(--success); }
+    .bsm-mini.bad { background: var(--danger-bg); color: var(--danger); }
+
+    .bsm-searchrow { display: flex; gap: 8px; }
+    .bsm-searchrow .form-control {
+        flex: 1; min-width: 0; padding: 11px 14px;
+        font-size: 13.5px; border-radius: 12px;
+    }
+    .bsm-icon {
+        width: 44px; height: 44px; flex-shrink: 0;
+        border-radius: 12px; border: 1px solid var(--border);
+        background: var(--card); color: var(--text-secondary);
+        cursor: pointer; font-size: 15px;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .bsm-icon:active { background: var(--card-hover); }
+    .bsm-icon.on { border-color: var(--primary); color: var(--primary); background: var(--primary-subtle); }
+
+    .bsm-pills {
+        display: flex; gap: 8px; overflow-x: auto;
+        scrollbar-width: none; padding-bottom: 2px;
+    }
+    .bsm-pills::-webkit-scrollbar { display: none; }
+    .bsm-pill {
+        flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+        padding: 9px 14px; min-height: 40px; border-radius: 999px;
+        border: 1px solid var(--border); background: var(--card);
+        color: var(--text-secondary); font-size: 12.5px; font-weight: 700;
+        cursor: pointer; white-space: nowrap;
+    }
+    .bsm-pill .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .bsm-pill .dot.ok { background: var(--success); }
+    .bsm-pill .dot.bad { background: var(--danger); }
+    .bsm-pill.active {
+        background: var(--primary-gradient); color: #fff; border-color: transparent;
+    }
+    .bsm-pill.active .dot { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35); }
+
+    .bsm-adv {
+        display: grid; gap: 8px; padding: 10px;
+        border: 1px dashed var(--border-mid); border-radius: 12px;
+        background: var(--card);
+    }
+    .bsm-adv[hidden] { display: none; }
+    .bsm-adv .form-control { width: 100%; padding: 10px 12px; font-size: 13.5px; }
+    .bsm-link {
+        justify-self: start; display: inline-flex; align-items: center; gap: 6px;
+        background: none; border: none; padding: 8px 2px; min-height: 40px;
+        color: var(--primary); font-size: 12.5px; font-weight: 700; cursor: pointer;
+    }
+
+    .bsm-branch {
+        width: 100%; padding: 11px 14px; font-size: 13.5px; border-radius: 12px;
+    }
+
+    .bsm-add {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        width: 100%; min-height: 48px; border: none; border-radius: 13px;
+        background: var(--primary-gradient); color: #fff;
+        font-size: 14.5px; font-weight: 800; cursor: pointer;
+        box-shadow: 0 6px 18px rgba(193, 18, 31, 0.3);
+    }
+    .bsm-add:active { transform: translateY(1px); }
+
+    /* ── Xodim kartochkasi ────────────────────────────────── */
+    .boss-staff-cards { display: grid; gap: 10px; }
+    .bsc {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 13px 13px 11px;
+    }
+    .bsc-top { display: flex; align-items: center; gap: 11px; }
+    .bsc-avatar {
+        width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 16px; color: #fff;
+        text-transform: uppercase; background: var(--primary-gradient);
+        user-select: none;
+    }
+    .bsc-avatar.tone-admin { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+    .bsc-avatar.tone-manager { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+    .bsc-avatar.tone-cashier { background: linear-gradient(135deg, #10b981, #047857); }
+    .bsc-avatar.tone-other { background: linear-gradient(135deg, #64748b, #334155); }
+    .bsc-id { flex: 1; min-width: 0; }
+    .bsc-name { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
+    .bsc-name .bsc-name-txt {
+        font-size: 14px; font-weight: 700; color: var(--text);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        max-width: 100%;
+    }
+    .bsc-name .boss-role { flex-shrink: 0; }
+    .bsc-menu-btn {
+        width: 40px; height: 40px; flex-shrink: 0; border-radius: 11px;
+        border: 1px solid var(--border); background: var(--card-hover);
+        color: var(--text-secondary); font-size: 16px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .bsc-menu-btn:active,
+    .bsc-menu-btn[aria-expanded="true"] { border-color: var(--primary); color: var(--primary); }
+    .bsc-rows { display: grid; gap: 7px; margin-top: 11px; }
+    .bsc-row {
+        display: flex; align-items: center; gap: 9px; min-width: 0;
+        font-size: 13px; color: var(--text-secondary);
+    }
+    .bsc-row i {
+        width: 17px; text-align: center; flex-shrink: 0;
+        color: var(--text-muted); font-size: 12.5px;
+    }
+    .bsc-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bsc-foot {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; margin-top: 11px; padding-top: 10px;
+        border-top: 1px solid var(--border);
+    }
+    .bsc-status {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
+        white-space: nowrap;
+    }
+    .bsc-status i { font-size: 8px; }
+    .bsc-status.active { background: var(--success-bg); color: var(--success); }
+    .bsc-status.blocked { background: var(--danger-bg); color: var(--danger); }
+    .bsc-detail {
+        display: inline-flex; align-items: center; gap: 7px;
+        background: none; border: none; padding: 8px 2px; min-height: 44px;
+        color: var(--primary); font-size: 13.5px; font-weight: 800; cursor: pointer;
+    }
+    .bsc-detail i { font-size: 11px; }
+
+    /* ── «Batafsil»: shaxsiy blok (savdo sahifasining tepasida) ── */
+    .boss-staff-profile {
+        display: block; background: var(--card);
+        border: 1px solid var(--border); border-radius: var(--radius-lg);
+        padding: 14px; margin-bottom: 14px;
+    }
+    .bsp-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .bsp-id { min-width: 0; }
+    .bsp-name {
+        font-size: 15.5px; font-weight: 800; color: var(--text);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .bsp-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+    .boss-staff-profile .boss-detail-grid { margin-bottom: 0; }
+}
+
+/* Juda kichik ekranlar (320–360 px) */
+@media (max-width: 360px) {
+    .bsm-stats { flex-wrap: wrap; }
+    .bsm-stats-badges {
+        margin-left: 0; width: 100%;
+        grid-auto-flow: column; justify-content: start; justify-items: start;
+    }
+    .bsm-stats-txt strong { font-size: 15.5px; }
+    .bsc-name .bsc-name-txt { font-size: 13.5px; }
+}

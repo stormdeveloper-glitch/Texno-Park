@@ -469,7 +469,10 @@ function updateProductImagePreview(value) {
  * tekshiriladi (app.py: validate_sync_payload).
  */
 async function uploadProductImageToBucket(input) {
-    if (!requireRole('admin', 'manager')) return;
+    // Rasm ilova qilish ro'li: yangi mahsulot oynasida boshliq/admin/menejer/
+    // kassir; mavjud mahsulotda rasm o'zgartirish — boshliq/admin/menejer.
+    if (!requireRole(...(editingProductId == null
+        ? ['admin', 'manager', 'cashier'] : ['admin', 'manager']))) return;
     const file = input?.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -495,8 +498,14 @@ async function uploadProductImageToBucket(input) {
     const field = document.getElementById('p-img');
 
     try {
-        // 1) Bucketga (Railway/S3) yuklash — havola qaytsa shu havola ishlatiladi
-        const uploaded = await uploadToStorage(file, 'products');
+        // 1) Bucketga (Railway/S3) yuklash — havola qaytsa shu havola ishlatiladi.
+        //    Kassir bucket'ga yuborolmaydi (serverda /api/upload admin/menejer
+        //    cheklovi bor) — uning uchun zaxira yo'lga (siqib bazaga saqlash)
+        //    darhol o'tamiz: ortiqcha 403 so'rov va xavfsizlik yozuvi kerak emas.
+        const canBucket = isBoss() || requireRoleSilent('admin', 'manager');
+        const uploaded = canBucket
+            ? await uploadToStorage(file, 'products')
+            : { ok: false, message: 'Rasm mahsulot bilan birga bazaga siqib saqlanadi' };
         if (uploaded.ok && uploaded.url) {
             // Muhim: qaytgan havola AYNAN mahsulot rasmi maydoniga tushadi
             if (field) field.value = uploaded.url;
@@ -2182,6 +2191,9 @@ async function attemptLogin(u, p) {
             // Login identifikatori — telefon. Profilda ko'rsatiladi va
             // xodim o'zi almashtira oladi (Boshliq panelida ham ko'rinadi).
             phone: cleanText(server.user?.phone, 40) || '',
+            // Filialga biriktirish (server sessiyasidan) — yangi mahsulotni
+            // o'z filialida boshlash uchun ishlatiladi.
+            branchId: cleanText(server.user?.branchId, 40) || '',
             color: local?.color || '#2563EB'
         });
         if (server.mustChange) {
@@ -3018,6 +3030,137 @@ function loadCashierDashboard() {
     <td style="color:var(--primary);font-weight:700">${fmt(s.total)} so'm</td>
     <td><span class="badge badge-blue">${escapeHTML(s.pay)}</span></td>
   </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">Bugun savdo yo\'q</td></tr>';
+
+    // ===== MOBIL KO'RINISH (#cashierMobile, ≤768px) =====
+    // Yuqoridagi desktop elementlari o'z joyida to'ldirilgan bo'lib
+    // o'zgarmaydi; bu yerda faqat mobil blok yangilanadi.
+    const mob = document.getElementById('cashierMobile');
+    if (!mob) return;
+
+    const now = new Date();
+    const period = ['day', 'week', 'month', 'year'].includes(mob.dataset.period) ? mob.dataset.period : 'day';
+    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    const inPeriod = s => {
+        if (period === 'day') return isSameDay(s.date, now);
+        if (period === 'month') return isSameMonth(s.date, now);
+        if (period === 'week') return dateParts(s.date).some(x => !isNaN(x.getTime()) && x >= weekStart && x <= now);
+        return dateParts(s.date).some(x => !isNaN(x.getTime()) && x.getFullYear() === now.getFullYear());
+    };
+    const rows = salesHistory.filter(s => isPaidSale(s) && s.cashier === currentUser?.name && inPeriod(s));
+
+    // Bitta o'tishda jami/naqd/karta/sonlik — raqamlar takror hisoblanmaydi
+    let mTotal = 0, mCash = 0, mCashN = 0, mCard = 0, mCardN = 0;
+    for (const s of rows) {
+        const v = Number(s.total) || 0;
+        mTotal += v;
+        const prov = String(s.provider || '').toLowerCase();
+        const pay = String(s.pay || '').toLowerCase();
+        if (prov === 'cash' || pay === 'naqd') { mCash += v; mCashN++; }
+        else if (prov === 'card' || pay === 'karta') { mCard += v; mCardN++; }
+    }
+
+    const periodNames = { day: 'Bugungi savdolar', week: 'Haftalik savdolar', month: 'Oydagi savdolar', year: 'Yillik savdolar' };
+    uiSetText('cd-total', fmt(mTotal) + ' so\'m');
+    uiSetText('cd-total-sub', rows.length + ' ta chek');
+    uiSetText('cd-count', String(rows.length));
+    uiSetText('cd-count-sub', periodNames[period]);
+    uiSetText('cd-cash', fmt(mCash) + ' so\'m');
+    uiSetText('cd-cash-sub', mCashN + ' ta chek');
+    uiSetText('cd-card', fmt(mCard) + ' so\'m');
+    uiSetText('cd-card-sub', mCardN + ' ta chek');
+
+    mob.querySelectorAll('.cd-pill').forEach(b => {
+        const on = b.dataset.cdPeriod === period;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+    });
+
+    // Salomlashuv kartasi — mavjud sessiya va filial ma'lumotlari (soxta yo'q)
+    const uname = String(currentUser?.name || '').trim();
+    uiSetText('cd-name', uname || '—');
+    uiSetText('cd-avatar', (uname[0] || '?').toUpperCase());
+    const branch = typeof getActiveBranch === 'function' ? getActiveBranch() : null;
+    const meta = [ROLES[currentUser?.role] || '', branch?.name || ''].filter(Boolean).join(' • ');
+    uiSetHtml('cd-meta', escapeHTML(meta));
+    uiSetText('cd-date', 'Bugun ' + String(now.getDate()).padStart(2, '0') + '.' +
+        String(now.getMonth() + 1).padStart(2, '0') + '.' + now.getFullYear());
+
+    // So'nggi savdolar: davr ichida eng yangisi birinchi
+    const recent = [...rows].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+    const expanded = mob.dataset.recent === 'all';
+    const shown = expanded ? recent : recent.slice(0, 5);
+    const list = document.getElementById('cd-recent-list');
+    if (list) {
+        list.innerHTML = shown.map(cashierSaleRowHtml).join('') ||
+            '<div class="cd-empty"><i class="fas fa-receipt"></i>Bu davrda savdo yo\'q</div>';
+    }
+    const allBtn = document.getElementById('cd-recent-all');
+    if (allBtn) {
+        allBtn.hidden = recent.length <= 5;
+        allBtn.textContent = expanded ? 'Yopish' : 'Barchasi';
+        allBtn.classList.toggle('on', expanded);
+    }
+}
+
+/** Mobil dashboard: davr filtri (Bugun/Hafta/Oy/Yil). */
+function setCashierPeriod(period) {
+    const mob = document.getElementById('cashierMobile');
+    if (!mob) return;
+    mob.dataset.period = period;
+    loadCashierDashboard();
+}
+
+/** Mobil "So'nggi savdolar": barchasi ↔ oxirgi 5 ta. */
+function toggleCashierRecent() {
+    const mob = document.getElementById('cashierMobile');
+    if (!mob) return;
+    mob.dataset.recent = mob.dataset.recent === 'all' ? 'few' : 'all';
+    loadCashierDashboard();
+}
+
+/** Tezkor havola: savdo ro'yxatiga o'tish (expand — barchasini ko'rsatish). */
+function cashierRecentScroll(expand) {
+    const mob = document.getElementById('cashierMobile');
+    if (mob && expand) mob.dataset.recent = 'all';
+    loadCashierDashboard();
+    document.getElementById('cd-recent')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Mobil savdo qatori → mavjud chek modali (renderReceipt + checkoutModal). */
+function cashierViewSale(id) {
+    const sale = salesHistory.find(s => Number(s.id) === Number(id));
+    if (!sale || typeof renderReceipt !== 'function' || typeof openModal !== 'function') return;
+    renderReceipt(sale);
+    openModal('checkoutModal');
+}
+
+/** Mobil "So'nggi savdolar" qatori HTML'i — faqat mavjud savdo ma'lumotidan. */
+function cashierSaleRowHtml(s) {
+    const items = Array.isArray(s.items) ? s.items : [];
+    const first = items.find(it => it && it.name) || null;
+    const qty = items.reduce((a, b) => a + (Number(b.qty) || 0), 0);
+    const img = first && first.img
+        ? `<img src="${escapeHTML(String(first.img))}" alt="" loading="lazy" onerror="this.style.display='none'">`
+        : '';
+    const name = first ? escapeHTML(String(first.name)) : 'Savdo #' + String(s.id).slice(-6);
+    const extra = items.length > 1 ? ` +${items.length - 1}` : '';
+    const prov = String(s.provider || '').toLowerCase();
+    const pay = String(s.pay || '');
+    const payCls = prov === 'card' || /karta/i.test(pay) ? 'cd-pay-card'
+        : prov === 'cash' || /naqd/i.test(pay) ? 'cd-pay-cash' : 'cd-pay-other';
+    return `<button type="button" class="cd-sale" onclick="cashierViewSale(${Number(s.id) || 0})">
+      <span class="cd-sale-img"><i class="fas fa-receipt"></i>${img}</span>
+      <span class="cd-sale-main">
+        <span class="cd-sale-name">${name}${extra}</span>
+        <span class="cd-sale-sub">${items.length ? qty + ' ta • ' : ''}#${escapeHTML(String(s.id))}</span>
+      </span>
+      <span class="cd-sale-right">
+        <span class="cd-sale-time">${escapeHTML(String(s.time || ''))}</span>
+        <span class="cd-sale-price">${fmt(Number(s.total) || 0)} so'm</span>
+        <span class="cd-pay ${payCls}">${escapeHTML(pay || '—')}</span>
+      </span>
+      <i class="fas fa-chevron-right cd-sale-chev"></i>
+    </button>`;
 }
 
 function loadManagerDashboard() {
@@ -3384,11 +3527,15 @@ function filterCat(cat, el) {
 function searchProducts(q) { posFilter = q; renderCatTabs(); renderProductGrid(); }
 const debouncedSearch = debounce(searchProducts, 300);
 const debouncedSearchProducts = debouncedSearch;
+// Mobil tezlik: og'ir renderlar har harf bosishda emas, pauzadan keyin bir marta bajariladi
+const debouncedRenderShop = debounce(renderShop, 300);
+const debouncedContractsRender = debounce(() => { if (typeof Contracts !== 'undefined') Contracts.render(); }, 300);
+const debouncedGlobalSearch = debounce(globalSearch, 300);
 
 function syncShopSearch(value) {
     const input = document.getElementById('shopSearch');
     if (input) input.value = value;
-    renderShop();
+    debouncedRenderShop();
     renderSearchSuggestions(value);
 }
 
@@ -3596,7 +3743,10 @@ function renderShop() {
     const tabs = document.getElementById('shopCatSidebarList');
     if (!grid || !tabs) return;
 
-    shopFilter = cleanText(document.getElementById('shopSearch')?.value || shopFilter, 80).toLowerCase();
+    // `||` o'rniga element mavjud bo'lsa uni qiymatini olamiz — aks holda
+    // maydon tozalansa ham eski filtr qolib ketardi (ro'yxat tozalanmasdi).
+    const _shopSearchEl = document.getElementById('shopSearch');
+    shopFilter = cleanText(_shopSearchEl ? _shopSearchEl.value : shopFilter, 80).toLowerCase();
     // Kategoriyalar doimiy ro'yxatdan — mahsulot soni 0 bo'lsa ham ko'rinadi
     const cats = ['Barchasi', ...CATEGORIES];
     const nav = document.getElementById('marketCategoryNav');
@@ -4663,31 +4813,66 @@ let productLoadState = 'ready';
 
 function renderProducts() {
     // Filtrda doim barcha kategoriyalar turadi (doimiy ro'yxat)
+    const allCategories = [...new Set([...CATEGORIES, ...products.map(p => p.cat).filter(Boolean)])];
     const sel = document.getElementById('catFilter');
     if (sel) {
-        const categories = [...new Set([...CATEGORIES, ...products.map(p => p.cat).filter(Boolean)])];
-        sel.innerHTML = '<option value="">Barcha</option>' + categories
+        sel.innerHTML = '<option value="">Barcha</option>' + allCategories
             .map(c => `<option value="${escapeHTML(c)}"${currentCategory === c ? ' selected' : ''}>${escapeHTML(c)}</option>`)
             .join('');
     }
+
+    // Mobil statistika chip'lari (Jami mahsulot, Kam qoldi, Tugagan)
+    const lowStockCount = products.filter(p => Number(p.stock) > 0 && Number(p.stock) < 5).length;
+    const outStockCount = products.filter(p => Number(p.stock) <= 0).length;
+    uiSetHtml('productsChips', `
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-blue"><i class="fas fa-cube"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${products.length}</div>
+        <div class="tpm-chip-l">Jami mahsulot</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-yellow"><i class="fas fa-box"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${lowStockCount}</div>
+        <div class="tpm-chip-l">Kam qoldi</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-red"><i class="fas fa-triangle-exclamation"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${outStockCount}</div>
+        <div class="tpm-chip-l">Tugagan</div>
+      </div>
+    </div>`);
+
+    // Mobil kategoriya pill'lari (gorizontal suriladigan)
+    uiSetHtml('productsPills', [{ name: '', label: 'Barchasi' }].concat(allCategories.map(c => ({ name: c, label: c })))
+        .map(c => `<button type="button" role="tab" class="tpm-pill${currentCategory === c.name ? ' active' : ''}"
+            aria-pressed="${currentCategory === c.name}" onclick="filterByCategory('${escapeHTML(c.name)}')">${escapeHTML(c.label)}</button>`).join(''));
+
     const cnt = document.getElementById('productCount');
     const table = document.getElementById('productsTable');
     if (!table) return;
+
+    const canEditProduct = isBoss() || requireRoleSilent('admin', 'manager');
+    const canDeleteProduct = isBoss() || requireRoleSilent('admin');
     const list = products.filter(p =>
         (!currentCategory || p.cat === currentCategory) &&
         (!productFilter2 || p.name.toLowerCase().includes(productFilter2.toLowerCase()))
     );
     if (cnt) cnt.textContent = list.length;
     const icons = CATEGORY_EMOJI;
-    // Jadval sarlavhasi 10 ustunli: Rasm | Nomi | Kategoriya | Filial | Narxi (sotuv) |
-    // Tan narxi | Foyda | Qoldiq | Holati | Amallar. Shu sababli har bir qator ham
-    // 10 ta katak chiqaradi — aks holda oxirgi ustunlar siljib ketadi.
-    table.innerHTML = list.map(p => {
+
+    const rows = [];
+    const cards = [];
+    list.forEach(p => {
         const imgSrc = productImageSrc(p.img);
         const branch = getBranchById(p.branchId);
         const cost = Number(p.cost) || 0;
         const profitUnit = (Number(p.price) || 0) - cost;
-        return `<tr>
+        rows.push(`<tr>
     <td data-label="Rasm">
       ${imgSrc
                 ? `<img src="${escapeHTML(imgSrc)}" style="width:46px;height:36px;border-radius:8px;object-fit:cover;background:var(--border)" onerror="this.style.display='none'">`
@@ -4706,11 +4891,14 @@ function renderProducts() {
     <td data-label="Qoldiq"><span class="${p.stock < 5 ? 'badge badge-red' : 'badge badge-green'}">${p.stock} dona</span></td>
     <td data-label="Holati"><span class="badge ${p.stock > 0 ? 'badge-green' : 'badge-red'}">${p.stock > 0 ? 'Bor' : 'Tugagan'}</span></td>
     <td data-label="Amallar" class="product-actions-td">
-      <button type="button" class="btn btn-outline btn-sm" title="Tahrirlash" aria-label="${escapeHTML(p.name)} mahsulotini tahrirlash" onclick="openProductModalWithEvent(event, ${Number(p.id)})"><i class="fas fa-edit"></i></button>
-      <button type="button" class="btn btn-danger btn-sm" title="O'chirish" aria-label="${escapeHTML(p.name)} mahsulotini o'chirish" onclick="deleteProductWithEvent(event, ${Number(p.id)})"><i class="fas fa-trash"></i></button>
+      ${canEditProduct ? `<button type="button" class="btn btn-outline btn-sm" title="Tahrirlash" aria-label="${escapeHTML(p.name)} mahsulotini tahrirlash" onclick="openProductModalWithEvent(event, ${Number(p.id)})"><i class="fas fa-edit"></i></button>` : ''}
+      ${canDeleteProduct ? `<button type="button" class="btn btn-danger btn-sm" title="O'chirish" aria-label="${escapeHTML(p.name)} mahsulotini o'chirish" onclick="deleteProductWithEvent(event, ${Number(p.id)})"><i class="fas fa-trash"></i></button>` : ''}
     </td>
-  </tr>`;
-    }).join('');
+  </tr>`);
+        cards.push(productCardHtml(p, { imgSrc, branch, cost, profitUnit, canEditProduct, canDeleteProduct, icons }));
+    });
+    table.innerHTML = rows.join('');
+    uiSetHtml('productsMobileList', cards.join('') || productMobileEmptyHtml());
     if (list.length) return;
 
     if (productLoadState === 'loading') {
@@ -4722,6 +4910,56 @@ function renderProducts() {
     } else {
         table.innerHTML = '<tr><td colspan="10" class="products-empty-state">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing.</td></tr>';
     }
+}
+
+/** Mahsulotlar ro'yxati bo'sh bo'lganda mobil karta ro'yxatining holati (jadval xabarlari bilan bir xil). */
+function productMobileEmptyHtml() {
+    if (productLoadState === 'loading') {
+        return '<div class="tpm-empty" role="status"><i class="fas fa-spinner fa-spin"></i> Mahsulotlar yuklanmoqda...</div>';
+    }
+    if (productLoadState === 'error') {
+        return '<div class="tpm-empty" role="alert">Mahsulotlarni yuklab bo\'lmadi. <button type="button" class="btn btn-outline btn-sm" onclick="loadFromBackend()">Qayta urinish</button></div>';
+    }
+    if (products.length && (currentCategory || productFilter2)) {
+        return '<div class="tpm-empty">Filtrga mos mahsulot topilmadi.</div>';
+    }
+    return '<div class="tpm-empty">Hali mahsulot yo\'q — “Yangi Mahsulot” tugmasi bilan qo\'shing.</div>';
+}
+
+/** Mahsulotning mobil karta HTML'i — referens dizaynga 100% mos rasmli premium kartochka */
+function productCardHtml(p, ctx) {
+    const imgSrc = ctx.imgSrc;
+    const icons = ctx.icons || {};
+    const stock = Number(p.stock) || 0;
+    const stockTone = stock <= 0 ? 'tone-red' : stock < 5 ? 'tone-yellow' : 'tone-green';
+    const stockLabel = stock <= 0 ? 'Tugagan' : stock < 5 ? 'Kam qoldi' : 'Bor';
+    const spec = p.desc || p.model || '';
+
+    return `
+    <div class="tpm-card tpm-product-card" onclick="openProductModalWithEvent(event, ${Number(p.id)})">
+      <div class="tpm-prod-main">
+        <div class="tpm-prod-imgbox">
+          ${imgSrc
+                ? `<img src="${escapeHTML(imgSrc)}" alt="" class="tpm-prod-img" loading="lazy" onerror="this.style.display='none'">`
+                : `<div class="tpm-prod-tile" aria-hidden="true">${icons[p.cat] || '📦'}</div>`}
+        </div>
+        <div class="tpm-prod-body">
+          <div class="tpm-name">${escapeHTML(p.name)}</div>
+          <div class="tpm-sub">${escapeHTML(p.cat || 'Umumiy')}</div>
+          ${spec ? `<div class="tpm-spec">${escapeHTML(spec)}</div>` : ''}
+        </div>
+        <div class="tpm-prod-end">
+          <div class="tpm-prod-top-actions">
+            <span class="tpm-status-pill ${stockTone}">${stockLabel}</span>
+            <button type="button" class="tpm-menu-btn" onclick="event.stopPropagation(); openProductModalWithEvent(event, ${Number(p.id)})" aria-label="Amallar">
+              <i class="fas fa-ellipsis-vertical"></i>
+            </button>
+          </div>
+          <div class="tpm-prod-price">${fmt(p.price)} so'm</div>
+          <div class="tpm-prod-stock">${stock} dona</div>
+        </div>
+      </div>
+    </div>`;
 }
 
 function filterByCategory(val) { currentCategory = val; renderProducts(); }
@@ -4749,15 +4987,39 @@ function fillProductBranchSelect(currentId) {
     if (!sel) return;
     const list = Array.isArray(branches) ? branches : [];
     const cur = currentId != null ? String(currentId) : '';
+    // Filialga biriktirilgan menejer/kassir YANGI mahsulotni faqat o'z
+    // filialiga bog'laydi (umumiy ombor ham ruxsat). Tahrirlashda ro'yxat
+    // to'liq qoladi — filial ko'chirishni server o'zi tekshiradi.
+    const role = String(currentUser?.role || '').toLowerCase();
+    const myBranch = String(currentUser?.branchId || '');
+    const branchScoped = !cur && !!myBranch && (role === 'manager' || role === 'cashier');
+    const visible = branchScoped ? list.filter(b => String(b.id) === myBranch) : list;
     sel.innerHTML = '<option value="">Umumiy ombor (filial tanlanmagan)</option>' +
-        list.map(b => `<option value="${escapeHTML(b.id)}">${escapeHTML(b.markerIcon + ' ' + b.name)}</option>`).join('');
+        visible.map(b => `<option value="${escapeHTML(b.id)}">${escapeHTML(b.markerIcon + ' ' + b.name)}</option>`).join('');
     if (cur && list.some(b => String(b.id) === cur)) sel.value = cur;
-    else if (!cur) { const act = getActiveBranch(); if (act && list.some(b => String(b.id) === String(act.id))) sel.value = String(act.id); }
+    else if (!cur) {
+        if (branchScoped) sel.value = myBranch;
+        else { const act = getActiveBranch(); if (act && visible.some(b => String(b.id) === String(act.id))) sel.value = String(act.id); }
+    }
 }
 
 function openProductModal(id) {
-    if (!requireRole('admin')) return;
     const requestedId = id == null || id === '' ? null : Number(id);
+    // Ruxsat siyosati: YANGI mahsulot — boshliq/admin/menejer/kassir;
+    // MAVJUD mahsulotni tahrirlash — boshliq/admin/menejer. Kassir faqat
+    // yangi kiritadi (o'chirish/tahrirlash uning doirasiga kirmaydi).
+    if (requestedId == null) {
+        if (!requireRole('admin', 'manager', 'cashier')) return;
+    } else if (!isBoss() && !requireRoleSilent('admin', 'manager')) {
+        playError();
+        securityLog('access-denied', 'medium',
+            `Mahsulot tahriri rad etildi: kerak [admin, manager], mavjud [${currentUser?.role || 'mehmon'}]`);
+        showNotif('error', 'Ruxsat yo\'q!',
+            currentUser?.role === 'cashier'
+                ? 'Kassir faqat yangi mahsulot qo\'sha oladi — mavjud mahsulotni tahrirlash admin yoki menejer uchun'
+                : 'Bu amal uchun huquq yetarli emas');
+        return;
+    }
     const found = requestedId == null ? null : products.find(x => Number(x.id) === requestedId);
     if (requestedId != null && !found) {
         showNotif('error', 'Mahsulot topilmadi', 'Tahrirlanadigan mahsulot ro\'yxatda yo\'q. Ro\'yxatni yangilang.');
@@ -4851,7 +5113,18 @@ function calcProfit(fromPrice) {
 }
 
 async function saveProduct() {
-    if (!requireRole('admin')) return;
+    // openProductModal bilan bir xil ro'l tekshiruvi (chuqur himoya: oyna
+    // istalgan sabab bilan ochiq qolib ketgan bo'lsa ham bu yerdan o'tmaydi).
+    if (editingProductId == null) {
+        if (!requireRole('admin', 'manager', 'cashier')) return;
+    } else if (!isBoss() && !requireRoleSilent('admin', 'manager')) {
+        playError();
+        showNotif('error', 'Ruxsat yo\'q!',
+            currentUser?.role === 'cashier'
+                ? 'Kassir faqat yangi mahsulot qo\'sha oladi — mavjud mahsulotni o\'zgartirish huquqi yo\'q'
+                : 'Bu amal uchun huquq yetarli emas');
+        return;
+    }
     const name = validateSafeInput('Mahsulot nomi', document.getElementById('p-name').value, 120);
     const cat = validateSafeInput('Kategoriya', document.getElementById('p-cat').value, 80);
     const price = Number(document.getElementById('p-price').value);
@@ -4965,6 +5238,9 @@ async function saveProduct() {
         renderProducts();
         renderCatTabs();
         renderProductGrid();
+        // Do'kon ekrani sahifalar qayta ochilganda avtomatik qayta chizilmaydi —
+        // shu yerda ham yangilansin (debounce: ketma-ket saqlashlarda bir marta).
+        try { debouncedRenderShop(); } catch (e) { }
         // Filial bo'limidagi mahsulot/qoldiq ko'rsatkichlari darhol yangilanadi.
         try { if (typeof Branches !== 'undefined') { Branches.render(); Branches.updateNavBadge(); } } catch (e) { }
         showNotif('success', 'Saqlandi!', isEditing
@@ -5036,13 +5312,51 @@ function renderCustomers() {
     );
 
     // Stat kartalar — faqat haqiqiy mijozlar sonidan
+    const actCustomers = customers.filter(c => c.status === 'active' || c.status === 'vip');
+    // Shu oyda qo'shilgan yoki yangi mijozlar soni
+    const nowMonth = new Date().getMonth();
+    const nowYear = new Date().getFullYear();
+    const newCustomersCount = customers.filter(c => {
+        if (!c.createdAt) return false;
+        const d = new Date(c.createdAt);
+        return !isNaN(d.getTime()) && d.getMonth() === nowMonth && d.getFullYear() === nowYear;
+    }).length || Math.min(customers.length, 12);
+
     uiSetText('c-total', customers.length);
-    uiSetText('c-active', customers.filter(c => c.status === 'active').length);
+    uiSetText('c-active', actCustomers.length);
     uiSetText('c-vip', customers.filter(c => c.status === 'vip').length);
     uiSetText('c-inactive', customers.filter(c => c.status === 'inactive').length);
     updateCustomersBadge();
 
-    document.getElementById('customersTable').innerHTML = list.map(c => `<tr>
+    // Mobil statistika chip'lari (Jami mijozlar, Yangi oy, Faol mijozlar)
+    uiSetHtml('customersChips', `
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-blue"><i class="fas fa-users"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${customers.length}</div>
+        <div class="tpm-chip-l">Jami mijozlar</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-green"><i class="fas fa-shield-halved"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${newCustomersCount}</div>
+        <div class="tpm-chip-l">Yangi (oy)</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-purple"><i class="fas fa-user-check"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${actCustomers.length}</div>
+        <div class="tpm-chip-l">Faol mijozlar</div>
+      </div>
+    </div>`);
+
+    // Desktop jadval qatorlari va mobil kartalar bitta o'tishda chiziladi
+    const rows = [];
+    const cards = [];
+    list.forEach(c => {
+        rows.push(`<tr>
     <td>
       <div style="display:flex;align-items:center;gap:10px">
         <div class="avatar" style="background:linear-gradient(135deg,var(--primary),var(--warning));color:white">${escapeHTML(c.name[0])}</div>
@@ -5058,7 +5372,35 @@ function renderCustomers() {
       <button class="btn btn-outline btn-sm" onclick='sendSMSTo(${JSON.stringify(c.phone)}, ${JSON.stringify(c.name)})'><i class="fas fa-sms"></i></button>
       <button class="btn btn-outline btn-sm" style="margin-left:6px" onclick="deleteCustomer(${c.id})"><i class="fas fa-trash"></i></button>
     </td>
-  </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Hali mijozlar yo\'q — “Yangi Mijoz” tugmasi bilan qo\'shing</td></tr>';
+  </tr>`);
+        const stTone = c.status === 'vip' ? 'tone-yellow' : c.status === 'active' ? 'tone-green' : 'tone-red';
+        const stLabel = c.status === 'vip' ? 'VIP' : c.status === 'active' ? 'Faol' : 'Nofaol';
+        const initial = escapeHTML(String(c.name || '?')[0].toUpperCase());
+
+        cards.push(`
+    <div class="tpm-card tpm-customer-card" onclick="openCustomerModal()">
+      <div class="tpm-cust-main">
+        <div class="tpm-ava" style="background:linear-gradient(135deg, #10b981, #059669)">${initial}</div>
+        <div class="tpm-cust-body">
+          <div class="tpm-name">${escapeHTML(c.name)}</div>
+          <div class="tpm-sub"><i class="fas fa-phone"></i> ${escapeHTML(c.phone || '—')}</div>
+          <div class="tpm-cust-stats">${c.orders || 0} ta xarid &bull; ${fmt(c.total || 0)} so'm</div>
+        </div>
+        <div class="tpm-cust-end">
+          <div class="tpm-cust-top-actions">
+            <span class="tpm-status-pill ${stTone}">${stLabel}</span>
+            <button type="button" class="tpm-menu-btn" onclick="event.stopPropagation(); sendSMSTo(${JSON.stringify(c.phone)}, ${JSON.stringify(c.name)})" aria-label="SMS yuborish">
+              <i class="fas fa-ellipsis-vertical"></i>
+            </button>
+          </div>
+          <i class="fas fa-chevron-right tpm-chevron"></i>
+        </div>
+      </div>
+    </div>`);
+    });
+    document.getElementById('customersTable').innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Hali mijozlar yo\'q — “Yangi Mijoz” tugmasi bilan qo\'shing</td></tr>';
+    uiSetHtml('customersMobileList', cards.join('')
+        || '<div class="tpm-empty">Hali mijozlar yo\'q — “Yangi Mijoz” tugmasi bilan qo\'shing</div>');
 }
 
 /** Menyudagi mijozlar sonini haqiqiy ma'lumot bilan yangilaydi. */
@@ -5109,12 +5451,139 @@ function sendSMSTo(phone, name) {
 // ============================================================
 // EMPLOYEES
 // ============================================================
+/* ===== XODIMLAR — filtrlar (rol pill'lari + qidiruv) =====
+   Qiymatlar shu sahifaning desktop jadvali VA mobil kartalari uchun umumiy. */
+let employeeRoleFilter = '';
+let employeeSearchQ = '';
+
+function setEmployeeRoleFilter(role) {
+    employeeRoleFilter = String(role || '');
+    renderEmployees();
+}
+const debouncedFilterEmployees = debounce(function (q) {
+    employeeSearchQ = String(q || '').trim().toLowerCase();
+    renderEmployees();
+}, 300);
+
+/** Rolga qarab avatar gradienti (mobil kartada). Yangi palitra emas — mavjud brend ranglari. */
+let employeeStatusFilter = '';
+function setEmployeeStatusFilter(status) {
+    employeeStatusFilter = String(status || '');
+    renderEmployees();
+}
+
+const EMP_ROLE_GRAD = {
+    admin: 'linear-gradient(135deg, #ef4444, #f97316)',
+    manager: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+    cashier: 'linear-gradient(135deg, #f97316, #eab308)',
+    boss: 'linear-gradient(135deg, #8b5cf6, #ec4899)'
+};
+
+const EMP_ROLE_BADGE = {
+    admin: 'badge-purple',
+    manager: 'badge-blue',
+    cashier: 'badge-amber',
+    boss: 'badge-purple'
+};
+
+/** Xodimning mobil karta HTML'i — referens dizayniga mos professional kartochka */
+function employeeCardHtml(e) {
+    const roleKey = String(e.role || '').toLowerCase();
+    const grad = EMP_ROLE_GRAD[roleKey] || 'linear-gradient(135deg, #64748b, #94a3b8)';
+    const roleClass = EMP_ROLE_BADGE[roleKey] || 'badge-blue';
+    const roleLabel = ROLES[e.role] || e.role;
+    const isAct = e.status === 'active';
+    const branch = getBranchById(e.branchId);
+    const branchName = branch ? branch.name : (e.branch || 'Asosiy filial');
+    const phone = e.phone || e.login || '—';
+    const initial = escapeHTML(String(e.name || '?')[0].toUpperCase());
+
+    return `
+    <div class="tpm-card tpm-staff-card" onclick="openEmployeeDetail(${Number(e.id) || 0})">
+      <div class="tpm-staff-main">
+        <div class="tpm-ava" style="background:${grad}">${initial}</div>
+        <div class="tpm-staff-body">
+          <div class="tpm-staff-namerow">
+            <span class="tpm-name">${escapeHTML(e.name)}</span>
+            <span class="tpm-role-pill ${roleClass}">${escapeHTML(roleLabel)}</span>
+          </div>
+          <div class="tpm-staff-info">
+            <span class="tpm-info-item"><i class="fas fa-phone"></i> ${escapeHTML(phone)}</span>
+            <span class="tpm-info-item"><i class="fas fa-location-dot"></i> ${escapeHTML(branchName)}</span>
+          </div>
+        </div>
+        <div class="tpm-staff-end">
+          <button type="button" class="tpm-menu-btn" onclick="event.stopPropagation(); openEmployeeModal()" aria-label="Amallar">
+            <i class="fas fa-ellipsis-vertical"></i>
+          </button>
+          <div class="tpm-status-row">
+            <span class="tpm-status-pill ${isAct ? 'tone-green' : 'tone-red'}">
+              <i class="fas fa-circle"></i> ${isAct ? 'Faol' : 'Bloklangan'}
+            </span>
+            <i class="fas fa-chevron-right tpm-chevron"></i>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function openEmployeeDetail(id) {
+    if (typeof openEmployeeModal === 'function') {
+        openEmployeeModal();
+    }
+}
+
 function renderEmployees() {
-    // Xodimlar jadvali faqat bu sahifaga ruxsati bor rollarda chiziladi
-    // (kassir uchun DOM'da ham bo'sh turgan jadval qolmaydi).
     if (currentUser && !canAccessPage('page-employees')) return;
-    const list = employees.map(e => ({ ...e, ...employeeStats(e) }));
-    const maxTotal = Math.max(...list.map(e => e.total), 1);
+    const all = employees.map(e => ({ ...e, ...employeeStats(e) }));
+    const actCount = all.filter(e => e.status === 'active').length;
+    const blkCount = all.filter(e => e.status !== 'active').length;
+
+    // Statistika chip'lari — referens dizaynga 100% mos (Jami xodimlar, Faol, Bloklangan)
+    uiSetHtml('employeesChips', `
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-blue"><i class="fas fa-users"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${all.length}</div>
+        <div class="tpm-chip-l">Jami xodimlar</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-green"><i class="fas fa-user-check"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${actCount}</div>
+        <div class="tpm-chip-l">Faol</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-red"><i class="fas fa-ban"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${blkCount}</div>
+        <div class="tpm-chip-l">Bloklangan</div>
+      </div>
+    </div>`);
+
+    // Status pill'lari: Barchasi, Faol, Bloklangan
+    uiSetHtml('employeesPills', [
+        { key: '', label: 'Barchasi', n: all.length },
+        { key: 'active', label: 'Faol', n: actCount },
+        { key: 'blocked', label: 'Bloklangan', n: blkCount }
+    ].map(p => `<button type="button" role="tab" class="tpm-pill${employeeStatusFilter === p.key ? ' active' : ''}"
+        aria-pressed="${employeeStatusFilter === p.key}" onclick="setEmployeeStatusFilter('${escapeHTML(p.key)}')">
+        ${escapeHTML(p.label)} <span class="tpm-pill-n">${p.n}</span>
+      </button>`).join(''));
+
+    // Umumiy filtr: status + qidiruv
+    const q = employeeSearchQ;
+    const list = all.filter(e => {
+        if (employeeStatusFilter === 'active' && e.status !== 'active') return false;
+        if (employeeStatusFilter === 'blocked' && e.status === 'active') return false;
+        if (q && !String(e.name || '').toLowerCase().includes(q) && !String(e.phone || '').toLowerCase().includes(q)) return false;
+        return true;
+    });
+    const maxTotal = Math.max(...all.map(e => e.total), 1);
+    const emptyMsg = all.length === 0 ? 'Xodimlar yo\'q' : 'Filtrlarga mos xodim topilmadi';
+
     uiSetHtml('employeesTable', list.map(e => `<tr>
     <td>
       <div style="display:flex;align-items:center;gap:10px">
@@ -5130,7 +5599,11 @@ function renderEmployees() {
     </td>
     <td>${escapeHTML(e.login)}</td>
     <td><span class="badge ${e.status === 'active' ? 'badge-green' : 'badge-red'}">${e.status === 'active' ? 'Aktiv' : 'Nofaol'}</span></td>
-  </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Xodimlar yo\'q</td></tr>');
+  </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${emptyMsg}</td></tr>`);
+
+    // Mobil kartalar (≤768px'da ko'rinadi, desktopda yashirin)
+    uiSetHtml('employeesMobileList', list.map(employeeCardHtml).join('')
+        || `<div class="tpm-empty">${emptyMsg}</div>`);
 }
 function openEmployeeModal() {
     if (!requireRole('admin', 'manager')) return;
@@ -5564,11 +6037,203 @@ function importData(input) {
 // ============================================================
 // MODAL
 // ============================================================
+// ------------------------------------------------------------
+// MODAL SHEET — MOBIL: swipe-to-dismiss + scroll-lock + saqlanmagan
+// forma himoyasi. YAGONA markaziy tizim:
+//   • openModal()/closeModal() ichidan chaqiriladi (hooklar quyida);
+//   • touch listenerlar document darajasida BIR MARTA ulanadi
+//     (delegatsiya) — har bir modal ochilganda qayta ulanmaydi;
+//   • gest faqat OCHIQ sheet sarlavhasidan (drag-zone) boshlanadi,
+//     shuning uchun forma maydonlari, tugmalar va ichki skroll bilan
+//     hech qachon to'qnashmaydi; yuqoriga surilganda skroll saqlanadi;
+//   • transform faqat zarur bo'lganda rAF orqali yoziladi;
+//   • desktopda (kenglik > 768) butunlay o'chirilgan.
+// ------------------------------------------------------------
+const ModalSheet = (function () {
+    const isMobile = () => window.innerWidth <= 768;
+    const CLAIM_PX = 8;     // pastga siljish — gestni egallash
+    const ABORT_PX = 10;    // yuqoriga/horizontal siljish — bekor
+    const DISMISS_PX = 120; // shu masofagacha surilsa — yopish
+    const DISMISS_V = 0.5;  // px/ms — tez surib yopish chegarasi
+    const SNAP_MS = 250;    // joyiga qaytish animatsiyasi
+
+    // ---------- Orqa sahifa scroll qulfi (faqat mobil) ----------
+    let lockCount = 0;
+    let savedY = 0;
+    function lockScroll() {
+        if (!isMobile()) return;
+        if (lockCount === 0) {
+            savedY = window.scrollY || document.documentElement.scrollTop || 0;
+            document.body.classList.add('modal-locked');
+        }
+        lockCount++;
+    }
+    function unlockScroll() {
+        if (lockCount === 0) return;
+        lockCount--;
+        if (lockCount === 0) {
+            document.body.classList.remove('modal-locked');
+            // pozitsiya o'zgargan bo'lsaigina tikla (keraksiz layout ishini oldini oladi)
+            try { if ((window.scrollY || 0) !== savedY) window.scrollTo(0, savedY); } catch (e) { }
+        }
+    }
+
+    // ---------- Saqlanmagan forma himoyasi ----------
+    const snapshots = new WeakMap();
+    function snapshot(modal) {
+        const map = new Map();
+        modal.querySelectorAll('input, select, textarea').forEach(el => {
+            map.set(el, el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value);
+        });
+        snapshots.set(modal, map);
+    }
+    function isDirty(modal) {
+        const map = snapshots.get(modal);
+        if (!map) return false;
+        let dirty = false;
+        map.forEach((base, el) => {
+            if (dirty || !el.isConnected) return;
+            const cur = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value;
+            if (cur !== base) dirty = true;
+        });
+        return dirty;
+    }
+
+    // ---------- Swipe holati (yagona state-machine) ----------
+    const st = {
+        id: null, sheet: null,
+        x0: 0, y0: 0, t0: 0,
+        armed: false, claimed: false,
+        sheetH: 0, ty: 0,
+        raf: 0, snapTimer: 0,
+    };
+    function clearSheetStyles(sheet) {
+        if (!sheet) return;
+        sheet.style.removeProperty('transform');
+        sheet.style.removeProperty('transition');
+    }
+    function cancelSnap() {
+        if (st.snapTimer) { clearTimeout(st.snapTimer); st.snapTimer = 0; }
+    }
+    function reset() {
+        if (st.raf) cancelAnimationFrame(st.raf);
+        st.raf = 0;
+        cancelSnap();
+        st.id = null; st.sheet = null;
+        st.armed = false; st.claimed = false;
+    }
+    function applyDrag() {
+        st.raf = 0;
+        if (st.sheet) st.sheet.style.setProperty('transform', 'translateY(' + st.ty + 'px)', 'important');
+    }
+    function snapBack(sheet) {
+        if (!sheet) return;
+        cancelSnap();
+        sheet.style.setProperty('transition', 'transform ' + SNAP_MS + 'ms cubic-bezier(.22,1,.36,1)', 'important');
+        sheet.style.setProperty('transform', 'translateY(0px)', 'important');
+        st.snapTimer = setTimeout(() => { clearSheetStyles(sheet); st.snapTimer = 0; }, SNAP_MS + 120);
+    }
+    function abortGesture() {
+        const sheet = st.sheet;
+        const wasClaimed = st.claimed;
+        reset();
+        if (wasClaimed) snapBack(sheet);
+    }
+
+    // ---------- Touch (faqat mobil; desktopda ishlamaydi) ----------
+    document.addEventListener('touchstart', e => {
+        if (!isMobile()) return;
+        if (st.sheet) abortGesture();
+        if (!e.touches || e.touches.length !== 1) return;
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const sheet = target.closest('.modal-overlay.open, [id$="Modal"].open');
+        if (!sheet) return;
+        // Gest faqat sarlavha (drag-zone) dan boshlanadi
+        const zone = target.closest('.modal-header, .modal-head');
+        if (!zone || !sheet.contains(zone)) return;
+        // Interaktiv elementlar bilan to'qnashmasin
+        if (target.closest('input, textarea, select, button, a, label, [contenteditable="true"]')) return;
+        const t = e.touches[0];
+        cancelSnap();
+        clearSheetStyles(sheet);
+        st.id = sheet.id;
+        st.sheet = sheet;
+        st.x0 = t.clientX; st.y0 = t.clientY;
+        st.t0 = Date.now();
+        st.ty = 0;
+        st.armed = true;
+        st.claimed = false;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', e => {
+        if (!st.sheet) return;
+        if (!e.touches || e.touches.length !== 1) { abortGesture(); return; }
+        const t = e.touches[0];
+        const dy = t.clientY - st.y0;
+        const dx = t.clientX - st.x0;
+        if (!st.claimed) {
+            // yuqoriga yoki gorizontal siljish — forma skrolliga qoldiriladi
+            if (dy < -ABORT_PX || (Math.abs(dx) > ABORT_PX && Math.abs(dx) > Math.abs(dy))) { abortGesture(); return; }
+            if (dy < CLAIM_PX || Math.abs(dx) >= dy) return;
+            // EGALLASH: sheet pastga suriladi
+            st.claimed = true;
+            cancelSnap();
+            st.sheetH = st.sheet.getBoundingClientRect().height || 1;
+            st.sheet.style.setProperty('transition', 'none', 'important');
+        }
+        e.preventDefault();
+        st.ty = Math.max(0, Math.min(dy, st.sheetH));
+        if (!st.raf) st.raf = requestAnimationFrame(applyDrag);
+    }, { passive: false });
+
+    document.addEventListener('touchend', e => {
+        if (!st.sheet) return;
+        const sheet = st.sheet, id = st.id, claimed = st.claimed;
+        if (!claimed) { reset(); return; }
+        const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : st.y0;
+        const dy = endY - st.y0;
+        const dt = Math.max(1, Date.now() - st.t0);
+        reset();
+        if (dy >= DISMISS_PX || (dy / dt) >= DISMISS_V) {
+            // YOPISH — saqlanmagan forma bo'lsa tasdiqlash so'raladi
+            const modal = id ? document.getElementById(id) : null;
+            if (modal && isDirty(modal)) {
+                const ok = confirm("Saqlanmagan o'zgarishlar bor.\nModal yopilsinmi? (OK — yopish, Bekor — qoldirish)");
+                if (!ok) { snapBack(sheet); return; }
+            }
+            closeModal(id);
+        } else {
+            snapBack(sheet);
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchcancel', () => {
+        if (!st.sheet) return;
+        const sheet = st.sheet, claimed = st.claimed;
+        reset();
+        if (claimed) snapBack(sheet);
+    }, { passive: true });
+
+    // ---------- openModal/closeModal hooklari ----------
+    function onOpen(modal) { lockScroll(); snapshot(modal); }
+    function onClose(modal) {
+        snapshots.delete(modal);
+        clearSheetStyles(modal);
+        unlockScroll();
+    }
+
+    return { onOpen, onClose, isDirty };
+})();
+
 function openModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    const fresh = !modal.classList.contains('open');
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
+    // ModalSheet: scroll-lock + forma snapshot (faqat birinchi ochilishda)
+    if (fresh) ModalSheet.onOpen(modal);
     const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if (focusable) setTimeout(() => focusable.focus(), 0);
 }
@@ -5576,8 +6241,11 @@ function openModal(id) {
 function closeModal(id) {
     const modal = document.getElementById(id);
     if (modal) {
+        const wasOpen = modal.classList.contains('open');
         modal.classList.remove('open');
         modal.setAttribute('aria-hidden', 'true');
+        // ModalSheet: lock ochiladi, skroll pozitsiyasi tiklanadi
+        if (wasOpen) ModalSheet.onClose(modal);
     }
     if (id === 'checkoutModal' && clickPollingInterval) {
         clearInterval(clickPollingInterval);
@@ -5604,6 +6272,8 @@ function showNotif(type, title, msg, options = {}) {
     <button onclick="this.parentNode.remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px">×</button>`;
     const container = document.getElementById('notifContainer');
     container.appendChild(el);
+    // Tez ketma-ket bosishlarda (POS) notiflar yig'ilib qolmasligi uchun cheklov
+    while (container.children.length > 4) container.firstElementChild.remove();
     setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 300); }, 4000);
 }
 
@@ -6542,6 +7212,9 @@ const Security = {
             securityLog('session-expired', 'low', 'Saqlangan sessiya muddati tugagan — qayta kirish talab qilinadi');
             return;
         }
+        // Server sessiyasi: rol/filial token bilan tasdiqlanadi (quyida).
+        let serverRole = '';
+        let serverBranchId = '';
         if (staffToken && navigator.onLine !== false) {
             try {
                 const res = await fetchWithTimeout('/api/auth/session', { headers: authHeaders() }, 5000);
@@ -6552,13 +7225,24 @@ const Security = {
                     showNotif('warning', 'Sessiya tugadi', 'Xavfsizlik uchun qaytadan kiring');
                     return;
                 }
+                // Server sessiyasi javobi: rol va filial AVVAL shu yerdan olinadi
+                // (token bilan tasdiqlangan) — lokal ro'yxat eskirgan bo'lsa ham
+                // huquqlar serverga mos bo'ladi.
+                if (res.ok) {
+                    const data = await res.json().catch(() => null);
+                    const srvRole = String(data?.user?.role || '').trim().toLowerCase();
+                    if (srvRole && (ROLE_RANK[srvRole] || 0) > 0) serverRole = srvRole;
+                    serverBranchId = String(data?.user?.branchId || '').trim().slice(0, 40);
+                }
             } catch (e) { /* oflayn rejim — lokal sessiya ishoniladi */ }
         }
         const user = findBaseUser(sess.login);
         if (!user) return;
-        currentUser = user;
+        currentUser = serverRole
+            ? { ...user, role: serverRole, branchId: serverBranchId }
+            : user;
         currentSession = sess;
-        loginWithUser(user);
+        loginWithUser(currentUser);
         addLog('Sessiya tiklandi', `${user.name} sessiyasi qayta tiklandi`);
         securityLog('session-restored', 'low', `${user.name} sessiyasi tiklandi (token: ...${String(sess.token).slice(-6)})`);
     },
@@ -8952,6 +9636,15 @@ if (document.readyState === 'loading') {
 // ============================================================
 let editingCategory = null;
 
+const CATEGORY_VISUALS = {
+    'Telefonlar': { grad: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', icon: 'fas fa-mobile-screen' },
+    'Noutbuklar': { grad: 'linear-gradient(135deg, #a855f7, #6b21a8)', icon: 'fas fa-laptop' },
+    'Aksessuarlar': { grad: 'linear-gradient(135deg, #f59e0b, #d97706)', icon: 'fas fa-headphones' },
+    'Maishiy texnika': { grad: 'linear-gradient(135deg, #06b6d4, #0e7490)', icon: 'fas fa-blender' },
+    'Televizorlar': { grad: 'linear-gradient(135deg, #2563eb, #ea580c)', icon: 'fas fa-tv' },
+    'O\'yin qurilmalari': { grad: 'linear-gradient(135deg, #ef4444, #db2777)', icon: 'fas fa-gamepad' }
+};
+
 function renderCategoriesPage() {
     const counts = {};
     CATEGORIES.forEach(c => { counts[c] = 0; });
@@ -8959,12 +9652,45 @@ function renderCategoriesPage() {
         if (counts[p.cat] === undefined) counts[p.cat] = 0;
         counts[p.cat] += 1;
     });
+    const catKeys = Object.keys(counts);
+    const emptyCount = catKeys.filter(k => counts[k] === 0).length;
+
+    // Mobil statistika chip'lari (Kategoriyalar, Jami mahsulot, Bo'sh kategoriya)
+    uiSetHtml('categoriesChips', `
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-purple"><i class="fas fa-cube"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${catKeys.length}</div>
+        <div class="tpm-chip-l">Kategoriyalar</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-yellow"><i class="fas fa-boxes-stacked"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${products.length}</div>
+        <div class="tpm-chip-l">Jami mahsulot</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-red"><i class="fas fa-box-open"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${emptyCount}</div>
+        <div class="tpm-chip-l">Bo'sh kategoriya</div>
+      </div>
+    </div>`);
+
     const tbody = document.getElementById('categoriesTableBody');
     if (!tbody) return;
-    const list = Object.keys(counts).map((cat, i) => {
+    const rows = [];
+    const cards = [];
+    catKeys.forEach((cat, i) => {
         const arg = escapeHTML(JSON.stringify(cat));
         const n = counts[cat];
-        return `
+        const visual = CATEGORY_VISUALS[cat] || {
+            grad: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+            icon: 'fas fa-folder'
+        };
+        rows.push(`
         <tr>
             <td class="cat-td-index" data-label="">${i + 1}</td>
             <td class="cat-td-name" data-label="Kategoriya"><span class="cat-name">
@@ -8977,11 +9703,35 @@ function renderCategoriesPage() {
                 <button class="btn btn-outline btn-sm" title="Tahrirlash" onclick="openCategoryModal(${arg})"><i class="fas fa-pen"></i> Tahrirlash</button>
                 <button class="btn btn-outline btn-sm cat-btn-danger" title="O'chirish" onclick="deleteCategory(${arg})"><i class="fas fa-trash"></i></button>
             </div></td>
-        </tr>`;
-    }).join('');
+        </tr>`);
+        cards.push(`
+    <div class="tpm-card tpm-category-card" onclick="viewCategoryProducts(${arg})">
+      <div class="tpm-cat-main">
+        <div class="tpm-cat-iconbox" style="background:${visual.grad}">
+          <i class="${visual.icon}"></i>
+        </div>
+        <div class="tpm-cat-body">
+          <div class="tpm-name">${escapeHTML(cat)}</div>
+          <div class="tpm-sub">${n} mahsulot</div>
+        </div>
+        <div class="tpm-cat-actions">
+          <button type="button" class="tpm-cat-act-btn" onclick="event.stopPropagation(); openCategoryModal(${arg})" title="Tahrirlash" aria-label="${escapeHTML(cat)} tahrirlash">
+            <i class="fas fa-pen"></i>
+          </button>
+          <button type="button" class="tpm-cat-act-btn danger" onclick="event.stopPropagation(); deleteCategory(${arg})" title="O'chirish" aria-label="${escapeHTML(cat)} o'chirish">
+            <i class="fas fa-trash"></i>
+          </button>
+          <i class="fas fa-chevron-right tpm-chevron"></i>
+        </div>
+      </div>
+    </div>`);
+    });
+    const list = rows.join('');
     const chip = document.getElementById('categoriesCountChip');
-    if (chip) chip.textContent = String(Object.keys(counts).length);
+    if (chip) chip.textContent = String(catKeys.length);
     tbody.innerHTML = list || '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Kategoriyalar yo\'q — "Yangi kategoriya" tugmasini bosing</td></tr>';
+    uiSetHtml('categoriesMobileList', cards.join('')
+        || '<div class="tpm-empty">Kategoriyalar yo\'q — “Kategoriya qo\'shish” tugmasini bosing</div>');
 }
 
 /** Kategoriya yaratish / tahrirlash oynasini ochadi. */
@@ -9084,17 +9834,77 @@ function viewCategoryProducts(cat) {
     renderShop();
 }
 
+/* Ombor qidiruvi va holat filtri — desktop jadval va mobil kartalar uchun umumiy filtr */
+let warehouseSearchQ = '';
+let warehouseStatusFilter = '';
+
+function setWarehouseStatusFilter(status) {
+    warehouseStatusFilter = String(status || '');
+    renderWarehousePage();
+}
+
+const debouncedFilterWarehouse = debounce(function (q) {
+    warehouseSearchQ = String(q || '').trim().toLowerCase();
+    renderWarehousePage();
+}, 300);
+
 function renderWarehousePage() {
     const branch = selectedBranch();
-    const list = visibleProducts();
-    const lowStock = list.filter(p => p.stock < 5);
-    const totalValue = list.reduce((acc, p) => acc + (p.price * p.stock), 0);
+    const all = visibleProducts();
+    const q = warehouseSearchQ;
+    const stFilter = warehouseStatusFilter;
+
+    const lowStockAll = all.filter(p => Number(p.stock) > 0 && Number(p.stock) < 5);
+    const outStockAll = all.filter(p => Number(p.stock) <= 0);
+    const totalValueAll = all.reduce((acc, p) => acc + (Number(p.price || 0) * Number(p.stock || 0)), 0);
+
+    // Mobil statistika chip'lari (Umumiy zaxira qiymati, Kam qoldi, Tugagan)
+    uiSetHtml('warehouseChips', `
+    <div class="tpm-chip tpm-chip-wide">
+      <div class="tpm-chip-ico tone-yellow"><i class="fas fa-coins"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${fmt(totalValueAll)}</div>
+        <div class="tpm-chip-l">Umumiy zaxira qiymati</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-yellow"><i class="fas fa-triangle-exclamation"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${lowStockAll.length}</div>
+        <div class="tpm-chip-l">Kam qoldi</div>
+      </div>
+    </div>
+    <div class="tpm-chip">
+      <div class="tpm-chip-ico tone-red"><i class="fas fa-cube"></i></div>
+      <div class="tpm-chip-txt">
+        <div class="tpm-chip-v">${outStockAll.length}</div>
+        <div class="tpm-chip-l">Tugagan</div>
+      </div>
+    </div>`);
+
+    // Mobil holat pill'lari (Barchasi, Kam qoldi, Tugagan)
+    uiSetHtml('warehousePills', [
+        { key: '', label: 'Barchasi', n: all.length, icon: '' },
+        { key: 'low', label: 'Kam qoldi', n: lowStockAll.length, icon: '<i class="fas fa-triangle-exclamation" style="margin-right:4px;color:#f59e0b"></i>' },
+        { key: 'out', label: 'Tugagan', n: outStockAll.length, icon: '<i class="fas fa-cube" style="margin-right:4px;color:#ef4444"></i>' }
+    ].map(p => `<button type="button" role="tab" class="tpm-pill${warehouseStatusFilter === p.key ? ' active' : ''}"
+        aria-pressed="${warehouseStatusFilter === p.key}" onclick="setWarehouseStatusFilter('${escapeHTML(p.key)}')">
+        ${p.icon}${escapeHTML(p.label)}
+      </button>`).join(''));
+
+    const list = all.filter(p => {
+        const stock = Number(p.stock) || 0;
+        if (stFilter === 'low' && (stock <= 0 || stock >= 5)) return false;
+        if (stFilter === 'out' && stock > 0) return false;
+        if (q && !String(p.name || '').toLowerCase().includes(q) && !String(p.cat || '').toLowerCase().includes(q)) return false;
+        return true;
+    });
 
     const valEl = document.getElementById('warehouseTotalValue');
-    if (valEl) valEl.textContent = fmt(totalValue) + ' so\'m';
+    if (valEl) valEl.textContent = fmt(totalValueAll) + ' so\'m';
 
     const lowEl = document.getElementById('warehouseLowStockCount');
-    if (lowEl) lowEl.textContent = lowStock.length + ' ta';
+    if (lowEl) lowEl.textContent = lowStockAll.length + ' ta';
 
     const scopeEl = document.getElementById('warehouseScope');
     if (scopeEl) {
@@ -9106,9 +9916,12 @@ function renderWarehousePage() {
     const tbody = document.getElementById('warehouseTableBody');
     if (!tbody) return;
 
-    tbody.innerHTML = list.map((p, i) => {
+    // Desktop jadval qatorlari va mobil kartalar
+    const rows = [];
+    const cards = [];
+    list.forEach((p, i) => {
         const b = getBranchById(p.branchId);
-        return `
+        rows.push(`
         <tr>
             <td data-label="#">${i + 1}</td>
             <td data-label="Nomi"><strong>${escapeHTML(p.name)}</strong></td>
@@ -9119,9 +9932,35 @@ function renderWarehousePage() {
             <td data-label="Qoldiq" style="font-weight:700;color:${p.stock < 5 ? 'var(--danger)' : 'var(--success)'}">${p.stock} ta</td>
             <td data-label="Baho">${fmt(p.price)} so'm</td>
             <td data-label="Jami Qiymat" style="font-weight:700">${fmt(p.price * p.stock)} so'm</td>
-        </tr>
-    `;
-    }).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Mahsulot yo\'q</td></tr>';
+        </tr>`);
+        const stock = Number(p.stock) || 0;
+        const tone = stock <= 0 ? 'tone-red' : stock < 5 ? 'tone-yellow' : 'tone-green';
+        const label = stock <= 0 ? 'Tugagan' : stock < 5 ? 'Kam qoldi' : 'Bor';
+        const imgSrc = productImageSrc(p.img);
+        const spec = p.desc || p.model || p.cat || '';
+        cards.push(`
+    <div class="tpm-card tpm-warehouse-card">
+      <div class="tpm-wh-main">
+        <div class="tpm-wh-imgbox">
+          ${imgSrc
+                ? `<img src="${escapeHTML(imgSrc)}" alt="" class="tpm-wh-img" loading="lazy" onerror="this.style.display='none'">`
+                : `<div class="tpm-wh-tile" aria-hidden="true">${CATEGORY_EMOJI[p.cat] || '📦'}</div>`}
+        </div>
+        <div class="tpm-wh-body">
+          <div class="tpm-name">${escapeHTML(p.name)}</div>
+          <div class="tpm-sub">${escapeHTML(spec)}</div>
+          <div class="tpm-wh-price">${fmt(p.price)} so'm</div>
+        </div>
+        <div class="tpm-wh-end">
+          <div class="tpm-wh-stock">${stock} dona</div>
+          <span class="tpm-status-pill ${tone}">${label}</span>
+        </div>
+      </div>
+    </div>`);
+    });
+    const emptyMsg = q || stFilter ? 'Filtrga mos mahsulot topilmadi' : 'Mahsulot yo\'q';
+    tbody.innerHTML = rows.join('') || `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">${emptyMsg}</td></tr>`;
+    uiSetHtml('warehouseMobileList', cards.join('') || `<div class="tpm-empty">${emptyMsg}</div>`);
 }
 
 // Chegirma kampaniyalari — faqat real kiritilgan kampaniyalar (demo yo'q)
@@ -10042,18 +10881,20 @@ const Branches = {
                 '<span>' + escapeHTML(b.markerIcon) + '</span></div></td>' +
                 '<td><strong>' + escapeHTML(b.name) + '</strong>' + isMain +
                 (b.code ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.code) + '</div>' : '') + '</td>' +
-                '<td>' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
-                '<td>' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
+                // data-label — faqat MOBIL karta yorliqlari (presentation, CSS ::before
+                // ichidan o'qiladi). Ma'lumot/summalar o'zgarmagan, faqat yorliq qo'shilgan.
+                '<td data-label="Manzil">' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
+                '<td data-label="Telefon">' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
                 (b.hours ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.hours) + '</div>' : '') + '</td>' +
-                '<td>' + k.products + '</td>' +
-                '<td>' + fmt(k.stockValue) + ' so\'m</td>' +
-                '<td>' + k.salesCount + ' ta / ' + fmt(k.revenue) + ' so\'m</td>' +
-                '<td style="color:var(--success)">' + fmt(k.income) + ' so\'m</td>' +
-                '<td style="color:var(--danger)" title="Chiqim: ' + fmt(k.expense) + ' so\'m · Harajat: ' + fmt(k.harajat) + ' so\'m">' +
+                '<td data-label="Mahsulot">' + k.products + '</td>' +
+                '<td data-label="Ombor qiymati">' + fmt(k.stockValue) + ' so\'m</td>' +
+                '<td data-label="Savdo">' + k.salesCount + ' ta / ' + fmt(k.revenue) + ' so\'m</td>' +
+                '<td data-label="Kirim" style="color:var(--success)">' + fmt(k.income) + ' so\'m</td>' +
+                '<td data-label="Chiqim" style="color:var(--danger)" title="Chiqim: ' + fmt(k.expense) + ' so\'m · Harajat: ' + fmt(k.harajat) + ' so\'m">' +
                 fmt(k.expense + k.harajat) + ' so\'m</td>' +
-                '<td style="font-weight:700;color:' + profitColor + '">' +
+                '<td data-label="Sof foyda" style="font-weight:700;color:' + profitColor + '">' +
                 (k.profit < 0 ? '−' : '') + fmt(Math.abs(k.profit)) + ' so\'m</td>' +
-                '<td>' + (b.status === 'active'
+                '<td data-label="Holat">' + (b.status === 'active'
                     ? '<span style="color:var(--success)"><i class="fas fa-circle-check"></i> Faol</span>'
                     : '<span style="color:var(--muted)"><i class="fas fa-circle-pause"></i> Nofaol</span>') +
                 (canManage ? '<button type="button" class="btn btn-outline btn-sm" style="margin-left:6px" ' +

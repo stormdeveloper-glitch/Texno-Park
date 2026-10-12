@@ -1561,7 +1561,8 @@ def auth_login():
         'expiresIn': TOKEN_TTL_HOURS * 3600,
         'mustChangePassword': bool(user.get('mustChange')),
         'user': {'login': user.get('login'), 'name': user.get('name'),
-                 'role': user.get('role'), 'phone': user.get('phone')},
+                 'role': user.get('role'), 'phone': user.get('phone'),
+                 'branchId': str(user.get('branchId') or '')[:40]},
     })
 
 
@@ -1574,6 +1575,7 @@ def auth_session():
     return jsonify({'status': 'success', 'user': {
         'login': payload.get('sub'), 'name': payload.get('name'), 'role': payload.get('role'),
         'phone': (me or {}).get('phone', ''),
+        'branchId': str((me or {}).get('branchId') or '')[:40],
     }, 'exp': payload.get('exp')})
 @app.route('/api/auth/logout', methods=['POST'])
 def auth_logout():
@@ -4218,6 +4220,39 @@ def sync_data():
         apply_image_keep(clean.get('products') or [])
         apply_fiscal_keep(clean.get('sales') or [])
         old_store = db_manager.get_all() or {}
+
+        # ── Filial doirasi nazorati (menejer/kassir) ──
+        # Xodim filialga biriktirilgan bo'lsa (staff_users.branchId), u faqat
+        # O'Z filialiga yangi mahsulot qo'sha oladi va mahsulotni boshqa
+        # filialga ko'chira olmaydi. Filiali bo'sh xodim yoki admin/boshliq
+        # uchun cheklov yo'q. POS qoldiq/narx oqarimiga TA'SIR QILMAYDI:
+        # mavjud mahsulotning qoldiq/narx o'zgarishlari filialga qarab
+        # tekshirilmaydi (faqat yangi ID va filial qiymati o'zgarishi nazorat).
+        staff_role = str(request.staff.get('role') or '').strip().lower()  # type: ignore[attr-defined]
+        if staff_role in ('manager', 'cashier'):
+            staff_rec = (find_staff(str(request.staff.get('sub') or ''))
+                         or find_staff_by_phone(str(request.staff.get('sub') or '')))
+            staff_branch = str((staff_rec or {}).get('branchId') or '').strip()
+            if staff_branch:
+                old_by_id = {str(p.get('id')): p
+                             for p in (old_store.get('products') or []) if isinstance(p, dict)}
+                for product in (clean.get('products') or []):
+                    if not isinstance(product, dict):
+                        continue
+                    new_branch = str(product.get('branchId') or '').strip()
+                    if not new_branch or new_branch == staff_branch:
+                        continue
+                    old = old_by_id.get(str(product.get('id')))
+                    # Yangi mahsulot yoki filialni boshqa filialga ko'chirish
+                    if old is None or str(old.get('branchId') or '').strip() != new_branch:
+                        server_security_log('access-denied', 'high',
+                                            f'Filial doirasi: "{product.get("name")}" → {new_branch} '
+                                            f'(xodim filiali: {staff_branch})',
+                                            request.staff.get('name', '—'))  # type: ignore[attr-defined]
+                        return json_error(
+                            f'Faqat o\'z filialingizda ishlash mumkin — mahsulot '
+                            f'{new_branch} filialiga bog\'lanmadi', 403)
+
         audit_sync_changes(old_store, clean,
                            str(getattr(request, 'staff', {}).get('name', '—')))
         db_manager.save_keys(clean)
