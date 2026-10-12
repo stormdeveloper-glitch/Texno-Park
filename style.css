@@ -11965,6 +11965,12 @@ body.drawer-open {
       width: 100%;
     }
 
+}
+
+/* Planshet (769–1024px): keng jadval gorizontal scroll ichida haqiqiy jadval
+   bo'lib qoladi. ≤768px uchun bu yerda HECH NARSA yozilmaydi — kichik
+   ekranlarda sahifa karta (stacked) rejimiga o'tadi (MOBILE REBUILD bo'limi). */
+@media (min-width: 769px) and (max-width: 1024px) {
     #page-products .products-table-scroll {
       overflow-x: auto !important;
     }
@@ -12436,7 +12442,9 @@ body {
     transition: none;
   }
   .topbar .page-title {
-    padding-left: 0;
+    /* ☰ tugmasi fixed (12px, 48px) — sarlavha uning ostiga tushmasligi uchun
+       chapdan joy ajratiladi (12px topbar padding + 48px tugma + 8px bo'shliq). */
+    padding-left: 56px;
     font-size: 16px;
     flex: 1 1 0;
     min-width: 0;
@@ -12850,6 +12858,20 @@ body {
   .table-wrap tbody td[colspan]::before { display: none; content: ""; }
 
   /* ============== PRODUCTS PAGE — MOBILE CARD ENHANCEMENTS ============== */
+  /* ≤768px: mahsulotlar jadvali KARTA (stacked) rejimiga o'tadi. Desktop va
+     planshet uchun yozilgan qat'iy kenglik (1191px) va matn qisqartirish
+     cheklovlarini bekor qilamiz — aks holda butun sahifa gorizontal siljib,
+     "Amallar" (tahrirlash/o'chirish) tugmalari ekrandan chiqib ketadi. */
+  #page-products .products-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  #page-products .products-table tbody td[data-label] {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
   #page-products .panel-header {
     padding: 10px 12px !important;
     flex-direction: column !important;
@@ -13985,7 +14007,7 @@ body {
     --hdr-pad-x: 10px;
   }
   /* ≤480px: ☰ toggle ko'rinib turadi (≤768px qoidasiga qarang — drawer ochish yagona yo'li) */
-  .topbar .page-title { padding-left: 0; font-size: 15px; }
+  .topbar .page-title { padding-left: 56px; font-size: 15px; }
   .page { padding: 10px !important; }
   .login-box { padding: 16px; gap: 12px; }
   .stat-num { font-size: clamp(16px, 5vw, 20px); }
@@ -14183,7 +14205,9 @@ body {
   }
 }
 
-@media (max-width: 1024px) {
+/* Planshet (769–1024px) — mobil (≤768px) karta rejimi buzilmasligi uchun
+   bu blok faqat planshet kengligida ishlaydi. */
+@media (min-width: 769px) and (max-width: 1024px) {
   #page-products .products-table-scroll {
     overflow-x: auto !important;
   }
