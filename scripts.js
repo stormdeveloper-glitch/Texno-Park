@@ -713,7 +713,8 @@ function requireRole(...roles) {
 
 /* ── Shartnoma huquqlari ─────────────────────────────────────────
  * ASOSIY ADMIN — tizimning birinchi (egasi) administratori.
- * Shartnomani FAQAT asosiy admin o'chira oladi.
+ * Shartnomani FAQAT asosiy admin yoki BOSHLIQ o'chira oladi
+ * (BOSHLIQ iyerarxiyada asosiy admin'dan yuqori — tizim egasi).
  * Boshqa adminlar va menejer shartnoma tuza oladi / tahrirlay oladi,
  * lekin o'chira olmaydi (ular yaratgan shartnomani ham).
  * Asosiy admin loginlarini shu ro'yxatdan o'zgartirish mumkin. */
@@ -722,9 +723,10 @@ function isMainAdmin() {
     return Boolean(currentUser && currentUser.role === 'admin' &&
         MAIN_ADMIN_LOGINS.includes(String(currentUser.login || '').trim().toLowerCase()));
 }
-/** Shartnoma tuzish/tahrirlash: asosiy admin, admin va menejer */
+/** Shartnoma tuzish/tahrirlash: asosiy admin, admin, menejer va BOSHLIQ */
 function canManageContracts() {
-    return Boolean(currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager'));
+    return Boolean(currentUser && (currentUser.role === 'admin' ||
+        currentUser.role === 'manager' || isBoss()));
 }
 
 function normalizeProduct(p) {
@@ -2573,7 +2575,12 @@ function canAccessPage(pageId) {
     if (isBoss()) return true;
     const nav = Array.from(document.querySelectorAll('.nav-item')).find(item => {
         const handler = item.getAttribute('onclick') || '';
-        return handler.includes(`'${pageId}'`) || handler.includes(`"${pageId}"`);
+        return handler.includes(`'${pageId}'`) || handler.includes(`"${pageId}"`)
+            // Menyudan olib tashlangan bo'limlar uchun ham ruxsat saqlanadi:
+            // masalan, `nav-employees`da `data-page="page-employees"` — Xodimlar
+            // sahifasiga kirish manbai (admin/menejer topbar «Xodim qo'shish»
+            // orqali ishlatadi), menyu ko'rinishi esa wrapper data-role'da.
+            || item.getAttribute('data-page') === pageId;
     });
     // Nav ro'yxatida bo'lmagan sahifa — faqat ochiq do'kon (page-shop) uchun ruxsat.
     // Aks holda URL orqali bevosita kirishga urinish (to'g'ridan-to'g'ri manzil)
@@ -2680,6 +2687,116 @@ window.addEventListener('resize', () => {
 
 // Esc — drawer yoki ochiq sidebarni yopadi
 document.addEventListener('keydown', e => { if (e.key === 'Escape') resetSidebar(); });
+
+// ============================================================
+// MOBIL SWIPE — chap chetdan o'ngga surish: drawer ochiladi;
+// ochiq holatda chapga surish: yopadi. FAQAT mobil (≤768px).
+// Integratsiya: tugmachalar/overlay/Esc kabi YAGONA
+// setSidebarOpen() holat boshqaruvi ishlatiladi — parallel
+// menyu tizimi yo'q. Faqat touch eventlar qo'llaniladi
+// (pointer event UNDECLARED — takroriy ikkinchi tizim yo'q).
+// Gest faqat gorizontal dominantlikda "egallanadi" (claim):
+// vertikal scroll, kartalar, jadvallar va inputlar buzilmaydi.
+// ============================================================
+(function initSidebarSwipe() {
+    const EDGE_ZONE = 32;   // yopiq holatda: faqat chap chetdan 32px ichidan boshlangan surish
+    const CLAIM_PX = 8;     // gorizontal "egallash" uchun minimal siljish (px)
+    const ABORT_PX = 16;    // shu qatlamdan ortiq vertikal siljish = scroll niyatı → gesture bekor
+    const FLING_V = 0.35;   // px/ms — tez qo'yib yuborish (fling) chegarasi
+
+    const st = { active: false, claimed: false, x0: 0, y0: 0, t0: 0, lastX: 0, lastT: 0, wasOpen: false };
+
+    /** Drag vaqtidagi inline holatlarni tozalaydi (bazaviy CSS animatsiyasiga qaytaradi). */
+    function resetSwipeStyles() {
+        const sb = document.getElementById('sidebar');
+        if (sb) { sb.style.transition = ''; sb.style.transform = ''; }
+    }
+
+    /** Gesture yakuni: qaror (fling yoki >50%) → YAGONA setSidebarOpen(). */
+    function finishSwipe() {
+        if (!st.active && !st.claimed) return;
+        const sb = document.getElementById('sidebar');
+        if (st.claimed && sb) {
+            const w = sb.offsetWidth || 1;
+            // Joriy (surerilgan) transform → ochiqlik darajasi: 0=yopiq, 1=ochiq
+            const m = /translateX\((-?[\d.]+)px\)/.exec(sb.style.transform || '');
+            const pos = m ? Math.min(1, Math.max(0, 1 + parseFloat(m[1]) / w)) : (st.wasOpen ? 1 : 0);
+            const dx = st.lastX - st.x0;
+            const vx = dx / Math.max(1, st.lastT - st.t0);
+            // Tez surish (fling) — yo'nalish hal qiladi; aks holda >50% qoidasi
+            const open = Math.abs(vx) > FLING_V ? dx > 0 : pos > 0.5;
+            resetSwipeStyles();
+            // Inline transform tozalangach class holati bazaviy .3s transform
+            // animatsiyasi bilan surilgan joydan "yetib boradi" (silliq finish).
+            setSidebarOpen(open);
+        } else {
+            resetSwipeStyles();
+        }
+        st.active = false;
+        st.claimed = false;
+    }
+
+    document.addEventListener('touchstart', e => {
+        if (!sidebarIsMobile() || e.touches.length !== 1) return;
+        const sb = document.getElementById('sidebar');
+        // Market-rejim (do'kon): drawer tizimi o'chirilgan — overlay ham
+        // `#app.market-mode .sidebar-overlay { display:none !important }`.
+        // Edge swipe u yerda overlay siz ochilgan menyuni "tiqib" qo'yadi —
+        // shuning uchun market-rejimda gest butunlay o'chirilgan.
+        const appEl = document.getElementById('app');
+        if (appEl && appEl.classList.contains('market-mode')) return;
+        // Yashirin drawer — gest kerak emas
+        if (!sb || getComputedStyle(sb).display === 'none') return;
+        // Matn kiritish elementlaridan boshlangan surishlarga tegilmaydi
+        if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+        // Ochiq modal / pastki varaq ustida boshlangan gest menyu tegmasin
+        if (document.querySelector('.modal-overlay.open, [id$="Modal"].open')) return;
+        const x = e.touches[0].clientX;
+        const y = e.touches[0].clientY;
+        const wasOpen = sb.classList.contains('open');
+        // Yopiq holatda faqat CHAP CHEGARADAN (≤32px) boshlangan surish qabul
+        // qilinadi; ochiq holatda istalgan joydan chapga surish yopadi.
+        if (!wasOpen && x > EDGE_ZONE) return;
+        st.active = true;
+        st.claimed = false;
+        st.x0 = st.lastX = x;
+        st.y0 = y;
+        st.t0 = st.lastT = Date.now();
+        st.wasOpen = wasOpen;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', e => {
+        if (!st.active || e.touches.length !== 1) return;
+        const x = e.touches[0].clientX;
+        const y = e.touches[0].clientY;
+        st.lastX = x;
+        st.lastT = Date.now();
+        const dx = x - st.x0;
+        const dy = y - st.y0;
+        if (!st.claimed) {
+            // Aniq vertikal siljish = sahifa/sidevar skrolli — gesture bekor,
+            // preventDefault YO'Q, scroll hech qanday xalaqitsiz ishlaydi.
+            if (Math.abs(dy) > ABORT_PX && Math.abs(dy) > Math.abs(dx)) { st.active = false; return; }
+            if (Math.abs(dx) < CLAIM_PX || Math.abs(dx) <= Math.abs(dy)) return;
+            // Gorizontal yo'nalish sharti: yopiq → o'ngga (dx>0); ochiq → chapga (dx<0)
+            if ((!st.wasOpen && dx <= 0) || (st.wasOpen && dx >= 0)) { st.active = false; return; }
+            st.claimed = true;
+        }
+        // Gest "egallandi" — keyingi move'larda sahifa skrolli to'xtaydi
+        e.preventDefault();
+        const sb = document.getElementById('sidebar');
+        if (!sb) { st.active = false; st.claimed = false; return; }
+        const w = sb.offsetWidth || 1;
+        const tx = st.wasOpen
+            ? Math.min(0, Math.max(-w, dx))        // ochiq: 0 → -w (chapga suriladi)
+            : -w + Math.min(w, Math.max(0, dx));   // yopiq: -w → 0 (o'ngga ochiladi)
+        sb.style.transition = 'none';
+        sb.style.transform = 'translateX(' + tx + 'px)';
+    }, { passive: false });
+
+    document.addEventListener('touchend', finishSwipe);
+    document.addEventListener('touchcancel', finishSwipe);
+})();
 
 // ============================================================
 // SCROLL REVEAL HELPERS
@@ -3267,11 +3384,15 @@ function filterCat(cat, el) {
 function searchProducts(q) { posFilter = q; renderCatTabs(); renderProductGrid(); }
 const debouncedSearch = debounce(searchProducts, 300);
 const debouncedSearchProducts = debouncedSearch;
+// Mobil tezlik: og'ir renderlar har harf bosishda emas, pauzadan keyin bir marta bajariladi
+const debouncedRenderShop = debounce(renderShop, 300);
+const debouncedContractsRender = debounce(() => { if (typeof Contracts !== 'undefined') Contracts.render(); }, 300);
+const debouncedGlobalSearch = debounce(globalSearch, 300);
 
 function syncShopSearch(value) {
     const input = document.getElementById('shopSearch');
     if (input) input.value = value;
-    renderShop();
+    debouncedRenderShop();
     renderSearchSuggestions(value);
 }
 
@@ -3479,7 +3600,10 @@ function renderShop() {
     const tabs = document.getElementById('shopCatSidebarList');
     if (!grid || !tabs) return;
 
-    shopFilter = cleanText(document.getElementById('shopSearch')?.value || shopFilter, 80).toLowerCase();
+    // `||` o'rniga element mavjud bo'lsa uni qiymatini olamiz — aks holda
+    // maydon tozalansa ham eski filtr qolib ketardi (ro'yxat tozalanmasdi).
+    const _shopSearchEl = document.getElementById('shopSearch');
+    shopFilter = cleanText(_shopSearchEl ? _shopSearchEl.value : shopFilter, 80).toLowerCase();
     // Kategoriyalar doimiy ro'yxatdan — mahsulot soni 0 bo'lsa ham ko'rinadi
     const cats = ['Barchasi', ...CATEGORIES];
     const nav = document.getElementById('marketCategoryNav');
@@ -5447,11 +5571,203 @@ function importData(input) {
 // ============================================================
 // MODAL
 // ============================================================
+// ------------------------------------------------------------
+// MODAL SHEET — MOBIL: swipe-to-dismiss + scroll-lock + saqlanmagan
+// forma himoyasi. YAGONA markaziy tizim:
+//   • openModal()/closeModal() ichidan chaqiriladi (hooklar quyida);
+//   • touch listenerlar document darajasida BIR MARTA ulanadi
+//     (delegatsiya) — har bir modal ochilganda qayta ulanmaydi;
+//   • gest faqat OCHIQ sheet sarlavhasidan (drag-zone) boshlanadi,
+//     shuning uchun forma maydonlari, tugmalar va ichki skroll bilan
+//     hech qachon to'qnashmaydi; yuqoriga surilganda skroll saqlanadi;
+//   • transform faqat zarur bo'lganda rAF orqali yoziladi;
+//   • desktopda (kenglik > 768) butunlay o'chirilgan.
+// ------------------------------------------------------------
+const ModalSheet = (function () {
+    const isMobile = () => window.innerWidth <= 768;
+    const CLAIM_PX = 8;     // pastga siljish — gestni egallash
+    const ABORT_PX = 10;    // yuqoriga/horizontal siljish — bekor
+    const DISMISS_PX = 120; // shu masofagacha surilsa — yopish
+    const DISMISS_V = 0.5;  // px/ms — tez surib yopish chegarasi
+    const SNAP_MS = 250;    // joyiga qaytish animatsiyasi
+
+    // ---------- Orqa sahifa scroll qulfi (faqat mobil) ----------
+    let lockCount = 0;
+    let savedY = 0;
+    function lockScroll() {
+        if (!isMobile()) return;
+        if (lockCount === 0) {
+            savedY = window.scrollY || document.documentElement.scrollTop || 0;
+            document.body.classList.add('modal-locked');
+        }
+        lockCount++;
+    }
+    function unlockScroll() {
+        if (lockCount === 0) return;
+        lockCount--;
+        if (lockCount === 0) {
+            document.body.classList.remove('modal-locked');
+            // pozitsiya o'zgargan bo'lsaigina tikla (keraksiz layout ishini oldini oladi)
+            try { if ((window.scrollY || 0) !== savedY) window.scrollTo(0, savedY); } catch (e) { }
+        }
+    }
+
+    // ---------- Saqlanmagan forma himoyasi ----------
+    const snapshots = new WeakMap();
+    function snapshot(modal) {
+        const map = new Map();
+        modal.querySelectorAll('input, select, textarea').forEach(el => {
+            map.set(el, el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value);
+        });
+        snapshots.set(modal, map);
+    }
+    function isDirty(modal) {
+        const map = snapshots.get(modal);
+        if (!map) return false;
+        let dirty = false;
+        map.forEach((base, el) => {
+            if (dirty || !el.isConnected) return;
+            const cur = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value;
+            if (cur !== base) dirty = true;
+        });
+        return dirty;
+    }
+
+    // ---------- Swipe holati (yagona state-machine) ----------
+    const st = {
+        id: null, sheet: null,
+        x0: 0, y0: 0, t0: 0,
+        armed: false, claimed: false,
+        sheetH: 0, ty: 0,
+        raf: 0, snapTimer: 0,
+    };
+    function clearSheetStyles(sheet) {
+        if (!sheet) return;
+        sheet.style.removeProperty('transform');
+        sheet.style.removeProperty('transition');
+    }
+    function cancelSnap() {
+        if (st.snapTimer) { clearTimeout(st.snapTimer); st.snapTimer = 0; }
+    }
+    function reset() {
+        if (st.raf) cancelAnimationFrame(st.raf);
+        st.raf = 0;
+        cancelSnap();
+        st.id = null; st.sheet = null;
+        st.armed = false; st.claimed = false;
+    }
+    function applyDrag() {
+        st.raf = 0;
+        if (st.sheet) st.sheet.style.setProperty('transform', 'translateY(' + st.ty + 'px)', 'important');
+    }
+    function snapBack(sheet) {
+        if (!sheet) return;
+        cancelSnap();
+        sheet.style.setProperty('transition', 'transform ' + SNAP_MS + 'ms cubic-bezier(.22,1,.36,1)', 'important');
+        sheet.style.setProperty('transform', 'translateY(0px)', 'important');
+        st.snapTimer = setTimeout(() => { clearSheetStyles(sheet); st.snapTimer = 0; }, SNAP_MS + 120);
+    }
+    function abortGesture() {
+        const sheet = st.sheet;
+        const wasClaimed = st.claimed;
+        reset();
+        if (wasClaimed) snapBack(sheet);
+    }
+
+    // ---------- Touch (faqat mobil; desktopda ishlamaydi) ----------
+    document.addEventListener('touchstart', e => {
+        if (!isMobile()) return;
+        if (st.sheet) abortGesture();
+        if (!e.touches || e.touches.length !== 1) return;
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const sheet = target.closest('.modal-overlay.open, [id$="Modal"].open');
+        if (!sheet) return;
+        // Gest faqat sarlavha (drag-zone) dan boshlanadi
+        const zone = target.closest('.modal-header, .modal-head');
+        if (!zone || !sheet.contains(zone)) return;
+        // Interaktiv elementlar bilan to'qnashmasin
+        if (target.closest('input, textarea, select, button, a, label, [contenteditable="true"]')) return;
+        const t = e.touches[0];
+        cancelSnap();
+        clearSheetStyles(sheet);
+        st.id = sheet.id;
+        st.sheet = sheet;
+        st.x0 = t.clientX; st.y0 = t.clientY;
+        st.t0 = Date.now();
+        st.ty = 0;
+        st.armed = true;
+        st.claimed = false;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', e => {
+        if (!st.sheet) return;
+        if (!e.touches || e.touches.length !== 1) { abortGesture(); return; }
+        const t = e.touches[0];
+        const dy = t.clientY - st.y0;
+        const dx = t.clientX - st.x0;
+        if (!st.claimed) {
+            // yuqoriga yoki gorizontal siljish — forma skrolliga qoldiriladi
+            if (dy < -ABORT_PX || (Math.abs(dx) > ABORT_PX && Math.abs(dx) > Math.abs(dy))) { abortGesture(); return; }
+            if (dy < CLAIM_PX || Math.abs(dx) >= dy) return;
+            // EGALLASH: sheet pastga suriladi
+            st.claimed = true;
+            cancelSnap();
+            st.sheetH = st.sheet.getBoundingClientRect().height || 1;
+            st.sheet.style.setProperty('transition', 'none', 'important');
+        }
+        e.preventDefault();
+        st.ty = Math.max(0, Math.min(dy, st.sheetH));
+        if (!st.raf) st.raf = requestAnimationFrame(applyDrag);
+    }, { passive: false });
+
+    document.addEventListener('touchend', e => {
+        if (!st.sheet) return;
+        const sheet = st.sheet, id = st.id, claimed = st.claimed;
+        if (!claimed) { reset(); return; }
+        const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : st.y0;
+        const dy = endY - st.y0;
+        const dt = Math.max(1, Date.now() - st.t0);
+        reset();
+        if (dy >= DISMISS_PX || (dy / dt) >= DISMISS_V) {
+            // YOPISH — saqlanmagan forma bo'lsa tasdiqlash so'raladi
+            const modal = id ? document.getElementById(id) : null;
+            if (modal && isDirty(modal)) {
+                const ok = confirm("Saqlanmagan o'zgarishlar bor.\nModal yopilsinmi? (OK — yopish, Bekor — qoldirish)");
+                if (!ok) { snapBack(sheet); return; }
+            }
+            closeModal(id);
+        } else {
+            snapBack(sheet);
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchcancel', () => {
+        if (!st.sheet) return;
+        const sheet = st.sheet, claimed = st.claimed;
+        reset();
+        if (claimed) snapBack(sheet);
+    }, { passive: true });
+
+    // ---------- openModal/closeModal hooklari ----------
+    function onOpen(modal) { lockScroll(); snapshot(modal); }
+    function onClose(modal) {
+        snapshots.delete(modal);
+        clearSheetStyles(modal);
+        unlockScroll();
+    }
+
+    return { onOpen, onClose, isDirty };
+})();
+
 function openModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    const fresh = !modal.classList.contains('open');
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
+    // ModalSheet: scroll-lock + forma snapshot (faqat birinchi ochilishda)
+    if (fresh) ModalSheet.onOpen(modal);
     const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if (focusable) setTimeout(() => focusable.focus(), 0);
 }
@@ -5459,8 +5775,11 @@ function openModal(id) {
 function closeModal(id) {
     const modal = document.getElementById(id);
     if (modal) {
+        const wasOpen = modal.classList.contains('open');
         modal.classList.remove('open');
         modal.setAttribute('aria-hidden', 'true');
+        // ModalSheet: lock ochiladi, skroll pozitsiyasi tiklanadi
+        if (wasOpen) ModalSheet.onClose(modal);
     }
     if (id === 'checkoutModal' && clickPollingInterval) {
         clearInterval(clickPollingInterval);
@@ -5487,6 +5806,8 @@ function showNotif(type, title, msg, options = {}) {
     <button onclick="this.parentNode.remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px">×</button>`;
     const container = document.getElementById('notifContainer');
     container.appendChild(el);
+    // Tez ketma-ket bosishlarda (POS) notiflar yig'ilib qolmasligi uchun cheklov
+    while (container.children.length > 4) container.firstElementChild.remove();
     setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 300); }, 4000);
 }
 
@@ -8162,8 +8483,8 @@ const Contracts = {
         const tbody = document.getElementById('contractsTable');
         if (!tbody) { updateContractsBadge(); return; }
         // Shartnomalarni faqat administrator tahrirlaydi/o'chiradi
-        const canManage = canManageContracts();   // admin + menejer: tuzadi/tahrirlaydi
-        const isAdmin = isMainAdmin();            // faqat asosiy admin: o'chiradi
+        const canManage = canManageContracts();   // admin + menejer + Boshliq: tuzadi/tahrirlaydi
+        const isAdmin = isMainAdmin() || isBoss();   // o'chirish: asosiy admin yoki BOSHLIQ
         const list = this.getFiltered();
 
         tbody.innerHTML = list.map(c => {
@@ -8332,7 +8653,7 @@ const Contracts = {
         if (!c) return;
         const st = CONTRACT_STATUS[c.status] || CONTRACT_STATUS.active;
         const canManage = canManageContracts();
-        const isAdmin = currentUser?.role === 'admin';   // bekor qilish: adminlar
+        const isAdmin = currentUser?.role === 'admin' || isBoss();   // bekor qilish: adminlar va BOSHLIQ
         const itemsHtml = c.items.length
             ? `<table class="contract-items-table"><thead><tr><th>Mahsulot</th><th>Soni</th><th>Narxi</th><th>Jami</th></tr></thead>
          <tbody>${c.items.map(i => `<tr><td>${escapeHTML(i.name)}</td><td>${i.qty}</td>
@@ -8447,9 +8768,9 @@ const Contracts = {
 
     /** Shartnomani butunlay o'chiradi (faqat admin) */
     remove(id) {
-        if (!isMainAdmin()) {
+        if (!(isMainAdmin() || isBoss())) {
             playError();
-            showNotif('error', 'Ruxsat yo\'q!', 'Shartnomani faqat asosiy admin o\'chira oladi');
+            showNotif('error', 'Ruxsat yo\'q!', 'Shartnomani faqat asosiy admin yoki Boshliq o\'chira oladi');
             securityLog('access-denied', 'medium',
                 `Shartnomani o'chirishga urinish: ${currentUser?.login || 'mehmon'} (${currentUser?.role || '-'})`);
             return;
@@ -9925,18 +10246,20 @@ const Branches = {
                 '<span>' + escapeHTML(b.markerIcon) + '</span></div></td>' +
                 '<td><strong>' + escapeHTML(b.name) + '</strong>' + isMain +
                 (b.code ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.code) + '</div>' : '') + '</td>' +
-                '<td>' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
-                '<td>' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
+                // data-label — faqat MOBIL karta yorliqlari (presentation, CSS ::before
+                // ichidan o'qiladi). Ma'lumot/summalar o'zgarmagan, faqat yorliq qo'shilgan.
+                '<td data-label="Manzil">' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
+                '<td data-label="Telefon">' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
                 (b.hours ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.hours) + '</div>' : '') + '</td>' +
-                '<td>' + k.products + '</td>' +
-                '<td>' + fmt(k.stockValue) + ' so\'m</td>' +
-                '<td>' + k.salesCount + ' ta / ' + fmt(k.revenue) + ' so\'m</td>' +
-                '<td style="color:var(--success)">' + fmt(k.income) + ' so\'m</td>' +
-                '<td style="color:var(--danger)" title="Chiqim: ' + fmt(k.expense) + ' so\'m · Harajat: ' + fmt(k.harajat) + ' so\'m">' +
+                '<td data-label="Mahsulot">' + k.products + '</td>' +
+                '<td data-label="Ombor qiymati">' + fmt(k.stockValue) + ' so\'m</td>' +
+                '<td data-label="Savdo">' + k.salesCount + ' ta / ' + fmt(k.revenue) + ' so\'m</td>' +
+                '<td data-label="Kirim" style="color:var(--success)">' + fmt(k.income) + ' so\'m</td>' +
+                '<td data-label="Chiqim" style="color:var(--danger)" title="Chiqim: ' + fmt(k.expense) + ' so\'m · Harajat: ' + fmt(k.harajat) + ' so\'m">' +
                 fmt(k.expense + k.harajat) + ' so\'m</td>' +
-                '<td style="font-weight:700;color:' + profitColor + '">' +
+                '<td data-label="Sof foyda" style="font-weight:700;color:' + profitColor + '">' +
                 (k.profit < 0 ? '−' : '') + fmt(Math.abs(k.profit)) + ' so\'m</td>' +
-                '<td>' + (b.status === 'active'
+                '<td data-label="Holat">' + (b.status === 'active'
                     ? '<span style="color:var(--success)"><i class="fas fa-circle-check"></i> Faol</span>'
                     : '<span style="color:var(--muted)"><i class="fas fa-circle-pause"></i> Nofaol</span>') +
                 (canManage ? '<button type="button" class="btn btn-outline btn-sm" style="margin-left:6px" ' +

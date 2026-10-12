@@ -321,8 +321,10 @@ def add_security_headers(response):
         # frame-src: o'z sahifamizdagi Google Maps manzil embed'i (index.html
         # .store-map-frame) uchun ANIQ hostlar — embed avval maps.google.com'ga,
         # keyin Google tomonidan www.google.com'ga redirect qiladi (jonli testda
-        # ikkala URL ham kuzatildi). Boshqa manbalar o'zgarmadi.
-        "frame-src https://challenges.cloudflare.com https://*.click.uz https://checkout.paycom.uz https://*.uzumbank.uz https://maps.google.com https://www.google.com; "
+        # ikkala URL ham kuzatildi). 'self' — o'z saytimizning ichki embed'lari
+        # (masalan mobil test harness iframelari); tashqi saytlar frame-src'da
+        # yo'q, X-Frame-Options SAMEORIGIN esa clickjackingni himoyalaydi.
+        "frame-src 'self' https://challenges.cloudflare.com https://*.click.uz https://checkout.paycom.uz https://*.uzumbank.uz https://maps.google.com https://www.google.com; "
         "object-src 'none'; "
         "base-uri 'self'; "
         "form-action 'self'"

@@ -1922,7 +1922,6 @@ button[class*="btn"] {
     align-items: center;
     gap: 8px;
     transition: var(--transition-spring);
-    will-change: transform;
     position: relative;
     overflow: hidden;
 }
@@ -2791,7 +2790,6 @@ tbody tr:last-child td {
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
-    will-change: transform;
 }
 
 .product-card::after {
@@ -11318,7 +11316,6 @@ html {
 #app.market-mode .shop-product-card {
     border-radius: 16px;
     transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
-    will-change: transform;
 }
 
 #app.market-mode .shop-product-card:hover {
@@ -12441,6 +12438,17 @@ body {
     padding: env(safe-area-inset-top, 0px) 12px 8px 12px !important;
     transition: none;
   }
+  /* Mobil GPU: doimiy (fixed) glass elementlar scroll paytida har kadrl
+     qayta-blur qilinadi — radius mobil qurilmada kamaytiriladi, desktop o'zgarmaydi */
+  #app:not(.market-mode) .topbar,
+  #app.market-mode .market-top {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .sidebar {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
   .topbar .page-title {
     /* ☰ tugmasi fixed (12px, 48px) — sarlavha uning ostiga tushmasligi uchun
        chapdan joy ajratiladi (12px topbar padding + 48px tugma + 8px bo'shliq). */
@@ -12857,6 +12865,117 @@ body {
   .table-wrap tbody td[colspan] { justify-content: center; text-align: center; font-style: italic; color: var(--muted); padding: 16px 0 !important; }
   .table-wrap tbody td[colspan]::before { display: none; content: ""; }
 
+  /* ============== FILIALLAR — MOBIL KARTA (faqat #branchesTable) ==============
+     Umumiy mobil jadval-qoidasi filial qatorini yorliqsiz, o'ngga tekislangan
+     zich ustun qilib qo'ygan edi — summalar bir-biridan ajralmasdi. Bu yerda
+     filial kartasi qayta tartiblanadi (ma'lumotlar/summalar O'ZGARMADI,
+     faqat joylashuv): yuqorida A) ikona+nom, manzil, telefon, holat;
+     o'rtada B) 2 ustunli moliyaviy bloklar (nom tepada, qiymat pastda);
+     pastda C) to'liq kenglikdagi amallar tugmalari (44px touch). */
+  #page-branches #branchesTable tr {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 10px;
+    row-gap: 8px;
+    padding: 12px !important;
+  }
+  #page-branches #branchesTable td {
+    border-bottom: none !important;
+    padding: 0 !important;
+    width: auto !important; /* umumiy `width:100% !important` flex-bosimga xalaqit beras edi */
+  }
+  /* A. Filial ma'lumotlari */
+  #page-branches #branchesTable td:nth-child(1) {
+    flex: 0 0 auto;
+    justify-content: flex-start !important;
+    align-self: center;
+  }
+  #page-branches #branchesTable td:nth-child(1)::before,
+  #page-branches #branchesTable td:nth-child(2)::before {
+    display: none !important;
+  }
+  #page-branches #branchesTable td:nth-child(2) {
+    flex: 1 1 calc(100% - 54px);
+    min-width: 0;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    align-self: center;
+  }
+  #page-branches #branchesTable td:nth-child(2) strong {
+    font-size: 14.5px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  #page-branches #branchesTable td:nth-child(3),
+  #page-branches #branchesTable td:nth-child(4) {
+    flex: 1 1 100%;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  #page-branches #branchesTable td:nth-child(4) a {
+    word-break: break-all;
+    text-decoration: none;
+  }
+  #page-branches #branchesTable td:nth-child(3)::before,
+  #page-branches #branchesTable td:nth-child(4)::before,
+  #page-branches #branchesTable td:nth-child(11)::before {
+    width: auto;
+    max-width: none;
+    min-width: 58px;
+    padding-right: 10px;
+  }
+  /* B. Moliyaviy bloklar — 2 ustun; label tepada, qiymat pastida */
+  #page-branches #branchesTable td:nth-child(n+5):nth-child(-n+10) {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+    display: block !important;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px !important;
+    text-align: left !important;
+    font-size: 12.5px;
+    font-weight: 700;
+    word-break: break-word;
+  }
+  #page-branches #branchesTable td:nth-child(n+5):nth-child(-n+10)::before {
+    content: attr(data-label);
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    padding-right: 0;
+    margin-bottom: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  /* Holat — to'liq qator; toggle tugmasi 44px */
+  #page-branches #branchesTable td:nth-child(11) {
+    flex: 1 1 100%;
+    align-items: center !important;
+    font-size: 13px;
+  }
+  #page-branches #branchesTable td:nth-child(11) button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* C. Amallar — pastda, to'liq kenglikda, teng bo'lingan */
+  #page-branches #branchesTable td:nth-child(12) {
+    flex: 1 1 100%;
+  }
+  #page-branches #branchesTable td:nth-child(12) > div {
+    width: 100%;
+    justify-content: stretch;
+  }
+  #page-branches #branchesTable td:nth-child(12) button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    margin-left: 0;
+    font-size: 13px;
+  }
+
   /* ============== PRODUCTS PAGE — MOBILE CARD ENHANCEMENTS ============== */
   /* ≤768px: mahsulotlar jadvali KARTA (stacked) rejimiga o'tadi. Desktop va
      planshet uchun yozilgan qat'iy kenglik (1191px) va matn qisqartirish
@@ -12984,6 +13103,14 @@ body {
   }
 
   /* ============== CATEGORIES PAGE — MOBILE CARD ============== */
+  /* Karta rejimida jadval min-width (640px) neutralizatsiya qilinadi:
+     aks holda 640pxlik blok mobil ekran (>640 bo'lmagan) kesilardi va
+     Amallar tugmalari yopiq qolardi (html overflow-x: clip tufayli
+     gorizontal scroll ham ko'rinmas edi). */
+  #page-categories .categories-table {
+    min-width: 0;
+    table-layout: auto;
+  }
   #page-categories .panel-header {
     flex-direction: column;
     align-items: stretch;
@@ -13104,11 +13231,23 @@ body {
   }
 
   /* ============== MODALS → BOTTOM SHEET ============== */
-  .modal, modal, [class*="modal"]:not(.sidebar-overlay):not(.market-drawer-overlay),
+  /* FAQAT sheet ildizlari: .modal-overlay wrapper yoki overlay'siz root .modal.
+     [class*="modal"] selektori OLIB TASHLANDI — u ichki qismlarni
+     (.modal-header, .modal-body, .modal-head, .modal-foot, .modal-box,
+     .modal-close va ichki .modal karta) ham alohida fixed-bottom-sheet qilib
+     qo'yardi: header/panel ekranning PASTIGA tushib, qolgan qismlar bilan
+     ustma-ust chiqardi (profil modali: header bottom:0 → top=668px,
+     body ham bottom:0 → top=131px, sheet kartasi 1px qoldi).
+     Ichi .modal endi quyidagi `position: static` qoidasi bilan sheet ichida
+     oddiy ustun bo'ladi. */
+  .modal:not(.modal-overlay .modal),
   .payment-modal, .product-modal, .customer-modal, .employee-modal, .branch-modal,
-  #paymentModal, #productModal, #customerModal, #employeeModal, #branchModal,
-  #receiptModal, #reportModal, #contractModal, #discountModal, #categoryModal,
-  #profileModal, #notifModal, [role="dialog"],
+  /* MUHIM: aniq `#profileModal` kabi ID'lar shu ro'yxatdan OLINDI —
+     ularning specifikasiyasi (1,0,0) pastdagi `.modal-overlay:not(.open)`
+     yopish qoidasidan (0,3,0) kuchliroq edi va yopiq modallar display:flex
+     bo'lib qolayotgan edi (ghost = ekran pastida bosishni to'suvchi
+     z-index:9999 qatlam). Barcha ID'lar [id$="Modal"] bilan qamraladi. */
+  [role="dialog"],
   [id$="Modal"] {
     position: fixed !important;
     left: 0 !important;
@@ -13136,12 +13275,89 @@ body {
   }
   @keyframes mSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
   /* Pastki sheet qoidasi faqat OCHIQ overlay'ga nisbatan ishlasin.
-     Aks holda [class*="modal"] / [id$="Modal"] yopiq `.modal-overlay` ni
-     ham ushlab, `display:flex !important` beradi — yopiq modallar ekran
-     pastida noyob chiziq bo'lib ko'rinib qoladi. (Teng specifika — bu
-     qoida keyinroq kelgani uchun g'olib bo'ladi.) */
-  .modal-overlay:not(.open):not(.sidebar-overlay) {
+     Aks holda yopiq `.modal-overlay` ham `display:flex !important` oladi
+     va ekran pastida noyob (endi esa to'liq qatlamli) ghost-chiziq
+     qolardi — u bosishni ham to'sardi (z-index:9999).
+     Ikkinchi qator: boss root-modallari (`div.modal#boss*Modal`) —
+     ular `.modal-overlay` klassiga ega emas, ularning `display:none` id-qoidasi
+     sheetning `!important`iga yutardi; [id$]:not(.open) (0,3,0) sheetdan
+     (0,2,0) kuchliroq. */
+  .modal-overlay:not(.open):not(.sidebar-overlay),
+  [id$="Modal"]:not(.open):not(.modal-overlay):not(.sidebar-overlay) {
     display: none !important;
+  }
+  /* Ochiq sheet ichidagi .modal — alohida qatlam EMAS, kontent ustuni:
+     sheet (overlay) o'zi radius/fon/animatsiyani oladi; ichki karta esa
+     statik flex bo'ladi — header tepada, body ichki scroll (max-height
+     pastdagi qoidada), footer/mijozlar pastda qoladi. */
+  .modal-overlay .modal {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    transform: none !important;
+    animation: none !important;
+    /* TUZATISH (mobil qo'shish oynalari):
+       1) `overflow: visible` → kontent sheet max-height (92vh) dan uzun bo'lsa,
+          uni root `.modal-overlay { overflow: hidden }` kesib qo'yardi va
+          Saqlash tugmasigacha scroll qilib bo'lmasdi (branchModal'da Saqlash
+          1546px da edi — ekrandan tashqarida, ya'man to'liq qirqilgan).
+          Endi ichki `.modal` o'zi scroll konteyneri (`.modal-body`li
+          modallarda esa o'zgartiruvchi ta'sir qilmaydi — body ichki
+          scroll bilan qoladi, `.modal` ortiqcha skrolllanmaydi).
+       2) `.modal-body`siz eski qurilgan modallar (branchModal, contractModal,
+          productModal, customerModal, categoryModal, maosh/chegirma modallari
+          — jami 11 ta) da forma qatorlari to'g'ridan-to'g'ri `.modal`
+          bolasi edi: `.modal` padding:0 bo'lgani uchun maydonlar sheet
+          chetlariga yopishib qolgan edi. Tegishli bolalar ichki
+          gorizontal padding oladi (quyidagi qoida). */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    z-index: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto;
+  }
+  /* `.modal-body`siz qurilgan modallarning to'g'ridan-to'g'ri bolalari
+     (form-row, form-col, matn, buttonsizsiz DIV) — ichki gorizontal padding.
+     `.modal-header`/`.modal-body`/`.modal-footer` o'z paddingini o'zi oladi;
+     inline-style yoki o'z klassi bilan padding qurilgan elementlar
+     (masalan `.salary-modal-emp-info`, rasm yuklash qutisi) bu ro'yxatda
+     yo'q. `productDetailModal` o'z maxsus dizayni uchun mustasno. */
+  .modal-overlay:not(#productDetailModal) .modal > .form-row,
+  .modal-overlay:not(#productDetailModal) .modal > .form-col,
+  .modal-overlay:not(#productDetailModal) .modal > .grid-2,
+  .modal-overlay:not(#productDetailModal) .modal > .grid-3,
+  .modal-overlay:not(#productDetailModal) .modal > p,
+  .modal-overlay:not(#productDetailModal) .modal > small,
+  .modal-overlay:not(#productDetailModal) .modal > div:not([class]) {
+    padding-left: 16px;
+    padding-right: 16px;
+    box-sizing: border-box;
+  }
+  /* Skroll oxirida oxirgi element pastki chetga yopishmasin */
+  .modal-overlay:not(#productDetailModal) .modal > *:last-child:not(.modal-header):not(.modal-footer) {
+    padding-bottom: 16px;
+  }
+  /* Boss modallar boshlig'i (.modal-head) dagi ✕ tugmasi ham44×44 bo'lsin
+     (tegishli qoida faqat .modal-header uchun yozilgan edi). */
+  .modal-head .modal-close {
+    min-width: 44px;
+    min-height: 44px;
   }
   .modal .modal-header, modal .modal-header, [class*="modal"]:not(.sidebar-overlay) .modal-header,
   [id$="Modal"] .modal-header, [role="dialog"] .modal-header,
@@ -13203,6 +13419,33 @@ body {
     font-weight: 700;
   }
   .modal .modal-footer button:first-child:last-child { flex: 1 1 100%; }
+
+  /* ============== MODAL SHEET: SWIPE + LOCK ==============
+     Swipe-to-dismiss logikasi scripts.js `ModalSheet` modulida;
+     bu yerda faqat ikkita CSS qo'llab-quvvatlovchi qoida:
+     1) body.modal-locked — modal ochiqda orqa sahifa skrolli
+        qulflanadi (eski pozitsiya JS'da saqlanib yopilganda qaytariladi);
+     2) sarlavhadagi drag-handle chizig'i — pastga surishning
+        vizual ko'rsatkichi (faqat mobil sheet'larda). */
+  body.modal-locked {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+  [id$="Modal"] .modal-header::after,
+  [id$="Modal"] .modal-head::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 4px;
+    border-radius: 99px;
+    background: var(--border);
+    opacity: .85;
+    pointer-events: none;
+  }
+
   .modal-backdrop, .modal-bg, .overlay:not(.sidebar-overlay):not(.market-drawer-overlay),
   [class*="backdrop"] {
     background: rgba(0,0,0,.65);
@@ -13338,12 +13581,17 @@ body {
   }
 
   /* ============== POS / KASSA SAHIFASI ============== */
+  /* margin:0 — desktop'dagi legacy full-bleed `margin:-32px` mobil (≤768px)
+     qoldig'ida layoutni 32px chapga surib qo'yardi (Savat sarlavhasi
+     qirqilardi). ≤600px'da allaqachon margin:0 edi — endi butun mobil
+     diapazonda bir xil. */
   #page-pos { padding: 12px 12px calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
   #page-pos .pos-layout {
     display: flex !important;
     flex-direction: column !important;
     grid-template-columns: none !important;
     width: 100% !important;
+    margin: 0 !important;
     gap: 14px !important;
     min-width: 0 !important;
     max-width: 100% !important;
@@ -13926,8 +14174,8 @@ body {
     height: calc(66px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--hdr-bg) !important;
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
     border-top: 1px solid var(--hdr-border);
     box-shadow: 0 -8px 28px rgba(0,0,0,.28);
     color: var(--hdr-fg);

@@ -380,6 +380,12 @@
 .boss-form .form-group small {
     display: block; font-size: 11px; color: var(--text-muted); margin-top: 5px;
 }
+/* O'z parolini o'zgartirish modali: ko'z tugmasi input ichida, o'ng tomonda.
+   `.pass-toggle` (login formasi) qayta ishlatiladi — faqat input darajasida
+   markazlash va matn tugma ustiga yiqilmasligi uchun padding. */
+.boss-pass-inline { position: relative; }
+.boss-pass-inline .form-control { padding-right: 38px; }
+.boss-pass-inline .pass-toggle { right: 10px; }
 .boss-modal-note {
     font-size: 12px; color: var(--text-secondary); margin: 12px 0 0;
     padding: 10px 12px; border-radius: var(--radius-sm);

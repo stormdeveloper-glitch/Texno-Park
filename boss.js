@@ -1227,6 +1227,21 @@ function setPeriod(value) {
         if (eye) eye.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
     }
 
+    /**
+     * O'z parolini o'zgartirish modali: ko'rsatilgan maydon parolini
+     * ko'rsatish/yashirish. Har bir maydon mustaqil (id orqali);
+     * faqat input type va ko'z ikonkasini o'zgartiradi — hech qanday
+     * saqlash yoki formani yuborish harakati yo'q.
+     */
+    function toggleOwnPassField(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        const eye = document.getElementById(inputId + '-eye');
+        if (eye) eye.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+    }
+
     /** Kuchli tasodifiy parol yaratadi (~10 belgi, adashtiruvchi belgilarsiz). */
     function generatePassword() {
         const input = document.getElementById('boss-new-password');
@@ -1386,7 +1401,12 @@ function setPeriod(value) {
     function openOwnPasswordModal() {
         ['boss-own-current', 'boss-own-new', 'boss-own-confirm'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.value = '';
+            if (!el) return;
+            el.value = '';
+            // Har qanday ochiq holatdan keyin qayta ochilganda yashirin (nuqtalar) boshlanadi
+            el.type = 'password';
+            const eye = document.getElementById(id + '-eye');
+            if (eye) eye.className = 'fas fa-eye';
         });
         openModal('bossOwnPassModal');
     }
@@ -1731,7 +1751,7 @@ function setPeriod(value) {
         createStaff, deleteStaff, toggleBlock, submitStaffPassword,
         revealStaffPassword, toggleCurrentPassword, rerenderStaffTable,
         toggleNewPassword, generatePassword, copyCredentials, resetNewStaffForm,
-        showNewStaffCredentials, copyText,
+        showNewStaffCredentials, copyText, toggleOwnPassField,
         submitOwnPassword, openOwnPasswordModal, exportReportsCsv,
         paintPeriodChips, periodChips, syncCustomDates
     };

@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="color-scheme" content="light dark">
   <title>Texno Park N1 POS — Premium</title>
@@ -14,8 +14,8 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.10.6">
-  <link rel="stylesheet" href="boss.css?v=2.1.0">
+  <link rel="stylesheet" href="style.css?v=5.11.1">
+  <link rel="stylesheet" href="boss.css?v=2.1.1">
 </head>
 
 <body>
@@ -126,29 +126,29 @@
         <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
           <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
-        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin,manager" style="width:100%">
-          <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees" data-role="admin,manager">
+        <!-- XODIMLAR bo'limi faqat MENEDJER menyusida (wrapper data-role="manager"):
+             ADMIN menyusidan butunlay olib tashlandi — bo'sh dropdown ham qolmaydi.
+             nav-employees `data-page="page-employees"` bilan saqlanadi — bu
+             canAccessPage() uchun ruxsat manbai (admin/menejer topbar'dagi
+             «Xodim qo'shish» orqali sahifaga kira oladi), ko'rinishi esa
+             wrapper data-role orqali boshqariladi. -->
+        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="manager" style="width:100%">
+          <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees"
+            data-role="admin,manager" data-page="page-employees">
             <i class="fas fa-id-badge"></i><span>Xodimlar</span>
             <i class="fas fa-chevron-down submenu-arrow" style="margin-left:auto;transition:transform 0.2s"></i>
           </div>
-          <div class="nav-submenu" id="employees-submenu">
-            <div class="nav-item submenu-item" data-role="admin"
-              onclick="goTo('page-employees',this); setTimeout(openEmployeeModal, 150);">
-              <i class="fas fa-user-plus"></i><span>Ro'yxatdan o'tish</span>
-            </div>
-            <div class="nav-item submenu-item" data-role="admin" onclick="doLogout()">
-              <i class="fas fa-sign-in-alt"></i><span>Kirish</span>
-            </div>
-            <div class="nav-item submenu-item" data-role="admin" onclick="goTo('page-settings',this)">
-              <i class="fas fa-cog"></i><span>Sozlama</span>
-            </div>
-            <div class="nav-item submenu-item" data-role="admin" onclick="openProfileModal()">
-              <i class="fas fa-user-circle"></i><span>Profil</span>
-            </div>
-          </div>
+          <!-- 4 ta band (Ro'yxatdan o'tish, Kirish, Sozlama, Profil) olib tashlandi —
+               ularning funksiyalari o'z joylarida ishlaydi: Sozlamalar → alohida
+               "Sozlamalar" bo'limi, Profil → "Profilim", xodim qo'shish → topbar,
+               chiqish → "Tizimdan chiqish". -->
+          <div class="nav-submenu" id="employees-submenu"></div>
         </div>
+        <!-- Shartnomalar: ADMIN va BOSHLIQ uchun bitta umumiy sahifa/baza
+             (backend'da require_staff iyerarxiyasi boss'ni admin darajasidan
+             o'tkazadi — alohida API/jadval yaratilmagan). -->
         <div class="nav-item" onclick="goTo('page-contracts',this)" id="nav-contracts"
-          data-role="admin">
+          data-role="admin,boss">
           <i class="fas fa-file-signature"></i><span>Shartnomalar</span>
           <span class="nav-badge" id="navContractsBadge">0</span>
         </div>
@@ -233,7 +233,7 @@
       </div>
       <div class="topbar-search">
         <i class="fas fa-search"></i>
-        <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="globalSearch(this.value)" id="globalSearchInput">
+        <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="debouncedGlobalSearch(this.value)" id="globalSearchInput">
       </div>
       <!-- FAOL FILIAL TANLAGICH -->
       <div class="branch-switcher" id="branchSwitcherWrap"
@@ -654,7 +654,7 @@
                   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                     <div class="shop-search">
                       <i class="fas fa-search"></i>
-                      <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="renderShop()">
+                      <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="debouncedRenderShop()">
                     </div>
                     <div class="shop-sort">
                       <select id="shopSortSelect" onchange="renderShop()" class="form-control"
@@ -1547,7 +1547,7 @@
             <h3><i class="fas fa-list-check" style="color:var(--primary)"></i> Shartnomalar ro'yxati</h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <input class="form-control" id="contractSearch" placeholder="Raqam / mijoz bo'yicha qidirish..."
-                style="min-width:220px;height:38px" oninput="Contracts.render()">
+                style="min-width:220px;height:38px" oninput="debouncedContractsRender()">
               <select class="form-control" id="contractStatusFilter" style="height:38px;width:auto"
                 onchange="Contracts.render()">
                 <option value="">Barcha holat</option>
@@ -3662,12 +3662,30 @@
       </div>
       <div class="modal-body">
         <div class="boss-form">
+          <!-- Ko'z tugmalari mavjud `.pass-toggle` komponentidan (login formasi) foydalanadi:
+               har bir maydon mustaqil ochib-yopiladi, forma yuborilmaydi (type="button"). -->
           <label class="form-group"><span>Joriy parol <b>*</b></span>
-            <input type="password" class="form-control" id="boss-own-current" autocomplete="current-password"></label>
+            <div class="boss-pass-inline">
+              <input type="password" class="form-control" id="boss-own-current" autocomplete="current-password">
+              <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-own-current')"
+                aria-label="Joriy parolni ko'rsatish/yashirish" title="Parolni ko'rsatish/yashirish"><i
+                  class="fas fa-eye" id="boss-own-current-eye"></i></button>
+            </div></label>
           <label class="form-group"><span>Yangi parol <b>*</b></span>
-            <input type="password" class="form-control" id="boss-own-new" minlength="6" autocomplete="new-password"></label>
+            <div class="boss-pass-inline">
+              <input type="password" class="form-control" id="boss-own-new" minlength="6" autocomplete="new-password">
+              <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-own-new')"
+                aria-label="Yangi parolni ko'rsatish/yashirish" title="Parolni ko'rsatish/yashirish"><i
+                  class="fas fa-eye" id="boss-own-new-eye"></i></button>
+            </div></label>
           <label class="form-group"><span>Tasdiqlash <b>*</b></span>
-            <input type="password" class="form-control" id="boss-own-confirm" minlength="6" autocomplete="new-password"></label>
+            <div class="boss-pass-inline">
+              <input type="password" class="form-control" id="boss-own-confirm" minlength="6"
+                autocomplete="new-password">
+              <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-own-confirm')"
+                aria-label="Tasdiqlash parolini ko'rsatish/yashirish" title="Parolni ko'rsatish/yashirish"><i
+                  class="fas fa-eye" id="boss-own-confirm-eye"></i></button>
+            </div></label>
         </div>
         <p class="boss-modal-note">Parol o'zgargach barcha sessiyalar yopiladi — qayta kiring.</p>
       </div>
@@ -3760,8 +3778,8 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.14"></script>
-  <script src="boss.js?v=2.1.0"></script>
+  <script src="scripts.js?v=1.4.20"></script>
+  <script src="boss.js?v=2.1.1"></script>
   <script>
     /* Header: surilganda ixchamlashadi */
     (function () {
