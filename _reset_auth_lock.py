@@ -13,7 +13,7 @@ Vazifa (faqat development/test muhiti uchun):
         MANAGER  +998902750921
         CASHIER  +998905450921
      — hech biri BLOCKED/LOCKED bo'lmasligi kerak.
-  3) Har bir hisobning parol xeshi 'diyorbek6272' bilan mosligini tekshiradi
+  3) Har bir hisobning parol xeshi BOSS_DEFAULT_PASSWORD muhit o'zgaruvchisidagi parol bilan mosligini tekshiradi
      (app.py dagi sxema: sha256(salt + '::' + password)).
   4) Server tomonidagi IP rate-limit (in-memory `_login_attempts`) ishga
      tushirilgan jarayon xotirasida turadi — server qayta ishga tushirilsa
@@ -43,7 +43,7 @@ import sys
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.getenv('DB_PATH') or os.path.join(BASE_DIR, 'Data', 'database.db')
 
-PASSWORD = 'diyorbek6272'
+PASSWORD = os.getenv('BOSS_DEFAULT_PASSWORD', '').strip()
 
 ACCOUNTS = [
     ('BOSHLIQ', '+998901234554', 'boss'),
@@ -156,8 +156,12 @@ def main() -> int:
             print(f'  [OK]   {label}: {phone} — status=active, lock maydonlari yo\'q')
 
     print()
-    print('--- 2) PAROL XESHI TEKSHIRUVI (diyorbek6272) ---')
+    print('--- 2) PAROL XESHI TEKSHIRUVI (BOSS_DEFAULT_PASSWORD env) ---')
+    if not PASSWORD:
+        print("  [SKIP] BOSS_DEFAULT_PASSWORD muhit o'zgaruvchisi bo'sh — xesh tekshiruvi o'tkazilmadi.")
     for label, phone, role in ACCOUNTS:
+        if not PASSWORD:
+            break
         user = next((u for u in staff if normalize_phone(u.get('phone', '')) == phone), None)
         if user is None:
             continue

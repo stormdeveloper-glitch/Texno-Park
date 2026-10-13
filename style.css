@@ -10170,6 +10170,59 @@ body {
 #app.market-mode .market-logo { width: 50px; height: 50px; flex: 0 0 50px; }
 .login-logo .logo-icon { width: 76px; height: 76px; border-radius: 20px; }
 
+/* ── Brending: YUKLANGAN kompaniya logotipi (has-custom-logo) ───────────
+   `applyBranding()` konteynerga `has-custom-logo` sinfini qo'shadi va ichiga
+   `.brand-logo-img` rasmni joylaydi. Yuqoridagi `... > * { display:none }`
+   qoidasi faqat STANDART ikonkani yashirish uchun yozilgan edi, lekin u
+   yuklangan rasmni ham yashirib qo'yardi — natijada logotip sayt bo'ylab
+   (login, yon panel, do'kon) almashmasdi. Quyidagi qoidalar bir xil yoki
+   yuqoriroq spetsifikatsiyaga ega bo'lgani uchun ustun turadi. */
+#app.market-mode .market-logo.has-custom-logo > *,
+#loginShowcaseLogo.has-custom-logo > *,
+.login-logo .logo-icon.has-custom-logo > *,
+.logo-sq.has-custom-logo > * { display: block !important; }
+
+#app.market-mode .market-logo.has-custom-logo,
+#app.market-mode .market-footer-brand .market-logo.has-custom-logo,
+#loginShowcaseLogo.has-custom-logo,
+.login-logo .logo-icon.has-custom-logo,
+.logo-sq.has-custom-logo {
+    background-image: none !important;
+    background-color: #14060a !important;
+    box-shadow: 0 0 0 1px rgba(255, 70, 50, .35), 0 8px 22px rgba(120, 0, 15, .4);
+}
+
+/* Logotip rasmi konteyner ichiga to'liq sig'adi (cho'zilmaydi/qirqilmaydi) */
+.brand-logo-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 4px;
+    box-sizing: border-box;
+    object-fit: contain;
+    object-position: center;
+}
+
+/* Sozlamalar → «Kompaniya logotipi» kichik ko'rinishi (preview).
+   Ilgari bu konteynerda CSS umuman yo'q edi: ichidagi `width:100%` rasm
+   tabiiy o'lchamida cho'zilib, qator ichida qirqilib ("chala") ko'rinardi.
+   Endi qat'iy kvadrat ramka + `contain` — logotip butunlay ko'rinadi. */
+.logo-preview-box {
+    width: 132px;
+    height: 132px;
+    flex: 0 0 132px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px dashed var(--border-mid, rgba(148, 163, 184, .26));
+    border-radius: 16px;
+    background: var(--surface, #170b0c);
+}
+.logo-preview-box .brand-logo-img { padding: 0; }
+
 /* Header fon/qidiruv uslublari — "HEADER v4" bo'limida (pastda, yarim shaffof + blur) */
 
 /* Header tugmalari uslublari — "HEADER v4" bo'limida (pastda) */

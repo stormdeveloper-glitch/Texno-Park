@@ -77,6 +77,30 @@ function escapeHTML(str) {
     }[tag] || tag));
 }
 
+/**
+ * `onclick="..."` ichida JS satr kontekstida xavfsiz joylashtiradi.
+ *
+ * MUHIM: bu yerda `escapeHTML()` YETARLI EMAS — brauzer atribut qiymatini
+ * AVVAL HTML entity'lardan dekodlaydi, KEYIN JS sifatida bajaradi. Ya'ni
+ * `&#39;` yana apostrofga aylanadi va JS satridan chiqib ketadi (XSS).
+ * Auditda mahsulot nomi orqali ommaviy vitrinada XSS tasdiqlangan edi:
+ *   nom = X');window.__XSS=1;//  →  tugma bosilganda payload bajarilgan.
+ * Shu sababli: backslash va apostrof JS darajasida escape qilinadi, HTML
+ * uchun esa & < > " almashtiriladi (escapeHTML orqali).
+ */
+function jsStrAttr(value) {
+    if (value === null || value === undefined) return '';
+    const BS = String.fromCharCode(92);   // backslash
+    const Q = String.fromCharCode(39);    // apostrof
+    return escapeHTML(String(value).split(BS).join(BS + BS).split(Q).join(BS + Q))
+        .replace(/[\r\n]/g, ' ');
+}
+
+/** `onclick="Func('<qiymat>')"` uchun tayyor bo'lak (JS + HTML xavfsiz). */
+function jsStrLiteral(value) {
+    return "'" + jsStrAttr(value) + "'";
+}
+
 function safeJsonParse(raw, fallback) {
     try {
         const parsed = JSON.parse(raw);
@@ -601,20 +625,42 @@ function applyBranding() {
     boxes.forEach(box => {
         const el = document.getElementById(box.id);
         if (!el) return;
-        el.innerHTML = logo
-            ? `<img src="${escapeHTML(logo)}" alt="Logo" class="brand-logo-img">`
-            : box.fallback;
+        applyLogoToBox(el, logo, box.fallback);
+    });
+
+    // Footer brend belgisi — id'siz `.market-logo` (bir xil uslub).
+    // Yuqoridagi ro'yxat faqat id bo'yicha ishlaydi, shuning uchun qolgan
+    // belgilar sinf bo'yicha yangilanadi (aks holda ular standart bo'lib qolardi).
+    document.querySelectorAll('.market-logo').forEach(el => {
+        if (el.id) return;
+        applyLogoToBox(el, logo, '<i class="fas fa-bolt"></i>');
     });
 
     // Sozlamalar sahifasidagi kichik ko'rinish (preview)
     const preview = document.getElementById('logoPreview');
     if (preview) {
         preview.innerHTML = logo
-            ? `<img src="${escapeHTML(logo)}" alt="Logo" style="width:100%;height:100%;object-fit:contain">`
-            : '<span style="font-size:11px;color:var(--muted)">Logo yo\'q</span>';
+            ? `<img src="${escapeHTML(logo)}" alt="Logo" class="brand-logo-img">`
+            : '<span style="font-size:11px;color:var(--text-muted)">Logo yo\'q</span>';
     }
     const removeBtn = document.getElementById('logoRemoveBtn');
     if (removeBtn) removeBtn.style.display = logo ? '' : 'none';
+}
+
+/**
+ * Brend belgisi konteyneriga logotip rasmini (yoki zaxira ikonkani) joylaydi.
+ *
+ * MUHIM: `has-custom-logo` sinfi CSS'da standart fon-rasmni o'chiradi va
+ * ichidagi `<img>` ni ko'rinadigan qiladi. Ilgari `.logo-sq > *`,
+ * `.login-logo .logo-icon > *` kabi qoidalar `display:none !important` bilan
+ * standart ikonkani yashirar edi — ular yuklangan logotip rasmini ham
+ * yashirib qo'yardi, natijada logo hech qayerda almashmasdi.
+ */
+function applyLogoToBox(el, logo, fallback) {
+    el.classList.toggle('has-custom-logo', !!logo);
+    el.innerHTML = logo
+        ? `<img src="${escapeHTML(logo)}" alt="Logo" class="brand-logo-img">`
+        : fallback;
 }
 
 /** Brending sozlamasini keshga yozadi va serverga sinxronlaydi. */
@@ -2292,13 +2338,18 @@ function doLogout(force = false) {
 
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
+    // ── Chiqishdan keyin LOGIN sahifasiga qaytamiz ───────────────────────
+    // Ilgari bu yerda `#app.market-mode` (do'kon vitrinasi) ko'rsatilardi —
+    // bu Google bilan kirgan "customer" davridan qolgan xatti-harakat edi.
+    // Natijada xodim «Tizimdan chiqish» bosgach login ekrani o'rniga do'kon
+    // ochilib qolardi (sessiya tugagan bo'lsa ham marshrut himoyasi yo'q).
     if (loginPage) {
-        loginPage.classList.remove('active');
-        loginPage.style.display = 'none';
+        loginPage.classList.add('active');
+        loginPage.style.display = 'grid';
     }
     if (app) {
-        app.style.display = 'block';
-        app.classList.add('market-mode');
+        app.style.display = 'none';
+        app.classList.remove('market-mode');
     }
 
     const loginPhone = document.getElementById('loginPhone');
@@ -2309,7 +2360,8 @@ function doLogout(force = false) {
     loginPasswordVisible = false;
     setLoginPasswordVisible(false);
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    goTo('page-shop', document.getElementById('nav-shop'));
+    // Do'kon sahifasini ochib qo'ymaymiz: keyingi muvaffaqiyatli kirishda
+    // finishLogin() foydalanuvchiga ruxsat etilgan birinchi sahifani ochadi.
     setupRoleBasedNav();
 }
 
@@ -3909,7 +3961,7 @@ function renderUzumRecommendations() {
                             <div class="product-card-price" style="font-weight:800;color:var(--text);font-size:16px">${fmt(p.price)} so'm</div>
                             <div class="product-card-stock" style="font-size:12px;color:var(--text-secondary)">Qoldiq: <strong style="color:var(--success)">${p.stock} ta</strong></div>
                         </div>
-                        <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id}); showNotif('success', 'Savatga qo\\'shildi', '${escapeHTML(p.name)}')" style="background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s"><i class="fas fa-plus"></i></button>
+                        <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id}); showNotif('success', 'Savatga qo\\'shildi', '${jsStrAttr(p.name)}')" style="background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s"><i class="fas fa-plus"></i></button>
                     </div>
                 </div>
             </div>
@@ -4550,7 +4602,7 @@ function renderReceipt(sale) {
               </div>
               
               <div style="margin-bottom:16px">
-                <a href="javascript:void(0)" onclick="openClickPopup('${clickUrl}')" class="btn" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#00a2eb;color:white;border:none;padding:12px 24px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;box-shadow:0 4px 10px rgba(0,162,235,0.2);transition:all 0.2s">
+                <a href="javascript:void(0)" onclick="openClickPopup('${jsStrAttr(clickUrl)}')" class="btn" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#00a2eb;color:white;border:none;padding:12px 24px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;box-shadow:0 4px 10px rgba(0,162,235,0.2);transition:all 0.2s">
                   <i class="fas fa-external-link-alt"></i> Oynani qayta ochish
                 </a>
               </div>
@@ -7034,7 +7086,7 @@ function renderServerSessions(data) {
     <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escapeHTML(s.lastSeen || '—')}</td>
     <td>${s.current
                 ? '<span class="badge">Joriy sessiya</span>'
-                : `<button class="btn btn-danger" onclick="Security.revokeSession('${escapeHTML(String(s.jti || ''))}')"><i class="fas fa-power-off"></i> Yopish</button>`}</td>
+                : `<button class="btn btn-danger" onclick="Security.revokeSession('${jsStrAttr(String(s.jti || ''))}')"><i class="fas fa-power-off"></i> Yopish</button>`}</td>
   </tr>`).join('') ||
             '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Faol sessiya yo\'q</td></tr>';
     }
@@ -9506,8 +9558,8 @@ function renderDiscountsPage() {
             <td style="font-weight:700;color:var(--accent)">${Number(d.pct) || 0}%</td>
             <td><span class="badge ${d.status === 'Faol' ? 'badge-green' : 'badge-red'}">${escapeHTML(d.status)}</span></td>
             <td style="white-space:nowrap">
-                <button class="btn btn-sm btn-outline" onclick="openDiscountModal('${escapeHTML(String(d.id))}')" title="Tahrirlash"><i class="fas fa-pen"></i></button>
-                <button class="btn btn-sm btn-outline" onclick="deleteDiscountCampaign('${escapeHTML(String(d.id))}')" title="O'chirish"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-outline" onclick="openDiscountModal('${jsStrAttr(String(d.id))}')" title="Tahrirlash"><i class="fas fa-pen"></i></button>
+                <button class="btn btn-sm btn-outline" onclick="deleteDiscountCampaign('${jsStrAttr(String(d.id))}')" title="O'chirish"><i class="fas fa-trash"></i></button>
             </td>
         </tr>
     `).join('');
@@ -10263,13 +10315,13 @@ const Branches = {
                     ? '<span style="color:var(--success)"><i class="fas fa-circle-check"></i> Faol</span>'
                     : '<span style="color:var(--muted)"><i class="fas fa-circle-pause"></i> Nofaol</span>') +
                 (canManage ? '<button type="button" class="btn btn-outline btn-sm" style="margin-left:6px" ' +
-                    'title="Holatni almashtirish" onclick="Branches.toggleStatus(\'' + escapeHTML(b.id) + '\')">' +
+                    'title="Holatni almashtirish" onclick="Branches.toggleStatus(\'' + jsStrAttr(b.id) + '\')">' +
                     '<i class="fas fa-arrows-rotate"></i></button>' : '') + '</td>' +
                 '<td><div style="display:flex;gap:6px">' +
-                '<button class="btn btn-outline btn-sm" onclick="Branches.view(\'' + escapeHTML(b.id) + '\')" title="Batafsil"><i class="fas fa-eye"></i></button>' +
+                '<button class="btn btn-outline btn-sm" onclick="Branches.view(\'' + jsStrAttr(b.id) + '\')" title="Batafsil"><i class="fas fa-eye"></i></button>' +
                 (canManage
-                    ? '<button class="btn btn-outline btn-sm" onclick="Branches.edit(\'' + escapeHTML(b.id) + '\')" title="Tahrirlash"><i class="fas fa-pen"></i></button>' +
-                    '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'' + escapeHTML(b.id) + '\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
+                    ? '<button class="btn btn-outline btn-sm" onclick="Branches.edit(\'' + jsStrAttr(b.id) + '\')" title="Tahrirlash"><i class="fas fa-pen"></i></button>' +
+                    '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'' + jsStrAttr(b.id) + '\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
                     : '') +
                 '</div></td></tr>';
         }).join('');
@@ -10728,7 +10780,7 @@ const CashFlow = {
                 : `<div style="text-align:center;color:var(--muted);padding:14px;font-size:13px">${empty}</div>`}
                 ${rows.length ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--muted);font-weight:700">OXIRGI YOZUVLAR</div>` + rows.slice(0, 6).map(c => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12px">
                   <span><b>${escapeHTML(c.category || '')}</b> <span style="color:var(--muted)">${escapeHTML(c.date)}${c.note ? ' · ' + escapeHTML(c.note) : ''}</span></span>
-                  <span style="white-space:nowrap;font-weight:800;color:${color}">${fmt(c.amount)}${canDel ? ` <button class="btn btn-outline btn-sm" style="padding:2px 7px;color:var(--danger)" onclick="CashFlow.remove('${escapeHTML(c.id)}')"><i class="fas fa-trash"></i></button>` : ''}</span></div>`).join('') : ''}
+                  <span style="white-space:nowrap;font-weight:800;color:${color}">${fmt(c.amount)}${canDel ? ` <button class="btn btn-outline btn-sm" style="padding:2px 7px;color:var(--danger)" onclick="CashFlow.remove('${jsStrAttr(c.id)}')"><i class="fas fa-trash"></i></button>` : ''}</span></div>`).join('') : ''}
               </div></div>`;
         };
         box.innerHTML = `

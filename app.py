@@ -22,6 +22,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, send_from_directory, redirect, abort
+from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
@@ -42,6 +43,22 @@ app = Flask(__name__, static_folder='.')
 
 # Yuklash hajmi chegarasi (DoS himoyasi)
 app.config['MAX_CONTENT_LENGTH'] = 35 * 1024 * 1024
+
+
+# ── JSON javobi QAT'IY bo'lishi shart ────────────────────────────────
+# `NaN` / `Infinity` JSON standartiga (RFC 8259) zid. Python'ning json moduli
+# ularni jimgina yozib yuboradi, brauzerdagi `JSON.parse()` esa bunday javobni
+# BUTUNLAY rad etadi — natijada /api/data ishlamay qolib, butun ilova
+# "ma'lumot yuklanmadi" holatiga tushardi (auditda tasdiqlangan).
+# Shuning uchun jsonify hech qachon NaN chiqarmaydi: qiymat NaN bo'lib qolsa
+# 500 xato qaytadi (buzilgan JSON emas).
+class _StrictJSONProvider(DefaultJSONProvider):
+    def dumps(self, obj, **kwargs):
+        kwargs['allow_nan'] = False
+        return super().dumps(obj, **kwargs)
+
+
+app.json = _StrictJSONProvider(app)
 
 # ============================================================
 # XAVFSIZLIK SOZLAMALARI (ENV orqali boshqariladi)
@@ -116,7 +133,6 @@ CF_DOMAIN_SYNC = {'state': 'idle', 'message': 'hali ishga tushirilmagan',
                   'domains': [], 'time': ''}
 
 import time
-import threading
 
 # Thread-safe in-memory rate limiting dictionary for basic DDoS/brute-force protection
 IP_REQUESTS = {}
@@ -399,7 +415,7 @@ def enforce_site_domain():
 
 PORT = int(os.getenv('PORT', 5000))
 
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse
 import queue
 import threading
 
@@ -455,7 +471,7 @@ class PG8000ConnectionPool:
         except Exception:
             try:
                 conn.close()
-            except:
+            except Exception:
                 pass
             with self.lock:
                 self.created -= 1
@@ -538,7 +554,7 @@ class DBManager:
                             
                             db_path = os.path.join(vpath, "database.db")
                             break
-                    except:
+                    except Exception:
                         pass
                 if not db_path:
                     db_path = os.path.join('Data', 'database.db')
@@ -618,6 +634,19 @@ class DBManager:
 
     def save_report(self, type_, message, contact, date, time, username):
         conn = self.get_connection()
+        try:
+            self._insert_report(conn, type_, message, contact, date, time, username)
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            conn.close()
+
+    def _insert_report(self, conn, type_, message, contact, date, time, username):
         cursor = conn.cursor()
         if self.db_type == 'postgres':
             cursor.execute('''
@@ -634,46 +663,62 @@ class DBManager:
                 INSERT INTO support_reports (type, message, contact, date, time, username)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (type_, message, contact, date, time, username))
-        conn.commit()
-        conn.close()
 
     def get_all(self):
         conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT key, value FROM store_data')
-        rows = cursor.fetchall()
-        conn.close()
-        
+        try:
+            cursor = conn.cursor()
+            cursor.execute('SELECT key, value FROM store_data')
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
+
         data = {}
         for row in rows:
-            data[row[0]] = json.loads(row[1])
+            try:
+                data[row[0]] = json.loads(row[1])
+            except (TypeError, ValueError):
+                # Buzilgan yozuv butun bazani (ya'ni /api/data javobini)
+                # yiqitmasin — faqat shu kalit tashlab ketiladi.
+                print(f"[DB] '{row[0]}' yozuvi o'qilmadi (buzilgan JSON)")
         return data
 
     def save_keys(self, data_dict):
+        # `allow_nan=False`: NaN/Infinity bazaga HECH QACHON yozilmaydi
+        # (aks holda /api/data javobi JSON standartiga zid bo'lib, brauzerda
+        # JSON.parse yiqilardi). Xato bo'lsa — 500 va baza toza qoladi.
         conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        for key, val in data_dict.items():
-            val_str = json.dumps(val, ensure_ascii=False)
-            
-            # Universal Upsert logic (Dialect independent)
-            if self.db_type in ('postgres', 'mysql'):
-                cursor.execute('SELECT 1 FROM store_data WHERE key = %s', (key,))
-                exists = cursor.fetchone()
-                if exists:
-                    cursor.execute('UPDATE store_data SET value = %s WHERE key = %s', (val_str, key))
+        try:
+            cursor = conn.cursor()
+            for key, val in data_dict.items():
+                val_str = json.dumps(val, ensure_ascii=False, allow_nan=False)
+
+                # Universal Upsert logic (Dialect independent)
+                if self.db_type in ('postgres', 'mysql'):
+                    cursor.execute('SELECT 1 FROM store_data WHERE key = %s', (key,))
+                    exists = cursor.fetchone()
+                    if exists:
+                        cursor.execute('UPDATE store_data SET value = %s WHERE key = %s', (val_str, key))
+                    else:
+                        cursor.execute('INSERT INTO store_data (key, value) VALUES (%s, %s)', (key, val_str))
                 else:
-                    cursor.execute('INSERT INTO store_data (key, value) VALUES (%s, %s)', (key, val_str))
-            else:
-                cursor.execute('SELECT 1 FROM store_data WHERE key = ?', (key,))
-                exists = cursor.fetchone()
-                if exists:
-                    cursor.execute('UPDATE store_data SET value = ? WHERE key = ?', (val_str, key))
-                else:
-                    cursor.execute('INSERT INTO store_data (key, value) VALUES (?, ?)', (key, val_str))
-                    
-        conn.commit()
-        conn.close()
+                    cursor.execute('SELECT 1 FROM store_data WHERE key = ?', (key,))
+                    exists = cursor.fetchone()
+                    if exists:
+                        cursor.execute('UPDATE store_data SET value = ? WHERE key = ?', (val_str, key))
+                    else:
+                        cursor.execute('INSERT INTO store_data (key, value) VALUES (?, ?)', (key, val_str))
+            conn.commit()
+        except Exception:
+            # Ulanish HAR QANDAY holatda yopiladi va tranzaksiya orqaga
+            # qaytariladi — aks holda fayl deskriptorlari/qulflar to'planadi.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            conn.close()
 
 db_manager = DBManager()
 db_manager.init_db()
@@ -737,9 +782,100 @@ def _first_env(*names):
     return ''
 
 
-def hash_password(password, salt):
-    """Frontend bilan bir xil sxema: sha256(salt + '::' + parol)."""
+# ── PAROL XESHI SXEMASI ─────────────────────────────────────────────
+# Ilgari bitta SHA-256 ishlatilardi: GPU'da sekundiga milliardlab urinish
+# qilinadi, ya'ni baza qo'lga tushsa parollar juda tez ochilardi. Endi:
+#     pbkdf2_sha256$<iteratsiya>$<xesh>      (yangi parollar)
+# Eski (64 belgili hex) xeshlar hamon tekshiriladi va foydalanuvchi keyingi
+# safar muvaffaqiyatli kirganda AVTOMATIK yangi sxemaga o'tkaziladi —
+# mavjud akountlar hech narsani yo'qotmaydi.
+PASSWORD_HASH_PREFIX = 'pbkdf2_sha256'
+PASSWORD_HASH_ITERATIONS = max(
+    50_000, min(600_000, int(os.getenv('PASSWORD_HASH_ITERATIONS', '') or 150000)))
+
+
+def legacy_hash_password(password, salt):
+    """ESKI sxema: sha256(salt + '::' + parol) — faqat moslik uchun."""
     return hashlib.sha256(f'{salt}::{password}'.encode('utf-8')).hexdigest()
+
+
+def hash_password(password, salt):
+    """Yangi parollar uchun PBKDF2-HMAC-SHA256 xeshi."""
+    raw = hashlib.pbkdf2_hmac(
+        'sha256', str(password).encode('utf-8'), str(salt or '').encode('utf-8'),
+        PASSWORD_HASH_ITERATIONS)
+    return f'{PASSWORD_HASH_PREFIX}${PASSWORD_HASH_ITERATIONS}${raw.hex()}'
+
+
+def verify_password(password, salt, stored):
+    """Saqlangan xeshni tekshiradi — yangi (PBKDF2) yoki eski (SHA-256) sxema."""
+    stored = str(stored or '')
+    if not stored:
+        return False
+    if stored.startswith(PASSWORD_HASH_PREFIX + '$'):
+        parts = stored.split('$')
+        if len(parts) != 3:
+            return False
+        try:
+            iterations = int(parts[1])
+        except (TypeError, ValueError):
+            return False
+        if iterations < 1000 or iterations > 2_000_000:
+            return False
+        raw = hashlib.pbkdf2_hmac(
+            'sha256', str(password).encode('utf-8'), str(salt or '').encode('utf-8'),
+            iterations)
+        return hmac.compare_digest(raw.hex(), parts[2])
+    # Eski sxema — moslik uchun
+    return hmac.compare_digest(legacy_hash_password(password, salt), stored)
+
+
+def password_needs_rehash(stored):
+    """Xesh eski yoki kuchsizroq parametrda bo'lsa — True (kirishda yangilanadi)."""
+    stored = str(stored or '')
+    if not stored.startswith(PASSWORD_HASH_PREFIX + '$'):
+        return True
+    parts = stored.split('$')
+    if len(parts) != 3:
+        return True
+    try:
+        return int(parts[1]) < PASSWORD_HASH_ITERATIONS
+    except (TypeError, ValueError):
+        return True
+
+
+def persist_staff_hash(user):
+    """Bitta xodimning xesh/salt maydonlarini bazaga yozadi (boshqasiga tegmaydi)."""
+    try:
+        login = str(user.get('login', '')).lower()
+        staff = load_staff()
+        for item in staff:
+            if str(item.get('login', '')).lower() == login:
+                item['passHash'] = user.get('passHash')
+                item['salt'] = user.get('salt')
+                if user.get('passHashAt'):
+                    item['passHashAt'] = user.get('passHashAt')
+                break
+        else:
+            return False
+        db_manager.save_keys({'staff_users': staff})
+        return True
+    except Exception as exc:
+        print(f"[SECURITY] Xodim xeshini saqlab bo'lmadi: {exc}")
+        return False
+
+
+def rehash_staff_password(user, password):
+    """Kirish muvaffaqiyatli bo'lgach eski xeshni yangi sxemaga o'tkazadi."""
+    try:
+        if not password_needs_rehash(user.get('passHash')):
+            return False
+        user['passHash'] = hash_password(password, user.get('salt', ''))
+        user['passHashAt'] = _now_stamp()
+        return persist_staff_hash(user)
+    except Exception as exc:
+        print(f"[SECURITY] Xeshni yangilab bo'lmadi: {exc}")
+        return False
 
 
 def make_salt(prefix='tp'):
@@ -1195,14 +1331,23 @@ def load_staff():
             ensure_boss_account()
         return staff
 
-    password = _first_env('STAFF_DEFAULT_PASSWORD', 'TP_STAFF_PASSWORD', 'BOSS_DEFAULT_PASSWORD')
+    # DIQQAT: ilgari bu yerda BOSS_DEFAULT_PASSWORD ham ishlatilardi — ya'ni
+    # Boshliq paroli barcha standart xodimlarning paroli bo'lib qolardi
+    # (auditda CRITICAL deb belgilangan: ommaviy repodagi parol orqali
+    # oddiy xodim akountiga ham kirish mumkin edi). Endi alohida parol
+    # ko'rsatilmasa — tasodifiy parol yaratiladi va FAQAT bir marta
+    # konsolga chiqariladi; u ham `mustChange` bo'ladi.
+    password = _first_env('STAFF_DEFAULT_PASSWORD', 'TP_STAFF_PASSWORD')
+    generated_password = False
     if not password:
-        password = _DEFAULT_PASSWORD
+        password = secrets.token_urlsafe(12)
+        generated_password = True
+    password_is_default = password == _DEFAULT_PASSWORD
     seeded = []
     # Shifrlangan nusxa bir marta hisoblanadi (barcha standart xodimlar uchun)
     vault_token = vault_encrypt(password)
     for idx, item in enumerate(_DEFAULT_STAFF, start=1):
-        salt = item['salt'] if password == _DEFAULT_PASSWORD else make_salt('tp-' + item['role'][:3] + '-')
+        salt = item['salt'] if password_is_default else make_salt('tp-' + item['role'][:3] + '-')
         seeded.append({
             'id': idx,
             'login': item['login'],
@@ -1212,7 +1357,7 @@ def load_staff():
             'name': item['name'],
             'role': item['role'],
             'status': 'active',
-            'mustChange': password == _DEFAULT_PASSWORD,
+            'mustChange': password_is_default or generated_password,
             'passVault': vault_token,
             'passVaultAt': _now_stamp(),
             'passChangedAt': _now_stamp(),
@@ -1232,9 +1377,13 @@ def load_staff():
         fresh = None
     if isinstance(fresh, list) and fresh:
         seeded = fresh
-    if password == _DEFAULT_PASSWORD:
+    if password_is_default:
         print("[SECURITY] Standart parol (123456) ishlatilmoqda! "
               "Iltimos, STAFF_DEFAULT_PASSWORD o'rnating yoki parollarni o'zgartiring.")
+    elif generated_password:
+        print(f"[SECURITY] Standart xodimlar uchun TASODIFIY parol yaratildi: {password}")
+        print("[SECURITY] Uni saqlab qo'ying — xodimlar birinchi kirishda almashtiradi "
+              "yoki Boshliq panelidan yangi parol berasiz.")
     return seeded
 
 
@@ -1532,8 +1681,7 @@ def auth_login():
                                 'CAPTCHA tokenisiz login urinishi (mobil yoki eski mijoz?)', login)
 
     user = find_staff(login) or find_staff_by_phone(login)
-    ok = bool(user) and hmac.compare_digest(
-        hash_password(password, user.get('salt', '')), str(user.get('passHash', '')))
+    ok = bool(user) and verify_password(password, user.get('salt', ''), user.get('passHash', ''))
     if ok and str(user.get('status', 'active')).strip().lower() not in ('active', ''):
         # Parol to'g'ri, lekin hisob bloklangan/inactive — kirishga ruxsat berilmaydi.
         server_security_log('login-blocked', 'medium',
@@ -1550,6 +1698,9 @@ def auth_login():
     # eski (xazina yoqilishidan oldin yaratilgan) akountlar ham boshliq
     # panelida ko'rinadigan bo'ladi.
     capture_staff_password(user, password)
+    # Eski (SHA-256) xesh bo'lsa — jimgina yangi PBKDF2 sxemasiga o'tkazamiz.
+    # Foydalanuvchi buni sezmaydi; keyingi kirishlar allaqachon xavfsiz xeshda.
+    rehash_staff_password(user, password)
 
     token, payload = create_token(user)
     session = register_session(payload)
@@ -1630,8 +1781,7 @@ def auth_change_password():
         return jsonify({'status': 'error', 'message': 'Xodim topilmadi'}), 404
 
     if is_self:
-        if not hmac.compare_digest(hash_password(current_password, target.get('salt', '')),
-                                   str(target.get('passHash', ''))):
+        if not verify_password(current_password, target.get('salt', ''), target.get('passHash', '')):
             server_security_log('password-change-failed', 'medium',
                                 'Joriy parol xato', target_login)
             return jsonify({'status': 'error', 'message': 'Joriy parol xato'}), 401
@@ -1685,9 +1835,8 @@ def auth_change_phone():
     if not target:
         return jsonify({'status': 'error', 'message': 'Xodim topilmadi'}), 404
 
-    if not current_password or not hmac.compare_digest(
-            hash_password(current_password, target.get('salt', '')),
-            str(target.get('passHash', ''))):
+    if not current_password or not verify_password(
+            current_password, target.get('salt', ''), target.get('passHash', '')):
         server_security_log('phone-change-failed', 'medium',
                             'Login almashtirishda joriy parol xato', me_login)
         return jsonify({'status': 'error', 'message': 'Joriy parol xato'}), 401
@@ -2026,14 +2175,16 @@ def sales_in_period(store, period, rng=None):
 
 
 def boss_scope(store, args):
-    """Boshliq endpointlari uchun davr + custom sana + filial filtri.
+    """Boshliq endpointlari uchun davr + custom sana oralig'i.
 
+    DIQQAT: `branchId` bu yerda qo'llanilmaydi — filial bo'yicha ajratish
+    frontend'da (boss.js) bajariladi, server butun davr yozuvlarini
+    qaytaradi (ilgari ishlatilmagan o'zgaruvchi chalg'itardi).
     Qaytaradi: (period, rng, scoped_sales).
     """
     period = normalize_period((args or {}).get('period'))
     rng = custom_period_range(args)
     scoped = sales_in_period(store, period, rng)
-    branch_filter = str((args or {}).get('branchId') or '').strip()
     return period, rng, scoped
 
 
@@ -2459,7 +2610,6 @@ def boss_staff_list():
            role, branchId, sort, order, limit, offset.
     """
     store = db_manager.get_all() or {}
-    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
     staff = unique_staff(load_staff())
     branches = branches_index(store)
     period = normalize_period(request.args.get('period'))
@@ -2931,7 +3081,6 @@ def boss_products():
     Query: period, view ('all'|'top'|'low'), q, cat, branchId, limit, offset.
     """
     store = db_manager.get_all() or {}
-    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
     products = [p for p in (store.get('products') or []) if isinstance(p, dict)]
     branches = branches_index(store)
     products_by_id = products_index(store)
@@ -3025,7 +3174,6 @@ def boss_branches():
     maydoni bo'lsa — u ustunlik qiladi.
     """
     store = db_manager.get_all() or {}
-    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
     products = [p for p in (store.get('products') or []) if isinstance(p, dict)]
     branches = [b for b in (store.get('branches') or []) if isinstance(b, dict)]
     staff = unique_staff(load_staff())
@@ -3124,7 +3272,6 @@ def boss_finance():
     mavjud `cashFlow` yozuvlaridan (yangi moliyaviy tizim yaratilmaydi).
     """
     store = db_manager.get_all() or {}
-    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
     period = normalize_period(request.args.get('period'))
     rng = custom_period_range(request.args)
     branch_filter = str(request.args.get('branchId') or '').strip()
@@ -3186,7 +3333,6 @@ def _csv_cell(value):
 
 def _boss_report_rows(store, args):
     """Hisobot filtrlarini qo'llab, chek qatorlarini tayyorlaydi."""
-    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
     period = normalize_period(args.get('period'))
     rng = custom_period_range(args)
     branch_filter = str(args.get('branchId') or '').strip()
@@ -3400,8 +3546,7 @@ def boss_change_password():
                    and str(u.get('login', '')).lower() == login.lower()), None)
     if not target:
         return json_error('Akount topilmadi', 404)
-    if not hmac.compare_digest(hash_password(current, str(target.get('salt', ''))),
-                               str(target.get('passHash', ''))):
+    if not verify_password(current, str(target.get('salt', '')), target.get('passHash', '')):
         server_security_log('password-change-failed', 'medium',
                             'Joriy parol xato', payload.get('name', '—'))
         return json_error('Joriy parol xato', 401)
@@ -3470,6 +3615,21 @@ def serve_static(path):
       2) fayl nomi oq ro'yxatda yoki `assets/` papkasida bo'lishi shart.
     """
     clean = str(path or '').replace('\\', '/').strip('/')
+    # API yo'llari statik fayl EMAS. Faqat POST'da mavjud endpointga GET
+    # kelsa — 405 (Method Not Allowed) qaytishi kerak, ilgari esa catch-all
+    # marshrut adashtirib HTML 404 berardi (chalg'ituvchi).
+    if clean == 'api' or clean.startswith('api/'):
+        target = '/' + clean
+        # Yo'l boshqa metodda mavjudmi? (Werkzeug'ning rasmiy adapteri
+        # konvertorlarni ham to'g'ri hisobga oladi.)
+        bound = app.url_map.bind(request.host)
+        for method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+            try:
+                bound.match(target, method=method)
+            except Exception:
+                continue
+            abort(405)
+        abort(404)
     segments = [s for s in clean.split('/') if s not in ('', '.')]
     if not segments or any(s == '..' or s.startswith('.') for s in segments):
         abort(404)
@@ -3530,6 +3690,107 @@ def client_data_snapshot():
     """Brauzerga beriladigan baza nusxasi: server maxfiy kalitlari chiqarilmaydi."""
     data = db_manager.get_all() or {}
     return {k: v for k, v in data.items() if k not in PRIVATE_DATA_KEYS}
+
+
+def _contains_non_finite(value, depth=0):
+    """JSON standartiga zid sonlarni (NaN / Infinity / -Infinity) topadi.
+
+    Python'ning json moduli ularni qabul qiladi, lekin brauzerdagi
+    `JSON.parse()` bunday javobni RAD ETADI — natijada /api/data ishlamay
+    qolib butun ilova ko'rinmas holga tushardi. Shu sababli bunday qiymat
+    bazaga umuman kirmasligi kerak.
+    """
+    if depth > 12:
+        return False
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(_contains_non_finite(v, depth + 1) for v in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_contains_non_finite(v, depth + 1) for v in value)
+    return False
+
+
+# Savdo yozuvlaridagi son maydonlar va ularning eng kichik qiymati.
+# `None` — manfiy qiymat ruxsat etiladi (masalan, foyda zarar bo'lishi mumkin).
+SALE_NUMBER_FIELDS = (
+    ('total', 0), ('subtotal', 0), ('subTotal', 0), ('discAmt', 0),
+    ('discount', 0), ('paid', 0), ('debt', 0), ('profit', None), ('change', None),
+)
+SALE_ITEM_NUMBER_FIELDS = (
+    ('price', 0), ('qty', 0), ('cost', 0), ('discount', None),
+)
+SALE_TEXT_FIELDS = (
+    ('date', 32), ('time', 32), ('cashier', 120), ('pay', 30), ('provider', 30),
+    ('status', 30), ('customerId', 40), ('branchId', 40), ('orderId', 80),
+    ('clickTransId', 40), ('clickPrepareId', 40), ('clickPaydocId', 40),
+)
+
+
+def _validate_sale_numbers(sale):
+    """Savdo yozuvining son maydonlarini tekshiradi (xato matni yoki '')."""
+    for field, minimum in SALE_NUMBER_FIELDS:
+        if field not in sale:
+            continue
+        value = sale.get(field)
+        if value is None or value == '':
+            continue
+        if isinstance(value, bool):
+            return f'Savdo {field} maydoni son bo\'lishi kerak'
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return f'Savdo {field} maydoni son bo\'lishi kerak'
+        if not math.isfinite(number):
+            return f'Savdo {field} qiymati noto\'g\'ri (NaN/Infinity)'
+        if minimum is not None and number < minimum:
+            return f'Savdo {field} manfiy bo\'lishi mumkin emas'
+        # Son bo'lib kelgan bo'lsa turini saqlaymiz (int → int)
+        sale[field] = value if isinstance(value, (int, float)) else number
+
+    items = sale.get('items')
+    if items is None:
+        return ''
+    if not isinstance(items, list):
+        return 'Savdo mahsulotlari ro\'yxat bo\'lishi kerak'
+    if len(items) > 500:
+        return 'Savdodagi mahsulotlar soni juda ko\'p'
+    for item in items:
+        if not isinstance(item, dict):
+            return 'Savdo elementi obyekt bo\'lishi kerak'
+        for field, minimum in SALE_ITEM_NUMBER_FIELDS:
+            if field not in item:
+                continue
+            value = item.get(field)
+            if value is None or value == '':
+                continue
+            if isinstance(value, bool):
+                return f'Savdo elementi {field} son bo\'lishi kerak'
+            try:
+                number = float(value)
+            except (TypeError, ValueError, OverflowError):
+                return f'Savdo elementi {field} son bo\'lishi kerak'
+            if not math.isfinite(number):
+                return f'Savdo elementi {field} qiymati noto\'g\'ri (NaN/Infinity)'
+            if minimum is not None and number < minimum:
+                return f'Savdo elementi {field} manfiy bo\'lishi mumkin emas'
+            item[field] = value if isinstance(value, (int, float)) else number
+        for field in ('name', 'cat'):
+            if field in item and item[field] is not None:
+                item[field] = str(item[field])[:120]
+
+    sale_id = sale.get('id')
+    if sale_id is not None and sale_id != '':
+        try:
+            sale['id'] = int(float(sale_id))
+        except (TypeError, ValueError, OverflowError):
+            return 'Savdo ID qiymati noto\'g\'ri'
+    for field, limit in SALE_TEXT_FIELDS:
+        if field in sale and sale[field] is not None:
+            sale[field] = str(sale[field])[:limit]
+    return ''
 
 
 def validate_sync_payload(payload):
@@ -3645,13 +3906,27 @@ def validate_sync_payload(payload):
         product['vatPercent'] = vat
         product['mtype'] = 'sum' if product.get('mtype') == 'sum' else 'pct'
 
-    # Fiskal maydonlar FAQAT server tomonidan yoziladi — brauzer ularni
-    # yuborsa ham qabul qilinmaydi (soxta fiskal belgi yasab bo'lmasin).
+    # ── Savdo yozuvlari (moliyaviy iz) ────────────────────────────────────
+    # DIQQAT: ilgari `sales` UMUMAN tekshirilmasdi — shu sababli `NaN`
+    # qiymati bazaga tushib, /api/data javobini JSON standartiga zid qilib
+    # qo'yardi va brauzerda `JSON.parse()` yiqilardi (butun ilova ishlamasdi).
     for sale in clean.get('sales', []):
+        if not isinstance(sale, dict):
+            return False, 'Savdo yozuvi obyekt bo\'lishi kerak', None
+        error = _validate_sale_numbers(sale)
+        if error:
+            return False, error, None
+        # Fiskal maydonlar FAQAT server tomonidan yoziladi — brauzer ularni
+        # yuborsa ham qabul qilinmaydi (soxta fiskal belgi yasab bo'lmasin).
         for field in ('fiscalStatus', 'fiscalProvider', 'fiscalUrl', 'fiscalSign',
                       'fiscalNumber', 'fiscalDeviceId', 'fiscalTime', 'fiscalTotal',
                       'fiscalError'):
             sale.pop(field, None)
+
+    # Chuqur himoya: butun payload'da NaN/Infinity qolmaganiga ishonch hosil
+    # qilamiz (noma'lum/nested maydonlar ham qamrab olinadi).
+    if _contains_non_finite(clean):
+        return False, "Ma'lumotda NaN/Infinity qiymati bor (ruxsat etilmaydi)", None
 
     return True, '', clean
 
@@ -4214,10 +4489,54 @@ def sync_data():
                                 f'Xodimlar kalitlari rad etildi ({", ".join(dropped)})',
                                 request.staff.get('name', '—'))  # type: ignore[attr-defined]
 
+    # ── Yo'q qilishdan himoya (ma'lumot yo'qolishiga qarshi) ──────────────
+    # Sinxronizatsiya butun to'plamni ALMASHTIRADI — mijoz bazani to'liq
+    # yuboradi. Shu sababli eski nusxaga ega past darajali xodim bitta
+    # so'rov bilan butun savdo tarixini yoki mahsulotlarni o'chirib
+    # tashlashi mumkin edi (auditda tasdiqlangan: {"sales": []} → bazada
+    # 0 ta savdo). Endi yo'qolgan yozuvlar serverda SAQLANADI va hodisa
+    # xavfsizlik jurnaliga yoziladi.
+    # Kalit → o'chirishga haqli rollar (frontend'dagi requireRole siyosati
+    # bilan bir xil). Boshqa kalitlar (logs, securityLog, smsHistory va h.k.)
+    # atayin qo'shilmagan — frontend ularni o'zi qisqartiradi.
+    SHRINK_ALLOWED_ROLES = {
+        'sales': ('admin', 'manager'),
+        'products': ('admin', 'manager'),
+        'contracts': ('admin', 'manager'),
+        'cashFlow': ('admin', 'manager'),
+        'expenses': ('admin', 'manager'),
+        'discounts': ('admin', 'manager'),
+        'branches': ('admin', 'manager'),
+    }
+    old_store = db_manager.get_all() or {}
+    staff_role = request.staff.get('role')  # type: ignore[attr-defined]
+    protected = {}
+    for key, allowed_roles in SHRINK_ALLOWED_ROLES.items():
+        incoming = clean.get(key)
+        if not isinstance(incoming, list) or role_contains(allowed_roles, staff_role):
+            continue
+        existing = [row for row in (old_store.get(key) or []) if isinstance(row, dict)]
+        if not existing:
+            continue
+        have = {str(row.get('id')) for row in existing if row.get('id') is not None}
+        keep = {str(row.get('id')) for row in incoming if row.get('id') is not None}
+        missing = have - keep
+        if not missing:
+            continue
+        # Yo'qolgan yozuvlar o'chirilmaydi — ro'yxat oxiriga qaytariladi.
+        clean[key] = incoming + [row for row in existing
+                                 if str(row.get('id')) in missing]
+        protected[key] = len(missing)
+    if protected:
+        summary = ', '.join(f'{k}: {v} ta' for k, v in protected.items())
+        server_security_log(
+            'sync-delete-blocked', 'high',
+            f"Past darajali rol o'chirmoqchi bo'lgan yozuvlar saqlab qolindi ({summary})",
+            request.staff.get('name', '—'))  # type: ignore[attr-defined]
+
     try:
         apply_image_keep(clean.get('products') or [])
         apply_fiscal_keep(clean.get('sales') or [])
-        old_store = db_manager.get_all() or {}
         audit_sync_changes(old_store, clean,
                            str(getattr(request, 'staff', {}).get('name', '—')))
         db_manager.save_keys(clean)
@@ -4268,6 +4587,35 @@ def audit_sync_changes(old_store, clean, actor):
                 audit_log('product-update', str(product.get('name') or pid)[:120],
                           ' '.join(x for x in (from_stock, from_price) if x),
                           str(actor or '—')[:120])
+
+        # ── O'chirilgan yozuvlar jurnali ─────────────────────────────────
+        # Savdo yoki mahsulot ro'yxatdan yo'qolsa, bu DOIM ko'rinadigan
+        # bo'lishi kerak: ilgari faqat yangi savdo va narx o'zgarishi
+        # yozilardi, o'chirish esa jurnalda umuman qolmasdi.
+        if isinstance(clean.get('sales'), list):
+            new_sale_ids = {str(s.get('id')) for s in (clean.get('sales') or [])
+                            if isinstance(s, dict)}
+            removed_sales = [s for s in old_sales if str(s.get('id')) not in new_sale_ids]
+            for sale in removed_sales[:20]:
+                audit_log('sale-delete', f"Chek #{sale.get('id')}",
+                          f"{_num(sale.get('total'))} so'm · ro'yxatdan o'chirildi",
+                          str(actor or '—')[:120])
+            if len(removed_sales) > 20:
+                audit_log('sale-delete', f'{len(removed_sales)} ta savdo',
+                          "ro'yxatdan o'chirildi", str(actor or '—')[:120])
+
+        if isinstance(clean.get('products'), list):
+            new_product_ids = {str(p.get('id')) for p in (clean.get('products') or [])
+                               if isinstance(p, dict)}
+            removed_products = [p for p in (old_store.get('products') or [])
+                                if isinstance(p, dict)
+                                and str(p.get('id')) not in new_product_ids]
+            for product in removed_products[:20]:
+                audit_log('product-delete', str(product.get('name') or product.get('id'))[:120],
+                          "ro'yxatdan o'chirildi", str(actor or '—')[:120])
+            if len(removed_products) > 20:
+                audit_log('product-delete', f'{len(removed_products)} ta mahsulot',
+                          "ro'yxatdan o'chirildi", str(actor or '—')[:120])
     except Exception as e:
         print(f'[AUDIT-SYNC-ERROR] {e}')
 
@@ -4465,24 +4813,58 @@ def payments_config():
     })
 
 
+# Ommaviy murojaat (feedback) — autentifikatsiya yo'q, shuning uchun IP
+# bo'yicha qat'iy limit: ilgari bu endpoint orqali cheksiz yozuv yuborib
+# `support_reports` jadvalini to'ldirish (va diskni to'ldirish) mumkin edi.
+REPORT_RATE_MAX = 5
+REPORT_RATE_WINDOW = 3600
+REPORT_MESSAGE_LIMIT = 2000
+_report_requests = {}
+_report_lock = threading.Lock()
+
+
+def report_allowed(ip):
+    """Bitta IP uchun soatiga ruxsat etilgan murojaatlar soni."""
+    now = time.time()
+    with _report_lock:
+        stamps = [t for t in _report_requests.get(ip, [])
+                  if now - t < REPORT_RATE_WINDOW]
+        _report_requests[ip] = stamps
+        if len(stamps) >= REPORT_RATE_MAX:
+            return False
+        stamps.append(now)
+        return True
+
+
 @app.route('/api/reports', methods=['POST'])
 def save_feedback_report():
-    data = request.json
-    if not data or not data.get('message'):
+    """Mijoz murojaati (shikoyat/taklif). Faqat cheklangan hajmda qabul qilinadi."""
+    if not report_allowed(get_client_ip()):
+        return jsonify({'status': 'error',
+                        'message': "Juda ko'p murojaat yuborildi. Keyinroq urinib ko'ring."}), 429
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': "Ma'lumot formati noto'g'ri"}), 400
+
+    message = str(data.get('message') or '').strip()[:REPORT_MESSAGE_LIMIT]
+    if not message:
         return jsonify({'status': 'error', 'message': 'Xabar kiritilmadi'}), 400
-        
+
     try:
         db_manager.save_report(
-            data.get('type', 'complaint'),
-            data.get('message'),
-            data.get('contact', ''),
-            data.get('date', ''),
-            data.get('time', ''),
-            data.get('user', 'Mehmon')
+            str(data.get('type') or 'complaint')[:40],
+            message,
+            str(data.get('contact') or '')[:120],
+            str(data.get('date') or '')[:32],
+            str(data.get('time') or '')[:32],
+            str(data.get('user') or 'Mehmon')[:120],
         )
         return jsonify({'status': 'success', 'message': 'Murojaat muvaffaqiyatli yozildi'})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        # Baza xatosi tafsilotlari mijozga chiqarilmaydi (faqat serverda)
+        print(f'[ERROR] /api/reports: {e}')
+        return jsonify({'status': 'error', 'message': 'Murojaatni saqlab bo\'lmadi'}), 500
 
 @app.route('/api/payments/create', methods=['POST'])
 @require_staff()
@@ -4660,7 +5042,7 @@ def click_webhook():
 
     try:
         action_int = int(action)
-    except:
+    except (TypeError, ValueError):
         action_int = -1
 
     # MD5 Signature Verification
@@ -4675,7 +5057,8 @@ def click_webhook():
         })
 
     my_sign = hashlib.md5(raw_sign.encode('utf-8')).hexdigest()
-    if my_sign != sign_string:
+    # Doimiy vaqtli solishtirish (imzoni vaqt bo'yicha taxmin qilib bo'lmasin)
+    if not hmac.compare_digest(my_sign, str(sign_string or '')):
         return jsonify({
             'error': -1,
             'error_note': 'Sign string mismatch'
@@ -4683,8 +5066,28 @@ def click_webhook():
 
     try:
         req_amount = float(amount)
-    except:
+    except (TypeError, ValueError):
         req_amount = 0.0
+    if not math.isfinite(req_amount) or req_amount <= 0:
+        return jsonify({'error': -2, 'error_note': 'Incorrect amount'})
+
+    # Click to'lovni BEKOR qilsa (error != 0) — buyurtmani "to'landi" deb
+    # belgilash mumkin emas. Ilgari bu maydon o'qilardi-yu, umuman
+    # ishlatilmasdi: muvaffaqiyatsiz to'lov ham savdoni "paid" qilib, omborni
+    # kamaytirardi.
+    try:
+        click_error = int(error or 0)
+    except (TypeError, ValueError):
+        click_error = 0
+    if click_error != 0 and action_int == 1:
+        server_security_log(
+            'payment-click-error', 'high',
+            f"Click to'lovi muvaffaqiyatsiz (error={click_error}, "
+            f"{str(error_note or '')[:80]}) — savdo to'langan deb belgilanmadi")
+        return jsonify({
+            'error': -9,
+            'error_note': 'Transaction cancelled by Click'
+        })
 
     try:
         store_data = db_manager.get_all()
@@ -4723,17 +5126,35 @@ def click_webhook():
             'error_note': f"Incorrect amount. Expected {target_sale.get('total')}, got {req_amount}"
         })
 
+    def _as_int(value, default=-1):
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return default
+
     if action_int == 0:
         if target_sale.get('status') == 'paid':
             return jsonify({
                 'error': -4,
                 'error_note': 'Order already paid'
             })
-            
+
+        prepare_id = _as_int(click_trans_id)
+        if prepare_id <= 0:
+            return jsonify({
+                'error': -3,
+                'error_note': 'Action is invalid'
+            })
+
+        # Prepare bosqichi eslab qolinadi: Complete bosqichida Click AYNI
+        # qiymatni qaytarishi shart (quyida tekshiriladi).
+        update_server_sale(target_sale.get('id'), clickPrepareId=prepare_id,
+                           clickTransId=prepare_id,
+                           clickPaydocId=str(click_paydoc_id or '')[:40])
         return jsonify({
-            'click_trans_id': int(click_trans_id),
+            'click_trans_id': prepare_id,
             'merchant_trans_id': merchant_trans_id,
-            'merchant_prepare_id': int(click_trans_id),
+            'merchant_prepare_id': prepare_id,
             'error': 0,
             'error_note': 'Success'
         })
@@ -4746,6 +5167,18 @@ def click_webhook():
                 'merchant_confirm_id': int(click_trans_id),
                 'error': 0,
                 'error_note': 'Success (Already confirmed)'
+            })
+
+        # Prepare bosqichida berilgan ID mos kelishi shart (mavjud bo'lsa —
+        # eski integratsiyalar uchun moslik saqlanadi: yo'q bo'lsa o'tkazamiz).
+        remembered = target_sale.get('clickPrepareId') or target_sale.get('clickTransId')
+        if remembered is not None and _as_int(merchant_prepare_id) != _as_int(remembered):
+            server_security_log(
+                'payment-click-mismatch', 'high',
+                f"Click prepare_id mos emas (kutilgan {remembered}, kelgan {merchant_prepare_id})")
+            return jsonify({
+                'error': -1,
+                'error_note': 'Prepare id mismatch'
             })
 
         # Confirm and set status to Paid
@@ -4776,7 +5209,8 @@ def click_webhook():
         amt_str = f"{int(req_amount):,}".replace(",", " ")
         logs.append({
             'type': 'Online buyurtma (Click Webhook)',
-            'desc': f"#{merchant_trans_id} buyurtmasi Click webhook orqali muvaffaqiyatli to'landi ({amt_str} so'm)",
+            'desc': (f"#{merchant_trans_id} buyurtmasi Click webhook orqali muvaffaqiyatli "
+                     f"to'landi ({amt_str} so'm, paydoc #{click_paydoc_id or '—'})"),
             'time': sign_time or ''
         })
 
@@ -5019,8 +5453,14 @@ def payments_orders_list():
 
 
 @app.route('/api/security/status', methods=['GET'])
+@require_staff('admin')
 def security_status():
-    """Server tomonidagi xavfsizlik holati (parol/kalit qiymatlari oshkor qilinmaydi)."""
+    """Server tomonidagi xavfsizlik holati — FAQAT admin/Boshliq.
+
+    Ilgari autentifikatsiyasiz edi: CORS manbalari, ishonchli hostlar,
+    Cloudflare/Turnstile holati va haqiqiy mijoz IP'si begona odamga
+    ko'rinardi. Maxfiy kalit qiymatlari avvalgidek QAYTARILMAYDI.
+    """
     return jsonify({
         'status': 'success',
         'securityHeaders': True,
@@ -5320,7 +5760,7 @@ def get_uploads_dir():
                     f.write('test')
                 os.remove(test_file)
                 return p
-        except:
+        except Exception:
             pass
     p = os.path.join(app.root_path, 'uploads')
     os.makedirs(p, exist_ok=True)

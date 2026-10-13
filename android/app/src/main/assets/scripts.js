@@ -77,6 +77,30 @@ function escapeHTML(str) {
     }[tag] || tag));
 }
 
+/**
+ * `onclick="..."` ichida JS satr kontekstida xavfsiz joylashtiradi.
+ *
+ * MUHIM: bu yerda `escapeHTML()` YETARLI EMAS — brauzer atribut qiymatini
+ * AVVAL HTML entity'lardan dekodlaydi, KEYIN JS sifatida bajaradi. Ya'ni
+ * `&#39;` yana apostrofga aylanadi va JS satridan chiqib ketadi (XSS).
+ * Auditda mahsulot nomi orqali ommaviy vitrinada XSS tasdiqlangan edi:
+ *   nom = X');window.__XSS=1;//  →  tugma bosilganda payload bajarilgan.
+ * Shu sababli: backslash va apostrof JS darajasida escape qilinadi, HTML
+ * uchun esa & < > " almashtiriladi (escapeHTML orqali).
+ */
+function jsStrAttr(value) {
+    if (value === null || value === undefined) return '';
+    const BS = String.fromCharCode(92);   // backslash
+    const Q = String.fromCharCode(39);    // apostrof
+    return escapeHTML(String(value).split(BS).join(BS + BS).split(Q).join(BS + Q))
+        .replace(/[\r\n]/g, ' ');
+}
+
+/** `onclick="Func('<qiymat>')"` uchun tayyor bo'lak (JS + HTML xavfsiz). */
+function jsStrLiteral(value) {
+    return "'" + jsStrAttr(value) + "'";
+}
+
 function safeJsonParse(raw, fallback) {
     try {
         const parsed = JSON.parse(raw);
@@ -601,20 +625,42 @@ function applyBranding() {
     boxes.forEach(box => {
         const el = document.getElementById(box.id);
         if (!el) return;
-        el.innerHTML = logo
-            ? `<img src="${escapeHTML(logo)}" alt="Logo" class="brand-logo-img">`
-            : box.fallback;
+        applyLogoToBox(el, logo, box.fallback);
+    });
+
+    // Footer brend belgisi — id'siz `.market-logo` (bir xil uslub).
+    // Yuqoridagi ro'yxat faqat id bo'yicha ishlaydi, shuning uchun qolgan
+    // belgilar sinf bo'yicha yangilanadi (aks holda ular standart bo'lib qolardi).
+    document.querySelectorAll('.market-logo').forEach(el => {
+        if (el.id) return;
+        applyLogoToBox(el, logo, '<i class="fas fa-bolt"></i>');
     });
 
     // Sozlamalar sahifasidagi kichik ko'rinish (preview)
     const preview = document.getElementById('logoPreview');
     if (preview) {
         preview.innerHTML = logo
-            ? `<img src="${escapeHTML(logo)}" alt="Logo" style="width:100%;height:100%;object-fit:contain">`
-            : '<span style="font-size:11px;color:var(--muted)">Logo yo\'q</span>';
+            ? `<img src="${escapeHTML(logo)}" alt="Logo" class="brand-logo-img">`
+            : '<span style="font-size:11px;color:var(--text-muted)">Logo yo\'q</span>';
     }
     const removeBtn = document.getElementById('logoRemoveBtn');
     if (removeBtn) removeBtn.style.display = logo ? '' : 'none';
+}
+
+/**
+ * Brend belgisi konteyneriga logotip rasmini (yoki zaxira ikonkani) joylaydi.
+ *
+ * MUHIM: `has-custom-logo` sinfi CSS'da standart fon-rasmni o'chiradi va
+ * ichidagi `<img>` ni ko'rinadigan qiladi. Ilgari `.logo-sq > *`,
+ * `.login-logo .logo-icon > *` kabi qoidalar `display:none !important` bilan
+ * standart ikonkani yashirar edi — ular yuklangan logotip rasmini ham
+ * yashirib qo'yardi, natijada logo hech qayerda almashmasdi.
+ */
+function applyLogoToBox(el, logo, fallback) {
+    el.classList.toggle('has-custom-logo', !!logo);
+    el.innerHTML = logo
+        ? `<img src="${escapeHTML(logo)}" alt="Logo" class="brand-logo-img">`
+        : fallback;
 }
 
 /** Brending sozlamasini keshga yozadi va serverga sinxronlaydi. */
@@ -2292,13 +2338,18 @@ function doLogout(force = false) {
 
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
+    // ── Chiqishdan keyin LOGIN sahifasiga qaytamiz ───────────────────────
+    // Ilgari bu yerda `#app.market-mode` (do'kon vitrinasi) ko'rsatilardi —
+    // bu Google bilan kirgan "customer" davridan qolgan xatti-harakat edi.
+    // Natijada xodim «Tizimdan chiqish» bosgach login ekrani o'rniga do'kon
+    // ochilib qolardi (sessiya tugagan bo'lsa ham marshrut himoyasi yo'q).
     if (loginPage) {
-        loginPage.classList.remove('active');
-        loginPage.style.display = 'none';
+        loginPage.classList.add('active');
+        loginPage.style.display = 'grid';
     }
     if (app) {
-        app.style.display = 'block';
-        app.classList.add('market-mode');
+        app.style.display = 'none';
+        app.classList.remove('market-mode');
     }
 
     const loginPhone = document.getElementById('loginPhone');
@@ -2309,7 +2360,8 @@ function doLogout(force = false) {
     loginPasswordVisible = false;
     setLoginPasswordVisible(false);
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    goTo('page-shop', document.getElementById('nav-shop'));
+    // Do'kon sahifasini ochib qo'ymaymiz: keyingi muvaffaqiyatli kirishda
+    // finishLogin() foydalanuvchiga ruxsat etilgan birinchi sahifani ochadi.
     setupRoleBasedNav();
 }
 
@@ -3384,11 +3436,15 @@ function filterCat(cat, el) {
 function searchProducts(q) { posFilter = q; renderCatTabs(); renderProductGrid(); }
 const debouncedSearch = debounce(searchProducts, 300);
 const debouncedSearchProducts = debouncedSearch;
+// Mobil tezlik: og'ir renderlar har harf bosishda emas, pauzadan keyin bir marta bajariladi
+const debouncedRenderShop = debounce(renderShop, 300);
+const debouncedContractsRender = debounce(() => { if (typeof Contracts !== 'undefined') Contracts.render(); }, 300);
+const debouncedGlobalSearch = debounce(globalSearch, 300);
 
 function syncShopSearch(value) {
     const input = document.getElementById('shopSearch');
     if (input) input.value = value;
-    renderShop();
+    debouncedRenderShop();
     renderSearchSuggestions(value);
 }
 
@@ -3596,7 +3652,10 @@ function renderShop() {
     const tabs = document.getElementById('shopCatSidebarList');
     if (!grid || !tabs) return;
 
-    shopFilter = cleanText(document.getElementById('shopSearch')?.value || shopFilter, 80).toLowerCase();
+    // `||` o'rniga element mavjud bo'lsa uni qiymatini olamiz — aks holda
+    // maydon tozalansa ham eski filtr qolib ketardi (ro'yxat tozalanmasdi).
+    const _shopSearchEl = document.getElementById('shopSearch');
+    shopFilter = cleanText(_shopSearchEl ? _shopSearchEl.value : shopFilter, 80).toLowerCase();
     // Kategoriyalar doimiy ro'yxatdan — mahsulot soni 0 bo'lsa ham ko'rinadi
     const cats = ['Barchasi', ...CATEGORIES];
     const nav = document.getElementById('marketCategoryNav');
@@ -3902,7 +3961,7 @@ function renderUzumRecommendations() {
                             <div class="product-card-price" style="font-weight:800;color:var(--text);font-size:16px">${fmt(p.price)} so'm</div>
                             <div class="product-card-stock" style="font-size:12px;color:var(--text-secondary)">Qoldiq: <strong style="color:var(--success)">${p.stock} ta</strong></div>
                         </div>
-                        <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id}); showNotif('success', 'Savatga qo\\'shildi', '${escapeHTML(p.name)}')" style="background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s"><i class="fas fa-plus"></i></button>
+                        <button type="button" class="product-add-btn" onclick="(event||window.event).stopPropagation(); addToShopCart(${p.id}); showNotif('success', 'Savatga qo\\'shildi', '${jsStrAttr(p.name)}')" style="background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s"><i class="fas fa-plus"></i></button>
                     </div>
                 </div>
             </div>
@@ -4543,7 +4602,7 @@ function renderReceipt(sale) {
               </div>
               
               <div style="margin-bottom:16px">
-                <a href="javascript:void(0)" onclick="openClickPopup('${clickUrl}')" class="btn" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#00a2eb;color:white;border:none;padding:12px 24px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;box-shadow:0 4px 10px rgba(0,162,235,0.2);transition:all 0.2s">
+                <a href="javascript:void(0)" onclick="openClickPopup('${jsStrAttr(clickUrl)}')" class="btn" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#00a2eb;color:white;border:none;padding:12px 24px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;box-shadow:0 4px 10px rgba(0,162,235,0.2);transition:all 0.2s">
                   <i class="fas fa-external-link-alt"></i> Oynani qayta ochish
                 </a>
               </div>
@@ -5564,11 +5623,203 @@ function importData(input) {
 // ============================================================
 // MODAL
 // ============================================================
+// ------------------------------------------------------------
+// MODAL SHEET — MOBIL: swipe-to-dismiss + scroll-lock + saqlanmagan
+// forma himoyasi. YAGONA markaziy tizim:
+//   • openModal()/closeModal() ichidan chaqiriladi (hooklar quyida);
+//   • touch listenerlar document darajasida BIR MARTA ulanadi
+//     (delegatsiya) — har bir modal ochilganda qayta ulanmaydi;
+//   • gest faqat OCHIQ sheet sarlavhasidan (drag-zone) boshlanadi,
+//     shuning uchun forma maydonlari, tugmalar va ichki skroll bilan
+//     hech qachon to'qnashmaydi; yuqoriga surilganda skroll saqlanadi;
+//   • transform faqat zarur bo'lganda rAF orqali yoziladi;
+//   • desktopda (kenglik > 768) butunlay o'chirilgan.
+// ------------------------------------------------------------
+const ModalSheet = (function () {
+    const isMobile = () => window.innerWidth <= 768;
+    const CLAIM_PX = 8;     // pastga siljish — gestni egallash
+    const ABORT_PX = 10;    // yuqoriga/horizontal siljish — bekor
+    const DISMISS_PX = 120; // shu masofagacha surilsa — yopish
+    const DISMISS_V = 0.5;  // px/ms — tez surib yopish chegarasi
+    const SNAP_MS = 250;    // joyiga qaytish animatsiyasi
+
+    // ---------- Orqa sahifa scroll qulfi (faqat mobil) ----------
+    let lockCount = 0;
+    let savedY = 0;
+    function lockScroll() {
+        if (!isMobile()) return;
+        if (lockCount === 0) {
+            savedY = window.scrollY || document.documentElement.scrollTop || 0;
+            document.body.classList.add('modal-locked');
+        }
+        lockCount++;
+    }
+    function unlockScroll() {
+        if (lockCount === 0) return;
+        lockCount--;
+        if (lockCount === 0) {
+            document.body.classList.remove('modal-locked');
+            // pozitsiya o'zgargan bo'lsaigina tikla (keraksiz layout ishini oldini oladi)
+            try { if ((window.scrollY || 0) !== savedY) window.scrollTo(0, savedY); } catch (e) { }
+        }
+    }
+
+    // ---------- Saqlanmagan forma himoyasi ----------
+    const snapshots = new WeakMap();
+    function snapshot(modal) {
+        const map = new Map();
+        modal.querySelectorAll('input, select, textarea').forEach(el => {
+            map.set(el, el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value);
+        });
+        snapshots.set(modal, map);
+    }
+    function isDirty(modal) {
+        const map = snapshots.get(modal);
+        if (!map) return false;
+        let dirty = false;
+        map.forEach((base, el) => {
+            if (dirty || !el.isConnected) return;
+            const cur = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value;
+            if (cur !== base) dirty = true;
+        });
+        return dirty;
+    }
+
+    // ---------- Swipe holati (yagona state-machine) ----------
+    const st = {
+        id: null, sheet: null,
+        x0: 0, y0: 0, t0: 0,
+        armed: false, claimed: false,
+        sheetH: 0, ty: 0,
+        raf: 0, snapTimer: 0,
+    };
+    function clearSheetStyles(sheet) {
+        if (!sheet) return;
+        sheet.style.removeProperty('transform');
+        sheet.style.removeProperty('transition');
+    }
+    function cancelSnap() {
+        if (st.snapTimer) { clearTimeout(st.snapTimer); st.snapTimer = 0; }
+    }
+    function reset() {
+        if (st.raf) cancelAnimationFrame(st.raf);
+        st.raf = 0;
+        cancelSnap();
+        st.id = null; st.sheet = null;
+        st.armed = false; st.claimed = false;
+    }
+    function applyDrag() {
+        st.raf = 0;
+        if (st.sheet) st.sheet.style.setProperty('transform', 'translateY(' + st.ty + 'px)', 'important');
+    }
+    function snapBack(sheet) {
+        if (!sheet) return;
+        cancelSnap();
+        sheet.style.setProperty('transition', 'transform ' + SNAP_MS + 'ms cubic-bezier(.22,1,.36,1)', 'important');
+        sheet.style.setProperty('transform', 'translateY(0px)', 'important');
+        st.snapTimer = setTimeout(() => { clearSheetStyles(sheet); st.snapTimer = 0; }, SNAP_MS + 120);
+    }
+    function abortGesture() {
+        const sheet = st.sheet;
+        const wasClaimed = st.claimed;
+        reset();
+        if (wasClaimed) snapBack(sheet);
+    }
+
+    // ---------- Touch (faqat mobil; desktopda ishlamaydi) ----------
+    document.addEventListener('touchstart', e => {
+        if (!isMobile()) return;
+        if (st.sheet) abortGesture();
+        if (!e.touches || e.touches.length !== 1) return;
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const sheet = target.closest('.modal-overlay.open, [id$="Modal"].open');
+        if (!sheet) return;
+        // Gest faqat sarlavha (drag-zone) dan boshlanadi
+        const zone = target.closest('.modal-header, .modal-head');
+        if (!zone || !sheet.contains(zone)) return;
+        // Interaktiv elementlar bilan to'qnashmasin
+        if (target.closest('input, textarea, select, button, a, label, [contenteditable="true"]')) return;
+        const t = e.touches[0];
+        cancelSnap();
+        clearSheetStyles(sheet);
+        st.id = sheet.id;
+        st.sheet = sheet;
+        st.x0 = t.clientX; st.y0 = t.clientY;
+        st.t0 = Date.now();
+        st.ty = 0;
+        st.armed = true;
+        st.claimed = false;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', e => {
+        if (!st.sheet) return;
+        if (!e.touches || e.touches.length !== 1) { abortGesture(); return; }
+        const t = e.touches[0];
+        const dy = t.clientY - st.y0;
+        const dx = t.clientX - st.x0;
+        if (!st.claimed) {
+            // yuqoriga yoki gorizontal siljish — forma skrolliga qoldiriladi
+            if (dy < -ABORT_PX || (Math.abs(dx) > ABORT_PX && Math.abs(dx) > Math.abs(dy))) { abortGesture(); return; }
+            if (dy < CLAIM_PX || Math.abs(dx) >= dy) return;
+            // EGALLASH: sheet pastga suriladi
+            st.claimed = true;
+            cancelSnap();
+            st.sheetH = st.sheet.getBoundingClientRect().height || 1;
+            st.sheet.style.setProperty('transition', 'none', 'important');
+        }
+        e.preventDefault();
+        st.ty = Math.max(0, Math.min(dy, st.sheetH));
+        if (!st.raf) st.raf = requestAnimationFrame(applyDrag);
+    }, { passive: false });
+
+    document.addEventListener('touchend', e => {
+        if (!st.sheet) return;
+        const sheet = st.sheet, id = st.id, claimed = st.claimed;
+        if (!claimed) { reset(); return; }
+        const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : st.y0;
+        const dy = endY - st.y0;
+        const dt = Math.max(1, Date.now() - st.t0);
+        reset();
+        if (dy >= DISMISS_PX || (dy / dt) >= DISMISS_V) {
+            // YOPISH — saqlanmagan forma bo'lsa tasdiqlash so'raladi
+            const modal = id ? document.getElementById(id) : null;
+            if (modal && isDirty(modal)) {
+                const ok = confirm("Saqlanmagan o'zgarishlar bor.\nModal yopilsinmi? (OK — yopish, Bekor — qoldirish)");
+                if (!ok) { snapBack(sheet); return; }
+            }
+            closeModal(id);
+        } else {
+            snapBack(sheet);
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchcancel', () => {
+        if (!st.sheet) return;
+        const sheet = st.sheet, claimed = st.claimed;
+        reset();
+        if (claimed) snapBack(sheet);
+    }, { passive: true });
+
+    // ---------- openModal/closeModal hooklari ----------
+    function onOpen(modal) { lockScroll(); snapshot(modal); }
+    function onClose(modal) {
+        snapshots.delete(modal);
+        clearSheetStyles(modal);
+        unlockScroll();
+    }
+
+    return { onOpen, onClose, isDirty };
+})();
+
 function openModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
+    const fresh = !modal.classList.contains('open');
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
+    // ModalSheet: scroll-lock + forma snapshot (faqat birinchi ochilishda)
+    if (fresh) ModalSheet.onOpen(modal);
     const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if (focusable) setTimeout(() => focusable.focus(), 0);
 }
@@ -5576,8 +5827,11 @@ function openModal(id) {
 function closeModal(id) {
     const modal = document.getElementById(id);
     if (modal) {
+        const wasOpen = modal.classList.contains('open');
         modal.classList.remove('open');
         modal.setAttribute('aria-hidden', 'true');
+        // ModalSheet: lock ochiladi, skroll pozitsiyasi tiklanadi
+        if (wasOpen) ModalSheet.onClose(modal);
     }
     if (id === 'checkoutModal' && clickPollingInterval) {
         clearInterval(clickPollingInterval);
@@ -5604,6 +5858,8 @@ function showNotif(type, title, msg, options = {}) {
     <button onclick="this.parentNode.remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px">×</button>`;
     const container = document.getElementById('notifContainer');
     container.appendChild(el);
+    // Tez ketma-ket bosishlarda (POS) notiflar yig'ilib qolmasligi uchun cheklov
+    while (container.children.length > 4) container.firstElementChild.remove();
     setTimeout(() => { el.classList.add('hide'); setTimeout(() => el.remove(), 300); }, 4000);
 }
 
@@ -6830,7 +7086,7 @@ function renderServerSessions(data) {
     <td style="font-size:12px;color:var(--muted);white-space:nowrap">${escapeHTML(s.lastSeen || '—')}</td>
     <td>${s.current
                 ? '<span class="badge">Joriy sessiya</span>'
-                : `<button class="btn btn-danger" onclick="Security.revokeSession('${escapeHTML(String(s.jti || ''))}')"><i class="fas fa-power-off"></i> Yopish</button>`}</td>
+                : `<button class="btn btn-danger" onclick="Security.revokeSession('${jsStrAttr(String(s.jti || ''))}')"><i class="fas fa-power-off"></i> Yopish</button>`}</td>
   </tr>`).join('') ||
             '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">Faol sessiya yo\'q</td></tr>';
     }
@@ -9302,8 +9558,8 @@ function renderDiscountsPage() {
             <td style="font-weight:700;color:var(--accent)">${Number(d.pct) || 0}%</td>
             <td><span class="badge ${d.status === 'Faol' ? 'badge-green' : 'badge-red'}">${escapeHTML(d.status)}</span></td>
             <td style="white-space:nowrap">
-                <button class="btn btn-sm btn-outline" onclick="openDiscountModal('${escapeHTML(String(d.id))}')" title="Tahrirlash"><i class="fas fa-pen"></i></button>
-                <button class="btn btn-sm btn-outline" onclick="deleteDiscountCampaign('${escapeHTML(String(d.id))}')" title="O'chirish"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-outline" onclick="openDiscountModal('${jsStrAttr(String(d.id))}')" title="Tahrirlash"><i class="fas fa-pen"></i></button>
+                <button class="btn btn-sm btn-outline" onclick="deleteDiscountCampaign('${jsStrAttr(String(d.id))}')" title="O'chirish"><i class="fas fa-trash"></i></button>
             </td>
         </tr>
     `).join('');
@@ -10042,28 +10298,30 @@ const Branches = {
                 '<span>' + escapeHTML(b.markerIcon) + '</span></div></td>' +
                 '<td><strong>' + escapeHTML(b.name) + '</strong>' + isMain +
                 (b.code ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.code) + '</div>' : '') + '</td>' +
-                '<td>' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
-                '<td>' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
+                // data-label — faqat MOBIL karta yorliqlari (presentation, CSS ::before
+                // ichidan o'qiladi). Ma'lumot/summalar o'zgarmagan, faqat yorliq qo'shilgan.
+                '<td data-label="Manzil">' + escapeHTML([b.city, b.address].filter(Boolean).join(', ') || '—') + '</td>' +
+                '<td data-label="Telefon">' + (b.phone ? '<a href="tel:' + escapeHTML(b.phone) + '">' + escapeHTML(b.phone) + '</a>' : '—') +
                 (b.hours ? '<div style="font-size:11px;color:var(--muted)">' + escapeHTML(b.hours) + '</div>' : '') + '</td>' +
-                '<td>' + k.products + '</td>' +
-                '<td>' + fmt(k.stockValue) + ' so\'m</td>' +
-                '<td>' + k.salesCount + ' ta / ' + fmt(k.revenue) + ' so\'m</td>' +
-                '<td style="color:var(--success)">' + fmt(k.income) + ' so\'m</td>' +
-                '<td style="color:var(--danger)" title="Chiqim: ' + fmt(k.expense) + ' so\'m · Harajat: ' + fmt(k.harajat) + ' so\'m">' +
+                '<td data-label="Mahsulot">' + k.products + '</td>' +
+                '<td data-label="Ombor qiymati">' + fmt(k.stockValue) + ' so\'m</td>' +
+                '<td data-label="Savdo">' + k.salesCount + ' ta / ' + fmt(k.revenue) + ' so\'m</td>' +
+                '<td data-label="Kirim" style="color:var(--success)">' + fmt(k.income) + ' so\'m</td>' +
+                '<td data-label="Chiqim" style="color:var(--danger)" title="Chiqim: ' + fmt(k.expense) + ' so\'m · Harajat: ' + fmt(k.harajat) + ' so\'m">' +
                 fmt(k.expense + k.harajat) + ' so\'m</td>' +
-                '<td style="font-weight:700;color:' + profitColor + '">' +
+                '<td data-label="Sof foyda" style="font-weight:700;color:' + profitColor + '">' +
                 (k.profit < 0 ? '−' : '') + fmt(Math.abs(k.profit)) + ' so\'m</td>' +
-                '<td>' + (b.status === 'active'
+                '<td data-label="Holat">' + (b.status === 'active'
                     ? '<span style="color:var(--success)"><i class="fas fa-circle-check"></i> Faol</span>'
                     : '<span style="color:var(--muted)"><i class="fas fa-circle-pause"></i> Nofaol</span>') +
                 (canManage ? '<button type="button" class="btn btn-outline btn-sm" style="margin-left:6px" ' +
-                    'title="Holatni almashtirish" onclick="Branches.toggleStatus(\'' + escapeHTML(b.id) + '\')">' +
+                    'title="Holatni almashtirish" onclick="Branches.toggleStatus(\'' + jsStrAttr(b.id) + '\')">' +
                     '<i class="fas fa-arrows-rotate"></i></button>' : '') + '</td>' +
                 '<td><div style="display:flex;gap:6px">' +
-                '<button class="btn btn-outline btn-sm" onclick="Branches.view(\'' + escapeHTML(b.id) + '\')" title="Batafsil"><i class="fas fa-eye"></i></button>' +
+                '<button class="btn btn-outline btn-sm" onclick="Branches.view(\'' + jsStrAttr(b.id) + '\')" title="Batafsil"><i class="fas fa-eye"></i></button>' +
                 (canManage
-                    ? '<button class="btn btn-outline btn-sm" onclick="Branches.edit(\'' + escapeHTML(b.id) + '\')" title="Tahrirlash"><i class="fas fa-pen"></i></button>' +
-                    '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'' + escapeHTML(b.id) + '\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
+                    ? '<button class="btn btn-outline btn-sm" onclick="Branches.edit(\'' + jsStrAttr(b.id) + '\')" title="Tahrirlash"><i class="fas fa-pen"></i></button>' +
+                    '<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="Branches.remove(\'' + jsStrAttr(b.id) + '\')" title="O\'chirish"><i class="fas fa-trash"></i></button>'
                     : '') +
                 '</div></td></tr>';
         }).join('');
@@ -10522,7 +10780,7 @@ const CashFlow = {
                 : `<div style="text-align:center;color:var(--muted);padding:14px;font-size:13px">${empty}</div>`}
                 ${rows.length ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--muted);font-weight:700">OXIRGI YOZUVLAR</div>` + rows.slice(0, 6).map(c => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12px">
                   <span><b>${escapeHTML(c.category || '')}</b> <span style="color:var(--muted)">${escapeHTML(c.date)}${c.note ? ' · ' + escapeHTML(c.note) : ''}</span></span>
-                  <span style="white-space:nowrap;font-weight:800;color:${color}">${fmt(c.amount)}${canDel ? ` <button class="btn btn-outline btn-sm" style="padding:2px 7px;color:var(--danger)" onclick="CashFlow.remove('${escapeHTML(c.id)}')"><i class="fas fa-trash"></i></button>` : ''}</span></div>`).join('') : ''}
+                  <span style="white-space:nowrap;font-weight:800;color:${color}">${fmt(c.amount)}${canDel ? ` <button class="btn btn-outline btn-sm" style="padding:2px 7px;color:var(--danger)" onclick="CashFlow.remove('${jsStrAttr(c.id)}')"><i class="fas fa-trash"></i></button>` : ''}</span></div>`).join('') : ''}
               </div></div>`;
         };
         box.innerHTML = `

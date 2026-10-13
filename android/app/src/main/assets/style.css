@@ -1922,7 +1922,6 @@ button[class*="btn"] {
     align-items: center;
     gap: 8px;
     transition: var(--transition-spring);
-    will-change: transform;
     position: relative;
     overflow: hidden;
 }
@@ -2791,7 +2790,6 @@ tbody tr:last-child td {
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
-    will-change: transform;
 }
 
 .product-card::after {
@@ -10172,6 +10170,59 @@ body {
 #app.market-mode .market-logo { width: 50px; height: 50px; flex: 0 0 50px; }
 .login-logo .logo-icon { width: 76px; height: 76px; border-radius: 20px; }
 
+/* ── Brending: YUKLANGAN kompaniya logotipi (has-custom-logo) ───────────
+   `applyBranding()` konteynerga `has-custom-logo` sinfini qo'shadi va ichiga
+   `.brand-logo-img` rasmni joylaydi. Yuqoridagi `... > * { display:none }`
+   qoidasi faqat STANDART ikonkani yashirish uchun yozilgan edi, lekin u
+   yuklangan rasmni ham yashirib qo'yardi — natijada logotip sayt bo'ylab
+   (login, yon panel, do'kon) almashmasdi. Quyidagi qoidalar bir xil yoki
+   yuqoriroq spetsifikatsiyaga ega bo'lgani uchun ustun turadi. */
+#app.market-mode .market-logo.has-custom-logo > *,
+#loginShowcaseLogo.has-custom-logo > *,
+.login-logo .logo-icon.has-custom-logo > *,
+.logo-sq.has-custom-logo > * { display: block !important; }
+
+#app.market-mode .market-logo.has-custom-logo,
+#app.market-mode .market-footer-brand .market-logo.has-custom-logo,
+#loginShowcaseLogo.has-custom-logo,
+.login-logo .logo-icon.has-custom-logo,
+.logo-sq.has-custom-logo {
+    background-image: none !important;
+    background-color: #14060a !important;
+    box-shadow: 0 0 0 1px rgba(255, 70, 50, .35), 0 8px 22px rgba(120, 0, 15, .4);
+}
+
+/* Logotip rasmi konteyner ichiga to'liq sig'adi (cho'zilmaydi/qirqilmaydi) */
+.brand-logo-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 4px;
+    box-sizing: border-box;
+    object-fit: contain;
+    object-position: center;
+}
+
+/* Sozlamalar → «Kompaniya logotipi» kichik ko'rinishi (preview).
+   Ilgari bu konteynerda CSS umuman yo'q edi: ichidagi `width:100%` rasm
+   tabiiy o'lchamida cho'zilib, qator ichida qirqilib ("chala") ko'rinardi.
+   Endi qat'iy kvadrat ramka + `contain` — logotip butunlay ko'rinadi. */
+.logo-preview-box {
+    width: 132px;
+    height: 132px;
+    flex: 0 0 132px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px dashed var(--border-mid, rgba(148, 163, 184, .26));
+    border-radius: 16px;
+    background: var(--surface, #170b0c);
+}
+.logo-preview-box .brand-logo-img { padding: 0; }
+
 /* Header fon/qidiruv uslublari — "HEADER v4" bo'limida (pastda, yarim shaffof + blur) */
 
 /* Header tugmalari uslublari — "HEADER v4" bo'limida (pastda) */
@@ -11318,7 +11369,6 @@ html {
 #app.market-mode .shop-product-card {
     border-radius: 16px;
     transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
-    will-change: transform;
 }
 
 #app.market-mode .shop-product-card:hover {
@@ -11965,6 +12015,12 @@ body.drawer-open {
       width: 100%;
     }
 
+}
+
+/* Planshet (769–1024px): keng jadval gorizontal scroll ichida haqiqiy jadval
+   bo'lib qoladi. ≤768px uchun bu yerda HECH NARSA yozilmaydi — kichik
+   ekranlarda sahifa karta (stacked) rejimiga o'tadi (MOBILE REBUILD bo'limi). */
+@media (min-width: 769px) and (max-width: 1024px) {
     #page-products .products-table-scroll {
       overflow-x: auto !important;
     }
@@ -12435,8 +12491,21 @@ body {
     padding: env(safe-area-inset-top, 0px) 12px 8px 12px !important;
     transition: none;
   }
+  /* Mobil GPU: doimiy (fixed) glass elementlar scroll paytida har kadrl
+     qayta-blur qilinadi — radius mobil qurilmada kamaytiriladi, desktop o'zgarmaydi */
+  #app:not(.market-mode) .topbar,
+  #app.market-mode .market-top {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .sidebar {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
   .topbar .page-title {
-    padding-left: 0;
+    /* ☰ tugmasi fixed (12px, 48px) — sarlavha uning ostiga tushmasligi uchun
+       chapdan joy ajratiladi (12px topbar padding + 48px tugma + 8px bo'shliq). */
+    padding-left: 56px;
     font-size: 16px;
     flex: 1 1 0;
     min-width: 0;
@@ -12849,7 +12918,132 @@ body {
   .table-wrap tbody td[colspan] { justify-content: center; text-align: center; font-style: italic; color: var(--muted); padding: 16px 0 !important; }
   .table-wrap tbody td[colspan]::before { display: none; content: ""; }
 
+  /* ============== FILIALLAR — MOBIL KARTA (faqat #branchesTable) ==============
+     Umumiy mobil jadval-qoidasi filial qatorini yorliqsiz, o'ngga tekislangan
+     zich ustun qilib qo'ygan edi — summalar bir-biridan ajralmasdi. Bu yerda
+     filial kartasi qayta tartiblanadi (ma'lumotlar/summalar O'ZGARMADI,
+     faqat joylashuv): yuqorida A) ikona+nom, manzil, telefon, holat;
+     o'rtada B) 2 ustunli moliyaviy bloklar (nom tepada, qiymat pastda);
+     pastda C) to'liq kenglikdagi amallar tugmalari (44px touch). */
+  #page-branches #branchesTable tr {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 10px;
+    row-gap: 8px;
+    padding: 12px !important;
+  }
+  #page-branches #branchesTable td {
+    border-bottom: none !important;
+    padding: 0 !important;
+    width: auto !important; /* umumiy `width:100% !important` flex-bosimga xalaqit beras edi */
+  }
+  /* A. Filial ma'lumotlari */
+  #page-branches #branchesTable td:nth-child(1) {
+    flex: 0 0 auto;
+    justify-content: flex-start !important;
+    align-self: center;
+  }
+  #page-branches #branchesTable td:nth-child(1)::before,
+  #page-branches #branchesTable td:nth-child(2)::before {
+    display: none !important;
+  }
+  #page-branches #branchesTable td:nth-child(2) {
+    flex: 1 1 calc(100% - 54px);
+    min-width: 0;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    align-self: center;
+  }
+  #page-branches #branchesTable td:nth-child(2) strong {
+    font-size: 14.5px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  #page-branches #branchesTable td:nth-child(3),
+  #page-branches #branchesTable td:nth-child(4) {
+    flex: 1 1 100%;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  #page-branches #branchesTable td:nth-child(4) a {
+    word-break: break-all;
+    text-decoration: none;
+  }
+  #page-branches #branchesTable td:nth-child(3)::before,
+  #page-branches #branchesTable td:nth-child(4)::before,
+  #page-branches #branchesTable td:nth-child(11)::before {
+    width: auto;
+    max-width: none;
+    min-width: 58px;
+    padding-right: 10px;
+  }
+  /* B. Moliyaviy bloklar — 2 ustun; label tepada, qiymat pastida */
+  #page-branches #branchesTable td:nth-child(n+5):nth-child(-n+10) {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+    display: block !important;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px !important;
+    text-align: left !important;
+    font-size: 12.5px;
+    font-weight: 700;
+    word-break: break-word;
+  }
+  #page-branches #branchesTable td:nth-child(n+5):nth-child(-n+10)::before {
+    content: attr(data-label);
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    padding-right: 0;
+    margin-bottom: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  /* Holat — to'liq qator; toggle tugmasi 44px */
+  #page-branches #branchesTable td:nth-child(11) {
+    flex: 1 1 100%;
+    align-items: center !important;
+    font-size: 13px;
+  }
+  #page-branches #branchesTable td:nth-child(11) button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* C. Amallar — pastda, to'liq kenglikda, teng bo'lingan */
+  #page-branches #branchesTable td:nth-child(12) {
+    flex: 1 1 100%;
+  }
+  #page-branches #branchesTable td:nth-child(12) > div {
+    width: 100%;
+    justify-content: stretch;
+  }
+  #page-branches #branchesTable td:nth-child(12) button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    margin-left: 0;
+    font-size: 13px;
+  }
+
   /* ============== PRODUCTS PAGE — MOBILE CARD ENHANCEMENTS ============== */
+  /* ≤768px: mahsulotlar jadvali KARTA (stacked) rejimiga o'tadi. Desktop va
+     planshet uchun yozilgan qat'iy kenglik (1191px) va matn qisqartirish
+     cheklovlarini bekor qilamiz — aks holda butun sahifa gorizontal siljib,
+     "Amallar" (tahrirlash/o'chirish) tugmalari ekrandan chiqib ketadi. */
+  #page-products .products-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  #page-products .products-table tbody td[data-label] {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
   #page-products .panel-header {
     padding: 10px 12px !important;
     flex-direction: column !important;
@@ -13168,11 +13362,49 @@ body {
     background: transparent !important;
     transform: none !important;
     animation: none !important;
-    overflow: visible !important;
+    /* TUZATISH (mobil qo'shish oynalari):
+       1) `overflow: visible` → kontent sheet max-height (92vh) dan uzun bo'lsa,
+          uni root `.modal-overlay { overflow: hidden }` kesib qo'yardi va
+          Saqlash tugmasigacha scroll qilib bo'lmasdi (branchModal'da Saqlash
+          1546px da edi — ekrandan tashqarida, ya'man to'liq qirqilgan).
+          Endi ichki `.modal` o'zi scroll konteyneri (`.modal-body`li
+          modallarda esa o'zgartiruvchi ta'sir qilmaydi — body ichki
+          scroll bilan qoladi, `.modal` ortiqcha skrolllanmaydi).
+       2) `.modal-body`siz eski qurilgan modallar (branchModal, contractModal,
+          productModal, customerModal, categoryModal, maosh/chegirma modallari
+          — jami 11 ta) da forma qatorlari to'g'ridan-to'g'ri `.modal`
+          bolasi edi: `.modal` padding:0 bo'lgani uchun maydonlar sheet
+          chetlariga yopishib qolgan edi. Tegishli bolalar ichki
+          gorizontal padding oladi (quyidagi qoida). */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     z-index: auto !important;
     display: flex !important;
     flex-direction: column !important;
     flex: 1 1 auto;
+  }
+  /* `.modal-body`siz qurilgan modallarning to'g'ridan-to'g'ri bolalari
+     (form-row, form-col, matn, buttonsizsiz DIV) — ichki gorizontal padding.
+     `.modal-header`/`.modal-body`/`.modal-footer` o'z paddingini o'zi oladi;
+     inline-style yoki o'z klassi bilan padding qurilgan elementlar
+     (masalan `.salary-modal-emp-info`, rasm yuklash qutisi) bu ro'yxatda
+     yo'q. `productDetailModal` o'z maxsus dizayni uchun mustasno. */
+  .modal-overlay:not(#productDetailModal) .modal > .form-row,
+  .modal-overlay:not(#productDetailModal) .modal > .form-col,
+  .modal-overlay:not(#productDetailModal) .modal > .grid-2,
+  .modal-overlay:not(#productDetailModal) .modal > .grid-3,
+  .modal-overlay:not(#productDetailModal) .modal > p,
+  .modal-overlay:not(#productDetailModal) .modal > small,
+  .modal-overlay:not(#productDetailModal) .modal > div:not([class]) {
+    padding-left: 16px;
+    padding-right: 16px;
+    box-sizing: border-box;
+  }
+  /* Skroll oxirida oxirgi element pastki chetga yopishmasin */
+  .modal-overlay:not(#productDetailModal) .modal > *:last-child:not(.modal-header):not(.modal-footer) {
+    padding-bottom: 16px;
   }
   /* Boss modallar boshlig'i (.modal-head) dagi ✕ tugmasi ham44×44 bo'lsin
      (tegishli qoida faqat .modal-header uchun yozilgan edi). */
@@ -13240,6 +13472,33 @@ body {
     font-weight: 700;
   }
   .modal .modal-footer button:first-child:last-child { flex: 1 1 100%; }
+
+  /* ============== MODAL SHEET: SWIPE + LOCK ==============
+     Swipe-to-dismiss logikasi scripts.js `ModalSheet` modulida;
+     bu yerda faqat ikkita CSS qo'llab-quvvatlovchi qoida:
+     1) body.modal-locked — modal ochiqda orqa sahifa skrolli
+        qulflanadi (eski pozitsiya JS'da saqlanib yopilganda qaytariladi);
+     2) sarlavhadagi drag-handle chizig'i — pastga surishning
+        vizual ko'rsatkichi (faqat mobil sheet'larda). */
+  body.modal-locked {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+  [id$="Modal"] .modal-header::after,
+  [id$="Modal"] .modal-head::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 4px;
+    border-radius: 99px;
+    background: var(--border);
+    opacity: .85;
+    pointer-events: none;
+  }
+
   .modal-backdrop, .modal-bg, .overlay:not(.sidebar-overlay):not(.market-drawer-overlay),
   [class*="backdrop"] {
     background: rgba(0,0,0,.65);
@@ -13968,8 +14227,8 @@ body {
     height: calc(66px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--hdr-bg) !important;
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
     border-top: 1px solid var(--hdr-border);
     box-shadow: 0 -8px 28px rgba(0,0,0,.28);
     color: var(--hdr-fg);
@@ -14049,7 +14308,7 @@ body {
     --hdr-pad-x: 10px;
   }
   /* ≤480px: ☰ toggle ko'rinib turadi (≤768px qoidasiga qarang — drawer ochish yagona yo'li) */
-  .topbar .page-title { padding-left: 0; font-size: 15px; }
+  .topbar .page-title { padding-left: 56px; font-size: 15px; }
   .page { padding: 10px !important; }
   .login-box { padding: 16px; gap: 12px; }
   .stat-num { font-size: clamp(16px, 5vw, 20px); }
@@ -14247,7 +14506,9 @@ body {
   }
 }
 
-@media (max-width: 1024px) {
+/* Planshet (769–1024px) — mobil (≤768px) karta rejimi buzilmasligi uchun
+   bu blok faqat planshet kengligida ishlaydi. */
+@media (min-width: 769px) and (max-width: 1024px) {
   #page-products .products-table-scroll {
     overflow-x: auto !important;
   }

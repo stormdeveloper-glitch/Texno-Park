@@ -1,0 +1,100 @@
+==============================================================================
+A) PAROL XESHI: eski SHA-256 dan PBKDF2 ga o'tish (akountlar ishlaydi)
+==============================================================================
+  (eski xeshli akountlar: 14 ta)
+  PASS  /api/security/status (anonim) -> 401   [HTTP 401]
+  PASS  Eski SHA-256 xesh bilan login ishlaydi (moslik saqlangan)
+  PASS  Kirishdan keyin xesh PBKDF2 ga otdi   [pbkdf2_sha256$150000$0ff73de8c...]
+  PASS  Aynan bitta akount yangilandi (qolganlariga tegilmadi)   [14 -> 13]
+  PASS  Yangi PBKDF2 xesh bilan qayta login ishlaydi
+  PASS  Noto'g'ri parol hamon rad etiladi
+  PASS  Kassir login ishlaydi
+  PASS  Boshliq login ishlaydi
+  PASS  /api/security/status (admin) -> 200   [HTTP 200]
+  PASS    javobda maxfiy parol qiymati yo'q
+  PASS  /api/security/status (kassir) -> 403   [HTTP 403]
+  PASS  /api/security/status (boshliq) -> 200   [HTTP 200]
+
+==============================================================================
+B) CATCH-ALL MARSHRUT (405 vs 404) va statik oq ro'yxat
+==============================================================================
+  PASS  GET /api/sync (faqat POST) -> 405   [HTTP 405]
+  PASS  GET /api/boss/staff/1 (faqat PUT/DELETE) -> 405   [HTTP 405]
+  PASS  GET /api/definitely-not-here -> 404   [HTTP 404]
+  PASS  GET /.env -> 404   [HTTP 404]
+  PASS  GET /app.py -> 404   [HTTP 404]
+  PASS  GET /.git/HEAD -> 404   [HTTP 404]
+  PASS  GET /.testdb/bughunt.db -> 404   [HTTP 404]
+  PASS  GET /api/data -> 401 (o'zgarmagan)   [HTTP 401]
+  PASS  GET /api/catalog -> 200 (ommaviy, o'zgarmagan)   [HTTP 200]
+
+==============================================================================
+C) NaN / Infinity — butun ilovani o'chiruvchi xato (asosiy tuzatish)
+==============================================================================
+  PASS  total=NaN -> 400   [{"message":"Savdo total qiymati noto'g'ri (NaN/Infinity)","status":"error"}
+]
+  PASS  total=Infinity -> 400
+  PASS  items[].price=NaN -> 400
+  PASS  total=-5 -> 400
+  PASS  total="abc" -> 400
+  PASS  nested NaN (chuqur tekshiruv) -> 400
+  PASS  img=javascript: -> 400 (o'zgarmagan)
+  PASS  NaN urinishlaridan keyin baza o'zgarmadi   [0 -> 0]
+  PASS  To'g'ri savdo qabul qilindi (regressiya)   [HTTP 200]
+  PASS    savdo bazaga yozildi   [count=1]
+  PASS  GET /api/data -> 200, JSON standartiga mos (NaN/Infinity yo'q)
+  PASS    Python json.parse muvaffaqiyatli
+
+==============================================================================
+D) MA'LUMOT YO'QOTISHDAN HIMOYA (kassir tarixni o'chira olmasin)
+==============================================================================
+  PASS  kassir {"sales": []} -> so'rov qabul qilinadi (POS ishlamay qolmaydi)   [HTTP 200]
+  PASS    LEKIN savdo tarixi bazada SAQLANIB qoldi   [count=1]
+  PASS  kassir YANGI savdo qo'sha oladi (asosiy oqim uzilmadi)   [HTTP 200]
+  PASS    yangi + eski savdo ikkisi ham bor   [count=2]
+  PASS  O'chirishga urinish xavfsizlik jurnaliga yozildi   [Past darajali rol o'chirmoqchi bo'lgan yozuvlar saqlab qolindi (sales:]
+  PASS  admin o'chirish huquqini saqlab qoldi (siyosat o'zgarmagan)   [HTTP 200]
+  PASS    admin o'chirgach baza bo'sh   [count=0]
+
+==============================================================================
+E) CLICK WEBHOOK (muvaffaqiyatsiz to'lov "to'landi" bo'lib qolmasin)
+==============================================================================
+  PASS  Prepare (action=0) muvaffaqiyatli   [{'click_trans_id': 111, 'error': 0, 'error_note': 'Success', 'merchant]
+  PASS    prepare_id eslab qolindi   [111]
+  PASS  error != 0 (Click bekor qildi) -> rad etiladi   [{'error': -9, 'error_note': 'Transaction cancelled by Click'}]
+  PASS    savdo "paid" bo'lib qolmadi   [pending]
+  PASS  Noto'g'ri imzo -> rad etiladi   [{"error":-1,"error_note":"Sign string mismatch"}
+]
+  PASS  merchant_prepare_id mos emas -> rad etiladi (yangi tekshiruv)   [{'error': -1, 'error_note': 'Prepare id mismatch'}]
+  PASS  To'g'ri imzo + prepare_id -> to'lov tasdiqlandi   [{'click_trans_id': 111, 'error': 0, 'error_note': 'Success', 'merchant]
+  PASS    savdo endi "paid"   [paid]
+  PASS    logs'ga paydoc id yozildi
+
+==============================================================================
+F) /api/reports — spam himoyasi va xato matni
+==============================================================================
+  PASS  Bo'sh xabar -> 400   [HTTP 400]
+  PASS  Uzun xabar -> 200 (2000 belgiga qisqartiriladi)   [HTTP 200]
+  PASS  Limit ichida qabul qilinadi   [[200, 200, 200]]
+  PASS  Limitdan keyin -> 429 (yangi himoya)   [HTTP 429]
+
+==============================================================================
+G) REGRESSIYA — boshliq paneli va kassa ishlashda davom etadimi?
+==============================================================================
+  PASS  boss GET /api/boss/overview -> 200   [HTTP 200]
+  PASS  boss GET /api/boss/staff -> 200   [HTTP 200]
+  PASS  boss GET /api/boss/finance -> 200   [HTTP 200]
+  PASS  boss GET /api/boss/audit -> 200   [HTTP 200]
+  PASS  boss GET /api/boss/reports -> 200   [HTTP 200]
+  PASS  boss GET /api/boss/charts -> 200   [HTTP 200]
+  PASS  boss GET /api/boss/products -> 200   [HTTP 200]
+  PASS  boss GET /api/boss/branches -> 200   [HTTP 200]
+  PASS  admin GET /api/boss/overview -> 403 (o'zgarmagan)   [HTTP 403]
+  PASS  kassir GET /api/data -> 200 (kassa ishlaydi)   [HTTP 200]
+  PASS  kassir GET /api/fiscal/status -> 200   [HTTP 200]
+  PASS  boss GET /api/auth/session -> 200   [HTTP 200]
+  PASS  boss parol ko'rish endpointi ishlaydi (ataylab qoldirilgan)   [HTTP 200]
+
+==============================================================================
+YAKUN: 66/66 PASS
+Hamma tekshiruv o'tdi.

@@ -27,7 +27,7 @@ try:
 except Exception:
     pass
 
-PW = (os.getenv('TP_STAFF_PASSWORD') or 'diyorbek6272').strip()
+PW = (os.getenv('TP_STAFF_PASSWORD') or os.getenv('BOSS_DEFAULT_PASSWORD') or '').strip()
 
 ACCOUNTS = [
     ('BOSHLIQ', '+998901234554', 'boss'),

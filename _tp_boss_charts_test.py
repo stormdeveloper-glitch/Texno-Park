@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import app as tp  # noqa: E402
 
 BOSS_PHONE = '+998901234554'
-BOSS_PASSWORD = os.getenv('BOSS_DEFAULT_PASSWORD', 'diyorbek6272')
+BOSS_PASSWORD = os.getenv('BOSS_DEFAULT_PASSWORD', '')
 
 _passed = 0
 _failed = 0

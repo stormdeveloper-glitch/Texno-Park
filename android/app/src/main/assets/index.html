@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="color-scheme" content="light dark">
   <title>Texno Park N1 POS — Premium</title>
@@ -14,7 +14,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.10.6">
+  <link rel="stylesheet" href="style.css?v=5.11.1">
   <link rel="stylesheet" href="boss.css?v=2.1.1">
 </head>
 
@@ -233,7 +233,7 @@
       </div>
       <div class="topbar-search">
         <i class="fas fa-search"></i>
-        <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="globalSearch(this.value)" id="globalSearchInput">
+        <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="debouncedGlobalSearch(this.value)" id="globalSearchInput">
       </div>
       <!-- FAOL FILIAL TANLAGICH -->
       <div class="branch-switcher" id="branchSwitcherWrap"
@@ -654,7 +654,7 @@
                   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                     <div class="shop-search">
                       <i class="fas fa-search"></i>
-                      <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="renderShop()">
+                      <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="debouncedRenderShop()">
                     </div>
                     <div class="shop-sort">
                       <select id="shopSortSelect" onchange="renderShop()" class="form-control"
@@ -1547,7 +1547,7 @@
             <h3><i class="fas fa-list-check" style="color:var(--primary)"></i> Shartnomalar ro'yxati</h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <input class="form-control" id="contractSearch" placeholder="Raqam / mijoz bo'yicha qidirish..."
-                style="min-width:220px;height:38px" oninput="Contracts.render()">
+                style="min-width:220px;height:38px" oninput="debouncedContractsRender()">
               <select class="form-control" id="contractStatusFilter" style="height:38px;width:auto"
                 onchange="Contracts.render()">
                 <option value="">Barcha holat</option>
@@ -3778,7 +3778,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.4.17"></script>
+  <script src="scripts.js?v=1.4.21"></script>
   <script src="boss.js?v=2.1.1"></script>
   <script>
     /* Header: surilganda ixchamlashadi */

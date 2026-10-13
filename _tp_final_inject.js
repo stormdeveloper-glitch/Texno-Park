@@ -2,6 +2,8 @@
 // index.html nusxasi ichiga yuklanadi (iframesiz, to'g'ridan-to'g'ri).
 (function () {
   'use strict';
+  // Parol KODDA SAQLANMAYDI: brauzerda oldin window.TP_BOSS_PASSWORD o'rnating.
+  var BOSS_PW = (typeof window !== 'undefined' && window.TP_BOSS_PASSWORD) || '';
   var results = [];
   var debug = [];
   var started = false;
@@ -136,7 +138,7 @@
     return reset()
       .then(function () {
         add(seedStaleLock('901234554'), location.protocol + ' [3] stale lock localStorage ga yozildi (lockUntil +10 daq)');
-        return loginRaw('901234554', 'diyorbek6272');
+        return loginRaw('901234554', BOSS_PW);
       })
       .then(function (r) {
         add(r.ok, location.protocol + ' [3b] stale lock GA QARAMASDAN to\'g\'ri parol -> kirish OK' +
@@ -154,7 +156,7 @@
     var chain = Promise.resolve().then(reset);
     variants.forEach(function (v) {
       chain = chain.then(reset).then(function () {
-        return loginRaw(v.replace(/\D/g, ''), 'diyorbek6272');
+        return loginRaw(v.replace(/\D/g, ''), BOSS_PW);
       }).then(function (r) {
         add(r.ok && r.role === 'Boshliq', location.protocol + ' [4] "' + v + '" -> BOSHLIQ, ok=' + r.ok + ', role=' + r.role +
           (r.err ? ' err=' + r.err : '') + (r.toasts && r.toasts.length ? ' | toasts=' + r.toasts.join(' ; ').slice(0, 160) : ''));
@@ -177,7 +179,7 @@
         location.protocol + ' [5] 5x xato parol -> lockout xabari (last.ok=' + (last ? last.ok : '?') + '): ' + t.slice(0, 220));
       return reset();
     }).then(function () {
-      return loginRaw('901234554', 'diyorbek6272');
+      return loginRaw('901234554', BOSS_PW);
     }).then(function (r) {
       add(r.ok && r.role === 'Boshliq', location.protocol + ' [5b] lockoutdan keyin to\'g\'ri parol -> BOSHLIQ (ok=' + r.ok + ', role=' + r.role + ')');
     });
@@ -192,7 +194,7 @@
     var chain = Promise.resolve();
     roles.forEach(function (pair) {
       chain = chain.then(reset).then(function () {
-        return loginRaw(pair[0], 'diyorbek6272');
+        return loginRaw(pair[0], BOSS_PW);
       }).then(function (r) {
         add(r.ok && r.role === pair[1], location.protocol + ' [6] ' + pair[0] + ' -> "' + r.role + '" (kutilgan: ' + pair[1] + ')');
       });
