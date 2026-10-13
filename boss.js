@@ -16,7 +16,7 @@ const Boss = (() => {
     const state = {
         period: 'all',
         customActive: false,
-        staffQuery: '', staffRole: '', staffSort: 'total', staffBranch: '',
+        staffQuery: '', staffRole: '', staffSort: 'total', staffBranch: '', staffStatus: '',
         productView: 'all', productQuery: '', productCat: '',
         reportBranch: '', reportStaff: '', reportProduct: '', reportCat: '',
         reportFrom: '', reportTo: '',
@@ -24,6 +24,13 @@ const Boss = (() => {
         financeBranch: '', financeFrom: '', financeTo: '',
         auditQuery: '', auditSource: '',
         activeStaffId: null,
+        editingStaffId: null,      // tahrir rejimi (bossStaffModal)
+        editingStaffOrig: null,    // tahrir ochilgandagi asl qiymatlar
+        staffMenuId: null,         // ochiq uch nuqtali menyu (mobil)
+        staffMenuBtn: null,
+        staffMode: null,           // oxirgi chizilgan rejim: 'card' | 'table'
+        mqStaff: null,             // (max-width:768px) MediaQueryList — GC'dan himoya
+        roStaff: null,             // ResizeObserver — layout zaxira sinxronizatsiyasi
         revealedPass: {},   // id -> {password, changedAt, changedBy} (vaqtincha ko'rsatilgan)
         cache: {}
     };
@@ -124,7 +131,7 @@ function setPeriod(value) {
         // Davr filtrlari har bo'limda bir xil ishlaydi.
         paintPeriodChips();
         if (key === 'boss') load();
-        if (key === 'bossStaff') loadStaff();
+        if (key === 'bossStaff') { loadStaff(); loadBranchOptions(); }
         if (key === 'bossStaffSales') {
             // Sahifa har ochilganda — umumiy ko'rinish (chiplar va filtrlar bilan).
             showSalesOverview();
@@ -155,6 +162,7 @@ function setPeriod(value) {
         fill('boss-report-branch', 'Barcha filiallar');
         fill('boss-sales-branch', 'Barcha filiallar');
         fill('boss-finance-branch', 'Barcha filiallar');
+        fill('boss-staff-branch-m', 'Barcha filiallar');
         fill('boss-new-branch', 'Filialsiz');
     }
 
@@ -350,14 +358,81 @@ function setPeriod(value) {
         // Ro'yxat yangilanganda eski ko'rinishlar o'chadi (parol almashgan bo'lishi mumkin).
         state.revealedPass = {};
         state.cache.staff = data;
-        const box = document.getElementById('boss-staff-table');
-        if (box) box.innerHTML = staffRowsHtml(data.staff || []);
+        renderStaffList();
         const head = document.getElementById('boss-staff-count');
         if (head) head.textContent = `${data.total || 0} ta xodim`;
         // Sidebar'dagi xodimlar badge'i ham shu ma'lumotdan yangilanadi
         // (oldingi versiyada HTMLda doimiy "0" qolgan — hech kim yangilamagan).
         const navBadge = document.getElementById('navBossStaffBadge');
         if (navBadge) navBadge.textContent = String(data.total || (data.staff || []).length || 0);
+        // Statistika BIR martahisoblanadi (bitta aylanish) va shu yagona natija
+        // mobil panelning barcha raqamlariga yoziladi — qayta-qayta hisoblanmaydi.
+        const rows = data.staff || [];
+        let blocked = 0;
+        for (const s of rows) {
+            if (String(s.status || '').toLowerCase() === 'blocked') blocked++;
+        }
+        const total = data.total || rows.length;
+        setStaffStats(total, Math.max(0, total - blocked), blocked);
+    }
+
+    /** Joriy ekran turini aniqlaydi: telefonda kartochka, desktopda jadval. */
+    function isStaffMobile() {
+        return typeof window.matchMedia === 'function'
+            && window.matchMedia('(max-width: 768px)').matches;
+    }
+
+    /** Statistika panelidagi oltita raqamni yagona hisob natijasidan to'ldiradi. */
+    function setStaffStats(total, active, blocked) {
+        const set = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = String(value);
+        };
+        set('boss-staff-m-total', total);
+        set('boss-staff-m-active', active);
+        set('boss-staff-m-blocked', blocked);
+        set('boss-pill-all', total);
+        set('boss-pill-active', active);
+        set('boss-pill-blocked', blocked);
+    }
+
+    /** Holat filtri (mobil pill'lar) — faqat joriy kesh ustida ishlaydi. */
+    function filterStaffRows(rows) {
+        const f = state.staffStatus;
+        if (f !== 'active' && f !== 'blocked') return rows;
+        return rows.filter(s => {
+            const b = String(s.status || '').toLowerCase() === 'blocked';
+            return f === 'blocked' ? b : !b;
+        });
+    }
+
+    /** Ro'yxatni joriy ekranga ko'ra chizadi (kartochka yoki jadval). */
+    function renderStaffList() {
+        const data = state.cache.staff || {};
+        const rows = data.staff || [];
+        const mobile = isStaffMobile();
+        state.staffMode = mobile ? 'card' : 'table'; // nima chizilgani eslab qolinadi
+        const tableBox = document.getElementById('boss-staff-table');
+        const cardBox = document.getElementById('boss-staff-cards');
+        if (mobile) {
+            if (tableBox) tableBox.innerHTML = '';
+            if (cardBox) cardBox.innerHTML = staffCardsHtml(filterStaffRows(rows));
+        } else {
+            if (cardBox) cardBox.innerHTML = '';
+            if (tableBox) tableBox.innerHTML = staffRowsHtml(rows);
+        }
+    }
+
+    /**
+     * Ko'rinish rejimini real ekranga moslaydi. Faqat rejim HAQIQATAN
+     * o'zgarganda qayta chizadi (matchMedia change ham, resize zaxirasi ham
+     * shu funksiyanik chaqiradi — ikkalasi birga ishonchli natija beradi).
+     */
+    function syncStaffMode() {
+        const mode = isStaffMobile() ? 'card' : 'table';
+        if (state.staffMode === mode) return;
+        closeStaffMenu();
+        renderStaffList();
     }
 
     function staffRowsHtml(rows) {
@@ -396,6 +471,76 @@ function setPeriod(value) {
                     <button class="btn btn-outline btn-sm danger" data-boss-del="${escapeHTML(String(s.id))}">O'chirish</button>
 </td></tr>`;
         }).join('');
+    }
+
+    /**
+     * MOBIL kartochka (faqat ≤768px): avatar, ism, rol, telefon, filial,
+     * holat, uch nuqtali menyu va «Batafsil». Ma'lumotlar — shu jadval
+     * qatorlaridagi HAQIQIY qiymatlar (qayta hisoblanmaydi, yangi so'rov yo'q).
+     */
+    function staffCardsHtml(rows) {
+        if (!rows.length) {
+            return `<div class="boss-empty"><i class="fas fa-user-slash"></i>`
+                + `<p>Xodim topilmadi</p></div>`;
+        }
+        return rows.map(s => {
+            const blocked = String(s.status || '').toLowerCase() === 'blocked';
+            const me = currentUser && s.login === currentUser.login;
+            const role = String(s.role || '').trim().toLowerCase();
+            const initial = escapeHTML(((s.name || '?').trim())[0] || '?');
+            return `<article class="bsc" data-id="${escapeHTML(String(s.id))}">
+                <div class="bsc-top">
+                    <div class="bsc-avatar tone-${escapeHTML(role || 'other')}">${initial}</div>
+                    <div class="bsc-id">
+                        <div class="bsc-name">
+                            <span class="bsc-name-txt" title="${escapeHTML(s.name || '')}">${escapeHTML(s.name || '—')}</span>
+                            ${me ? '<span class="boss-me">siz</span>' : ''}
+                            ${roleBadge(s.role)}
+                        </div>
+                    </div>
+                    <button type="button" class="bsc-menu-btn" data-boss-menu="${escapeHTML(String(s.id))}"
+                        aria-haspopup="menu" aria-expanded="false" aria-label="Boshqaruv menyusi">
+                        <i class="fas fa-ellipsis-vertical"></i></button>
+                </div>
+                <div class="bsc-rows">
+                    <div class="bsc-row"><i class="fas fa-phone"></i><span>${escapeHTML(s.phone || '—')}</span></div>
+                    <div class="bsc-row"><i class="fas fa-store"></i><span>${escapeHTML(s.branchName || '—')}</span></div>
+                </div>
+                <div class="bsc-foot">
+                    <span class="bsc-status ${blocked ? 'blocked' : 'active'}"><i class="fas fa-circle"></i>${blocked ? 'Bloklangan' : 'Faol'}</span>
+                    <button type="button" class="bsc-detail" data-boss-sale="${escapeHTML(String(s.id))}">Batafsil <i class="fas fa-chevron-right"></i></button>
+                </div>
+            </article>`;
+        }).join('');
+    }
+
+    /**
+     * «Batafsil» sarlavhasidagi shaxsiy blok — MOBIL uchun (desktop'da yashirin).
+     * identifikator maydonlari keshdan, savdo raqamlari esa allaqachon
+     * ochilgan savdo javobidan olinadi — qo'shimcha API so'rovi YO'Q.
+     */
+    function staffProfileHtml(p) {
+        if (!p || !p.name) return '';
+        const role = String(p.role || '').trim().toLowerCase();
+        const initial = escapeHTML(((p.name || '?').trim())[0] || '?');
+        const showLogin = p.login && p.login !== p.phone;
+        const field = (label, value) => `<div><span>${label}</span><strong>${escapeHTML(value || '—')}</strong></div>`;
+        return `<div class="boss-staff-profile">
+            <div class="bsp-top">
+                <div class="bsc-avatar tone-${escapeHTML(role || 'other')}">${initial}</div>
+                <div class="bsp-id">
+                    <div class="bsp-name">${escapeHTML(p.name)}</div>
+                    <div class="bsp-badges">${roleBadge(p.role)}${statusBadge(p.status)}</div>
+                </div>
+            </div>
+            <div class="boss-detail-grid">
+                ${field('Telefon', p.phone)}
+                ${showLogin ? field('Login identifikatori', p.login) : ''}
+                ${field('Filial', p.branchName)}
+                ${field('Ro\'yxatdan o\'tgan', p.createdAt)}
+                ${field('Oxirgi faollik', p.lastSeen || p.updatedAt)}
+            </div>
+        </div>`;
     }
 
     /**
@@ -438,11 +583,9 @@ function setPeriod(value) {
         </div>`;
     }
 
-    /** Joriy kesh bo'yicha xodimlar jadvalini qayta chizadi (sahifa almashmasdan). */
+    /** Joriy kesh bo'yicha xodimlar ro'yxatini qayta chizadi (sahifa almashmasdan). */
     function rerenderStaffTable() {
-        const box = document.getElementById('boss-staff-table');
-        const data = state.cache.staff || {};
-        if (box) box.innerHTML = staffRowsHtml(data.staff || []);
+        renderStaffList();
     }
 
     /**
@@ -846,7 +989,11 @@ function setPeriod(value) {
         state.cache.lastReceiptsStaff = s.name || '';
         const title = document.getElementById('boss-sales-title');
         if (title && s.name) title.textContent = `${s.name} — savdolari`;
-        box.innerHTML = `
+        // «Batafsil» uchun shaxsiy blok (mobil CSS bilan — desktop ko'rinishi
+        // o'zgarmaydi). Yangi so'rov yo'q: identifikator keshdan, savdo — shu javobdan.
+        const cachedRow = findStaffAnywhere(staffId);
+        const profile = Object.assign({}, cachedRow || {}, s);
+        box.innerHTML = staffProfileHtml(profile) + `
             <div class="boss-sales-kpis">
                 <div><span>Savdo soni</span><strong>${s.sales || 0}</strong></div>
                 <div><span>Sotilgan dona</span><strong>${s.units || 0}</strong></div>
@@ -1211,6 +1358,17 @@ function setPeriod(value) {
         if (eye) eye.className = 'fas fa-eye';
         const hint = document.getElementById('boss-new-pass-hint');
         if (hint) hint.textContent = 'Kamida 6 belgi. Parol tizimda faqat xesh ko\'rinishida saqlanadi.';
+        // Tahrir holati yopiladi — forma yana «qo'shish» rejimida ochiladi.
+        state.editingStaffId = null;
+        state.editingStaffOrig = null;
+        const title = document.getElementById('boss-staff-modal-title');
+        if (title) title.innerHTML = '<i class="fas fa-user-plus"></i> Xodim qo\'shish';
+        const passLabel = document.getElementById('boss-new-pass-label');
+        if (passLabel) passLabel.innerHTML = 'Parol <b>*</b>';
+        const pw = document.getElementById('boss-new-password');
+        if (pw) pw.setAttribute('placeholder', 'Kamida 6 belgi');
+        const roleSel = document.getElementById('boss-new-role');
+        if (roleSel) roleSel.disabled = false;
         const form = document.getElementById('boss-new-form');
         const box = document.getElementById('boss-new-credentials');
         if (form) form.hidden = false;
@@ -1263,6 +1421,64 @@ function setPeriod(value) {
         if (hint) hint.textContent = 'Parol yaratildi — xodimga shu parolni bering.';
     }
 
+    /**
+     * Tahrirlash rejimi: mavjud `bossStaffModal` formasi SHU ID'lar bilan
+     * to'ldiriladi, saqlashda esa PUT /api/boss/staff/<id> ga faqat
+     * o'zgargan maydonlar yuboriladi (backend PUT ushbu maydonlarni
+     * mustaqil qabul qiladi — yangi endpoint yaratilmaydi).
+     */
+    async function openEditStaff(id) {
+        if (!isBoss()) return;
+        const row = findStaffRow(id);
+        if (!row) {
+            showNotif('error', 'Xodim topilmadi', 'Ro\'yxatni yangilang va qayta urinib ko\'ring');
+            return;
+        }
+        // Filial variantlari hali yuklanmagan bo'lsa — shu yerda to'ldiriladi.
+        await loadBranchOptions();
+
+        state.editingStaffId = String(id);
+        state.editingStaffOrig = {
+            name: String(row.name || ''),
+            login: String(row.login || ''),
+            phone: String(row.phone || ''),
+            role: String(row.role || 'cashier'),
+            branch: String(row.branchId || ''),
+            status: String(row.status || 'active')
+        };
+        const set = (elId, value) => {
+            const el = document.getElementById(elId);
+            if (el) el.value = value;
+        };
+        set('boss-new-name', row.name || '');
+        set('boss-new-phone', row.phone || '');
+        set('boss-new-status', state.editingStaffOrig.status);
+        set('boss-new-branch', state.editingStaffOrig.branch);
+        const roleSel = document.getElementById('boss-new-role');
+        const assignable = ['cashier', 'manager', 'admin'].includes(state.editingStaffOrig.role);
+        if (roleSel) {
+            // Boshliq roli tanlab bo'lmaydi (backend ham qabul qilmaydi) —
+            // shunday holatda PATCH'ga rol umuman yuborilmaydi.
+            roleSel.disabled = !assignable;
+            if (assignable) roleSel.value = state.editingStaffOrig.role;
+        }
+        const pw = document.getElementById('boss-new-password');
+        if (pw) { pw.value = ''; pw.type = 'password'; pw.setAttribute('placeholder', 'O\'zgartirmaslik uchun bo\'sh qoldiring'); }
+        const eye = document.getElementById('boss-new-pass-eye');
+        if (eye) eye.className = 'fas fa-eye';
+        const hint = document.getElementById('boss-new-pass-hint');
+        if (hint) hint.textContent = 'Ixtiyoriy: bo\'sh qoldsagina parol o\'zgarmaydi (yangi parol kamida 6 belgi).';
+        const passLabel = document.getElementById('boss-new-pass-label');
+        if (passLabel) passLabel.innerHTML = 'Yangi parol <b>(ixtiyoriy)</b>';
+        const title = document.getElementById('boss-staff-modal-title');
+        if (title) title.innerHTML = '<i class="fas fa-user-pen"></i> Xodimni tahrirlash';
+        const form = document.getElementById('boss-new-form');
+        const box = document.getElementById('boss-new-credentials');
+        if (form) form.hidden = false;
+        if (box) box.hidden = true;
+        openModal('bossStaffModal');
+    }
+
     async function createStaff() {
         if (!isBoss()) return;
         const name = (document.getElementById('boss-new-name')?.value || '').trim();
@@ -1283,6 +1499,72 @@ function setPeriod(value) {
             document.getElementById('boss-new-phone')?.focus();
             return;
         }
+
+        // ── Tahrir rejimi: faqat o'zgargan maydonlar PUT qilinadi ──────
+        if (state.editingStaffId) {
+            const orig = state.editingStaffOrig || {};
+            const patch = {};
+            if (name !== (orig.name || '')) patch.name = name;
+            if (phone !== (orig.phone || '')) patch.phone = phone;
+            const roleSel = document.getElementById('boss-new-role');
+            if (roleSel && !roleSel.disabled && role !== (orig.role || '')) patch.role = role;
+            if (branch !== (orig.branch || '')) patch.branchId = branch;
+            if (status !== (orig.status || '')) patch.status = status;
+            if (password) {
+                if (password.length < 6) {
+                    playError();
+                    showNotif('error', 'Xatolik', 'Parol kamida 6 belgidan iborat bo\'lsin');
+                    return;
+                }
+                // O'z parolini o'zgartirish hozirgi sessiyani bekor qiladi —
+                // o'zini shu formadan emas, «Parolimni o'zgartirish» oynasidan
+                // o'zgartirish taklif qilinadi.
+                const selfLogin = String(currentUser && currentUser.login || '').trim().toLowerCase();
+                const targetLogin = String(orig.login || '').trim().toLowerCase();
+                if (selfLogin && targetLogin && selfLogin === targetLogin) {
+                    showNotif('error', 'O\'z paroli',
+                        'O\'z parolingizni «Parolimni o\'zgartirish» tugmasi orqali yangilang');
+                    return;
+                }
+                patch.password = password;
+            }
+            if (!Object.keys(patch).length) {
+                showNotif('success', 'O\'zgarish yo\'q', 'Hech qanday maydon o\'zgartirilmadi');
+                closeModal('bossStaffModal');
+                resetNewStaffForm();
+                return;
+            }
+            const eSaveBtn = document.getElementById('boss-new-save');
+            const eOldLabel = eSaveBtn ? eSaveBtn.innerHTML : '';
+            if (eSaveBtn) {
+                eSaveBtn.disabled = true;
+                eSaveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saqlanmoqda...';
+            }
+            try {
+                const res = await fetch('/api/boss/staff/' + encodeURIComponent(state.editingStaffId), {
+                    method: 'PUT',
+                    headers: authHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify(patch)
+                });
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    playError();
+                    showNotif('error', 'Xatolik', body.message || 'Xodimni yangilab bo\'lmadi');
+                    return;
+                }
+                showNotif('success', 'Xodim yangilandi', name + ' ma\'lumotlari saqlandi');
+                closeModal('bossStaffModal');
+                resetNewStaffForm();
+                loadStaff();
+            } finally {
+                if (eSaveBtn) {
+                    eSaveBtn.disabled = false;
+                    eSaveBtn.innerHTML = eOldLabel;
+                }
+            }
+            return;
+        }
+
         if (password.length < 6) {
             playError();
             showNotif('error', 'Xatolik', 'Parol kamida 6 belgidan iborat bo\'lsin');
@@ -1435,6 +1717,65 @@ function setPeriod(value) {
         setTimeout(() => doLogout(), 1200);
     }
 
+    /* ── 9b) Uch nuqtali boshqaruv menyusi (mobil kartochka) ── */
+
+    /** Menyuni yopadi (element va holatni tozalaydi). */
+    function closeStaffMenu() {
+        const menu = document.getElementById('boss-staff-menu');
+        if (menu) menu.hidden = true;
+        if (state.staffMenuBtn) state.staffMenuBtn.setAttribute('aria-expanded', 'false');
+        state.staffMenuId = null;
+        state.staffMenuBtn = null;
+    }
+
+    /**
+     * Kartochkadagi uch nuqtali menyu: amallar mavjud `data-boss-*`
+     * attributlari orqali ishlaydi — yangi amal logikasi yaratilmaydi.
+     * Ruxsat yetmaydigan amallar (o'zini bloklash/o'chirish, teng roldagi
+     * akountni o'chirish) menyuda umuman ko'rsatilmaydi.
+     * Menyu `position: fixed` bilan ekran chegarasi ichida joylashtiriladi.
+     */
+    function openStaffMenu(id, btn) {
+        const menu = document.getElementById('boss-staff-menu');
+        if (!menu || !btn) return;
+        if (state.staffMenuId === String(id)) { closeStaffMenu(); return; } // qayta bosish — yopadi
+        const row = findStaffRow(id);
+        if (!row) return;
+        const me = !!(currentUser && row.login === currentUser.login);
+        const blocked = String(row.status || '').toLowerCase() === 'blocked';
+        const bossRole = String(row.role || '').toLowerCase() === 'boss';
+        const items = [
+            ['data-boss-edit', 'fa-pen-to-square', 'Tahrirlash', ''],
+            ['data-boss-sale', 'fa-chart-line', 'Savdolar', ''],
+            ['data-boss-pass', 'fa-key', 'Almashtirish', '']
+        ];
+        if (!me) items.push(['data-boss-block', 'fa-ban',
+            blocked ? 'Blokdan chiqarish' : 'Bloklash', '']);
+        if (!me && !bossRole) items.push(['data-boss-del', 'fa-trash', 'O\'chirish', 'danger']);
+        menu.innerHTML = items.map(([attr, icon, label, cls]) =>
+            `<button type="button" role="menuitem" class="${cls}" ${attr}="${escapeHTML(String(id))}">`
+            + `<i class="fas ${icon}"></i>${label}</button>`).join('');
+        // Avvalgi holatni tozalab, ochamiz va joylashtiramiz.
+        if (state.staffMenuBtn) state.staffMenuBtn.setAttribute('aria-expanded', 'false');
+        state.staffMenuId = null;
+        state.staffMenuBtn = null;
+        menu.hidden = false;
+        const rect = btn.getBoundingClientRect();
+        const mw = menu.offsetWidth, mh = menu.offsetHeight;
+        const edge = 10, gap = 8;
+        let left = rect.right - mw;                       // tugmaning o'ng chetiga tekis
+        if (left + mw > window.innerWidth - edge) left = window.innerWidth - mw - edge;
+        if (left < edge) left = edge;
+        let top = rect.bottom + gap;
+        if (top + mh > window.innerHeight - edge) top = rect.top - mh - gap; // pastda joy yo'q — yuqoriga
+        if (top < edge) top = Math.max(edge, window.innerHeight - mh - edge);
+        menu.style.left = Math.round(left) + 'px';
+        menu.style.top = Math.round(top) + 'px';
+        state.staffMenuId = String(id);
+        state.staffMenuBtn = btn;
+        btn.setAttribute('aria-expanded', 'true');
+    }
+
     /* ── 10b) Xodim savdolari sahifasiga o'tish ─────── */
 
     /** Xodimni joriy keshdagi ro'yxatlardan topadi (savdo bo'limi uchun). */
@@ -1575,6 +1916,39 @@ function setPeriod(value) {
         if (bind.done) return;
         bind.done = true;
         document.addEventListener('click', async (ev) => {
+            // ── Uch nuqtali menyu boshqaruvi ─────────────────────────
+            const menuBtn = ev.target.closest('[data-boss-menu]');
+            if (ev.target.closest('#boss-staff-menu')) {
+                closeStaffMenu();   // menyudagi bosish: avval yopiladi, keyin amal ishlaydi
+            } else if (!menuBtn && state.staffMenuId) {
+                closeStaffMenu();   // tashqaridagi har qanday bosish — menyu yopiladi
+            }
+            if (menuBtn) { openStaffMenu(menuBtn.dataset.bossMenu, menuBtn); return; }
+
+            const edit = ev.target.closest('[data-boss-edit]');
+            if (edit) { await openEditStaff(edit.dataset.bossEdit); return; }
+
+            // Mobil holat filtri (Barchasi / Faol / Bloklangan) — kesh ustida.
+            const pill = ev.target.closest('[data-staff-status]');
+            if (pill) {
+                state.staffStatus = pill.dataset.staffStatus || '';
+                document.querySelectorAll('[data-staff-status]').forEach(p =>
+                    p.classList.toggle('active', p === pill));
+                renderStaffList();
+                return;
+            }
+
+            // Qo'shimcha filtrlar paneli (mobil slayder tugmasi).
+            const advBtn = ev.target.closest('[data-boss-staff-adv]');
+            if (advBtn) {
+                const adv = document.getElementById('boss-staff-m-adv');
+                const show = !!adv && adv.hidden;
+                if (adv) adv.hidden = !show;
+                advBtn.classList.toggle('on', show);
+                advBtn.setAttribute('aria-expanded', String(show));
+                return;
+            }
+
             const chip = ev.target.closest('[data-boss-period]');
             if (chip) { setPeriod(chip.dataset.bossPeriod); return; }
 
@@ -1653,8 +2027,13 @@ function setPeriod(value) {
 
         // Real-time qidiruv (debounce bilan).
         document.addEventListener('input', (ev) => {
-            if (ev.target.id === 'boss-staff-search') {
+            if (ev.target.id === 'boss-staff-search' || ev.target.id === 'boss-staff-search-m') {
                 state.staffQuery = ev.target.value || '';
+                // desktop/mobil qidiruv maydonlari bir xil holatda qoladi.
+                const otherId = ev.target.id === 'boss-staff-search'
+                    ? 'boss-staff-search-m' : 'boss-staff-search';
+                const other = document.getElementById(otherId);
+                if (other && other.value !== state.staffQuery) other.value = state.staffQuery;
                 clearTimeout(bind.t1);
                 bind.t1 = setTimeout(loadStaff, 300);
             }
@@ -1687,8 +2066,19 @@ function setPeriod(value) {
 
         document.addEventListener('change', (ev) => {
             const id = ev.target.id;
-            if (id === 'boss-staff-role') { state.staffRole = ev.target.value; loadStaff(); }
-            if (id === 'boss-staff-sort') { state.staffSort = ev.target.value; loadStaff(); }
+            if (id === 'boss-staff-role' || id === 'boss-staff-role-m') {
+                state.staffRole = ev.target.value;
+                const other = document.getElementById(id === 'boss-staff-role' ? 'boss-staff-role-m' : 'boss-staff-role');
+                if (other && other.value !== state.staffRole) other.value = state.staffRole;
+                loadStaff();
+            }
+            if (id === 'boss-staff-sort' || id === 'boss-staff-sort-m') {
+                state.staffSort = ev.target.value;
+                const other = document.getElementById(id === 'boss-staff-sort' ? 'boss-staff-sort-m' : 'boss-staff-sort');
+                if (other && other.value !== state.staffSort) other.value = state.staffSort;
+                loadStaff();
+            }
+            if (id === 'boss-staff-branch-m') { state.staffBranch = ev.target.value; loadStaff(); }
             if (id === 'boss-product-cat') { state.productCat = ev.target.value; loadProducts(); }
             if (id === 'boss-report-branch') { state.reportBranch = ev.target.value; loadReports(); }
             if (id === 'boss-report-cat') { state.reportCat = ev.target.value; loadReports(); }
@@ -1705,6 +2095,36 @@ function setPeriod(value) {
                 else loadReports();
             }
         });
+
+        // Ekran o'lchami o'zgarganda (kartochka ↔ jadval) ro'yxat qayta chiziladi.
+        // MediaQueryList state'da doimiy saqlanadi (GC uchun); resize hodisasi
+        // ham, ResizeObserver ham syncStaffMode'ni chaqiradi — u rejim
+        // o'zgarmagan bo'lsa hech narsa qilmaydi.
+        if (typeof window.matchMedia === 'function') {
+            state.mqStaff = window.matchMedia('(max-width: 768px)');
+            const onStaffMq = () => syncStaffMode();
+            if (state.mqStaff.addEventListener) state.mqStaff.addEventListener('change', onStaffMq);
+            else if (state.mqStaff.addListener) state.mqStaff.addListener(onStaffMq);
+        }
+        // Menyu ochiq turganda scroll/resize'da joyidan chiqmasligi uchun yopiladi.
+        // Resize → darhol + 150ms dan keyin yana bir marta sinxronizatsiya:
+        // ba'zi muhitlarda resize hodisasi layout yangilanishidan OLDIN keladi —
+        // kechikgan zaxira chaqiruvi shunday holatda ham rejimni to'g'rilaydi.
+        // syncStaffMode rejim o'zgarmagan bo'lsa hech narsa qilmaydi.
+        window.addEventListener('resize', () => {
+            closeStaffMenu();
+            syncStaffMode();
+            clearTimeout(bind.tMode);
+            bind.tMode = setTimeout(syncStaffMode, 150);
+        });
+        // Eng ishonchli zaxira: haqiqiy layout o'zgarishini ResizeObserver
+        // kuzatadi (window resize hodisasi birinchi o'zgarishga yetib kelmasa
+        // ham RO layoutdan keyin chaqiriladi va rejimni to'g'rilaydi).
+        if (typeof ResizeObserver === 'function') {
+            state.roStaff = new ResizeObserver(() => syncStaffMode());
+            state.roStaff.observe(document.documentElement);
+        }
+        document.addEventListener('scroll', () => closeStaffMenu(), true);
     }
 
     function readDate(id) {
@@ -1750,6 +2170,7 @@ function setPeriod(value) {
         openReceiptModal, openProductModal, openBranchModal,
         createStaff, deleteStaff, toggleBlock, submitStaffPassword,
         revealStaffPassword, toggleCurrentPassword, rerenderStaffTable,
+        openEditStaff, openStaffMenu, closeStaffMenu, renderStaffList,
         toggleNewPassword, generatePassword, copyCredentials, resetNewStaffForm,
         showNewStaffCredentials, copyText, toggleOwnPassField,
         submitOwnPassword, openOwnPasswordModal, exportReportsCsv,
