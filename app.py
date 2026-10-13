@@ -4539,10 +4539,6 @@ def sync_data():
     try:
         apply_image_keep(clean.get('products') or [])
         apply_fiscal_keep(clean.get('sales') or [])
-<<<<<<< HEAD
-=======
-        old_store = db_manager.get_all() or {}
-
         # ── Filial doirasi nazorati (menejer/kassir) ──
         # Xodim filialga biriktirilgan bo'lsa (staff_users.branchId), u faqat
         # O'Z filialiga yangi mahsulot qo'sha oladi va mahsulotni boshqa
@@ -4575,7 +4571,6 @@ def sync_data():
                             f'Faqat o\'z filialingizda ishlash mumkin — mahsulot '
                             f'{new_branch} filialiga bog\'lanmadi', 403)
 
->>>>>>> 62a6dccc5a4c7d564d4cef0e98201474ecf90009
         audit_sync_changes(old_store, clean,
                            str(getattr(request, 'staff', {}).get('name', '—')))
         db_manager.save_keys(clean)

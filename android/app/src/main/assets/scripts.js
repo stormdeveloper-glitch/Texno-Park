@@ -8730,6 +8730,19 @@ function extractPhone(text) {
     return m ? m[0].trim() : '';
 }
 
+/**
+ * Chekdagi mijoz matnidan faqat ismni ajratadi:
+ *   "Ali Valiyev +998901112233" → "ali valiyev"
+ * Telefon belgilari olib tashlanadi va kichik harflarga o'giriladi.
+ */
+function receiptCustomerName(text) {
+    return String(text || '')
+        .replace(/[+\d][\d\s()\-]{5,}/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
 function contractStatusFor(endDate) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -8823,6 +8836,54 @@ function populateContractEditSources() {
         list.innerHTML = customers.slice(0, 200).map(c =>
             `<option value="${escapeHTML(c.name)}">${escapeHTML(c.phone || '')}</option>`).join('');
     }
+}
+
+/**
+ * «Yangi shartnoma (qo'lda)» formasida mijoz ro'yxatdan (datalist) tanlanganda
+ * telefon raqamini avtomatik to'ldiradi.
+ *
+ * Qoidalar:
+ *   • Mijozlar bazasida ism aynan mos kelsa — o'sha mijozning raqami;
+ *   • topilmasa — chek/izohdagi raqam ajratib olinadi (`extractPhone`);
+ *   • raqam topilmasa (yoki boshqa mijoz tanlansa va u raqamsiz bo'lsa)
+ *     ilgari AVTOMATIK to'ldirilgan qiymat tozalanadi — boshqa mijozning
+ *     raqami shartnomada qolib ketmasligi uchun;
+ *   • foydalanuvchi QO'LDA yozgan raqam hech qachon ustidan yozilmaydi
+ *     va o'chirilmaydi (faqat avtomatik to'ldirilgan qiymat o'zgaradi).
+ */
+function autofillContractPhone() {
+    const nameEl = document.getElementById('ct-customer');
+    const phoneEl = document.getElementById('ct-phone');
+    if (!nameEl || !phoneEl) return;
+    const typed = cleanText(nameEl.value, 120).trim();
+    if (!typed) return;
+    const key = typed.toLowerCase();
+    const match = (customers || []).find(c => String(c.name || '').trim().toLowerCase() === key);
+    let phone = match ? (normalizePhoneUz(match.phone) || cleanText(match.phone, 40)) : '';
+    if (!phone) {
+        // Mijozlar bazasida yo'q — chek (savdo) yozuvidagi raqamni olamiz.
+        // Chekda mijoz "Ism +998..." ko'rinishida saqlanadi: ismni
+        // raqamdan ajratib solishtiramiz, raqamni esa chekdan olamiz.
+        const sale = (salesHistory || []).find(s =>
+            receiptCustomerName(s.customer) === key);
+        const raw = extractPhone(sale ? sale.customer : typed);
+        phone = normalizePhoneUz(raw) || raw;
+    }
+    const autoFilled = phoneEl.dataset.autoPhone || '';
+    // Qo'lda kiritilgan raqam daxlsiz
+    if (phoneEl.value && phoneEl.value !== autoFilled) return;
+    if (!phone) {
+        // Ism o'zgardi, lekin raqam aniqlanmadi — eski avtomatik raqam
+        // boshqa mijozniki bo'lishi mumkin, shuning uchun tozalanadi
+        if (autoFilled) {
+            phoneEl.value = '';
+            delete phoneEl.dataset.autoPhone;
+        }
+        return;
+    }
+    if (phoneEl.value === phone) return;
+    phoneEl.value = phone;
+    phoneEl.dataset.autoPhone = phone;
 }
 
 /** Chek tanlanganda forma maydonlarini o'sha chekdan to'ldiradi (admin tanlovi) */
@@ -8923,6 +8984,21 @@ const Contracts = {
         if (contractsSyncTimer) clearInterval(contractsSyncTimer);
         const seconds = Math.max(15, Math.min(600, Number(systemSettings.contractSyncSeconds) || 60));
         contractsSyncTimer = setInterval(() => this.syncAll(false), seconds * 1000);
+        this.bindCustomerPhoneAutofill();
+    },
+
+    /**
+     * Mijoz F.I.Sh maydoniga «telefon avtomatik to'ldirish» ni bog'laydi.
+     * Bir marta bog'lanadi (datalist'dan tanlash `input`/`change` hodisasini
+     * beradi) — qo'lda shartnoma ham, tahrirlash oynasi ham bir xil ishlaydi.
+     */
+    bindCustomerPhoneAutofill() {
+        const modal = document.getElementById('contractModal');
+        if (!modal || modal.dataset.phoneAutofillBound === '1') return;
+        modal.dataset.phoneAutofillBound = '1';
+        const onPick = e => { if (e.target && e.target.id === 'ct-customer') autofillContractPhone(); };
+        modal.addEventListener('input', onPick);
+        modal.addEventListener('change', onPick);
     },
 
     /** Kafolat muddati holatlarini yangilaydi (shartnoma yaratmaydi) */
