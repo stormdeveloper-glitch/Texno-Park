@@ -999,10 +999,30 @@ function setLoginPasswordVisible(visible) {
     const inp = document.getElementById('loginPass');
     const ico = document.querySelector('#loginPage .pass-toggle i');
     const btn = document.querySelector('#loginPage .pass-toggle');
-    loginPasswordVisible = !!visible;
-    if (inp) inp.type = loginPasswordVisible ? 'text' : 'password';
-    if (ico) ico.className = loginPasswordVisible ? 'fas fa-eye-slash' : 'fas fa-eye';
-    if (btn) btn.setAttribute('aria-label', loginPasswordVisible ? 'Parolni yashirish' : 'Parolni ko\'rsatish');
+    const want = !!visible;
+    loginPasswordVisible = want;
+    if (inp) {
+        // type almashganda kursor/selection ba'zi brauzerlarda oxiriga
+        // "sakraydi" — pozitsiyani saqlaymiz.
+        let sStart = null, sEnd = null;
+        try { sStart = inp.selectionStart; sEnd = inp.selectionEnd; } catch (e) { }
+        inp.type = want ? 'text' : 'password';
+        try { if (sStart !== null) inp.setSelectionRange(sStart, sEnd); } catch (e) { }
+        // Fokus PAROL MAYDONIDA qolishi shart: tugmaga o'tsa mobil
+        // klaviatura yopiladi → viewport (100dvh) o'zgaradi → butun karta
+        // qayta joylanadi. preventScroll — brauzer "scroll into view"
+        // qilmasin, sahifa sirg'almasin. (Avval fokusda bo'lmagan bo'lsa
+        // klaviaturasiz kiritishga xalaqit bermaymiz.)
+        if (inp.dataset.focusSeen === '1' && document.activeElement !== inp) {
+            try { inp.focus({ preventScroll: true }); } catch (e) { try { inp.focus(); } catch (e2) { } }
+        }
+    }
+    if (ico) ico.className = want ? 'fas fa-eye-slash' : 'fas fa-eye';
+    if (btn) {
+        btn.setAttribute('aria-label', want ? 'Parolni yashirish' : "Parolni ko'rsatish");
+        // A11y: tugma bosilgan/bo'sh holati (role=button uchun majburiy)
+        btn.setAttribute('aria-pressed', want ? 'true' : 'false');
+    }
 }
 
 /** Parolni yashirin holatga qaytaradi (foydalanuvchi ko'rsatmagan bo'lsa). */
@@ -1018,6 +1038,17 @@ function initLoginPasswordGuard() {
     inp.dataset.guardBound = '1';
     loginPasswordVisible = false;
     enforceLoginPasswordHidden();
+    // Parol maydoni birinchi marta fokuslangani — ko'zcha bosilganda
+    // fokusni shu yerga qaytarish uchun kerak (klaviatura yopilmasligi uchun).
+    inp.addEventListener('focus', function () { inp.dataset.focusSeen = '1'; });
+    // Ko'zcha bosilganda fokus inputdan yiqilmasin: mousedown default'ini
+    // bekor qilamiz (click baribir ishlaydi) — shunda fokus, kursor,
+    // klaviatura va sahifa joylanishi BUTUNLAY o'zgarmaydi.
+    const eyeBtn = document.querySelector('#loginPage .pass-toggle');
+    if (eyeBtn && eyeBtn.dataset.focusGuard !== '1') {
+        eyeBtn.dataset.focusGuard = '1';
+        eyeBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    }
     if (typeof MutationObserver !== 'undefined') {
         // Ruxsatsiz `type` o'zgarishi (autofill/kengaytma/boshqa kod)
         // darhol bekor qilinadi.
@@ -1298,7 +1329,7 @@ logs = Array.isArray(logs) ? logs : [];
 const CASHFLOW_TYPES = {
     kirim: { label: 'Kirim', icon: 'fa-arrow-down-long' },
     chiqim: { label: 'Chiqim', icon: 'fa-arrow-up-long' },
-    harajat: { label: 'Harajat', icon: 'fa-receipt' },
+    harajat: { label: 'Xarajat', icon: 'fa-receipt' },
 };
 const CASHFLOW_CATEGORIES = ['Savdo tushumi', "Ta'minotchi to'lovi", 'Ijara',
     'Oylik maosh', 'Kommunal', 'Soliq', 'Transport', 'Reklama',
@@ -1895,6 +1926,10 @@ async function loadFromBackend() {
         renderProducts();
         console.warn('Failed to load from backend. Using local storage:', e);
     }
+    // Mahsulotlar shu chaqiruv ichida yuklanib bo'ladi. Sahifani yangilashdan
+    // keyin savat ancq shu vaqtda tiklanadi (ichidagi `posCartStateRestored`
+    // bayrog'i tufayli bir martadan ortiq ishlamaydi).
+    posRestoreCartState();
 }
 
 /**
@@ -2054,7 +2089,10 @@ function renderEmployeeDropdown() {
     const dp = document.getElementById('topbarEmployeeDropdown');
     if (!dp) return;
     const role = currentUser?.role || 'guest';
-    const isStaff = ['admin', 'cashier', 'manager'].includes(role);
+    // Boshliq ham tizimga kirgan xodim: uning dropdown'ida ham "Tizimdan chiqish"
+    // bo'lishi kerak (mobil headerda logout yo'q edi — faqat "Xodim kirishi").
+    // Har uchala rol uchun bitta `doLogout()` — alohida parallel logout yo'q.
+    const isStaff = ['admin', 'cashier', 'manager', 'boss'].includes(role);
     const item = (icon, label, action, cls) => `
         <div class="employee-dropdown-item ${cls || ''}" onclick="${action}; document.getElementById('topbarEmployeeDropdown').style.display='none';">
             <i class="fas ${icon}" style="width:16px; margin-right:8px;"></i><span>${label}</span>
@@ -2273,6 +2311,38 @@ async function attemptLogin(u, p) {
     finishLogin(result.user);
 }
 
+/* ============================================================
+   YAGONA «ROL → BOSHLANG'ICH SAHIFA» MANBASI
+   ------------------------------------------------------------
+   Muammo: ro'l→sahifa xaritasi faqat `finishLogin` (yangi login)
+   ichida edi; `loginWithUser` (sahifa yangilash / orqaga qaytish /
+   sessiya tiklash) esa hech qayerga yo'naltirmasdi va HTML'dagi
+   default `.active` sahifaga tayanardi. Natijada xodim ba'zan
+   ommaviy onlayn do'kon (page-shop) ko'rib qolardi.
+   Endi IKKALA yo'l ham shu yagona manbadan foydalanadi.
+   ============================================================ */
+
+/** Berilgan ro'l uchun standart (birinchi) sahifa. Do'kon faqat mehmon/xaridor uchun. */
+function landingPageForRole(role) {
+    if (!role || role === 'customer') return 'page-shop';
+    if (role === 'boss') return 'page-boss';
+    if (role === 'cashier') return 'page-pos';
+    // admin va menejer — boshqaruv paneli (page-dashboard ichida o'z dashboardi)
+    return 'page-dashboard';
+}
+
+/** Sahifaga mos sidebar menyuni topadi (faol holat uchun). Topilmasa null. */
+function navElForPage(pageId) {
+    return Array.from(document.querySelectorAll('.nav-item')).find(n =>
+        (n.getAttribute('onclick') || '').includes(`'${pageId}'`)) || null;
+}
+
+/** Login yoki sessiya tiklashdan so'ng ro'lga mos ICHKI sahifaga o'tadi (do'kon emas). */
+function goToLandingFor(user) {
+    const firstPage = landingPageForRole(user && user.role);
+    goTo(firstPage, navElForPage(firstPage));
+}
+
 /** Login muvaffaqiyatli bo'lgach interfeysni tayyorlaydi. */
 function finishLogin(user) {
     currentUser = user;
@@ -2307,13 +2377,8 @@ function finishLogin(user) {
     if (user.role !== 'customer') loadFromBackend().catch(() => { });
     // Xodim kirganda eng asosiy bo'lim ochiladi (do'kon yon panelning oxirida turadi)
     if (user.role !== 'customer') {
-        // BOSHLIQ kirganda uning o'z "Boshliq Dashboard"i ochiladi (page-boss),
-        // boshqa rollar o'z standart sahifasiga o'tadi.
-        const firstPage = user.role === 'cashier' ? 'page-pos'
-            : (user.role === 'boss' ? 'page-boss' : 'page-dashboard');
-        const firstNav = Array.from(document.querySelectorAll('.nav-item')).find(n =>
-            (n.getAttribute('onclick') || '').includes(`'${firstPage}'`));
-        goTo(firstPage, firstNav);
+        // Yagona manba: ro'lga mos boshlang'ich ichki sahifa (do'kon emas).
+        goToLandingFor(user);
     }
     playSuccess();
     showNotif('success', 'Xush kelibsiz! 👋', user.name + ' — ' + ROLES[user.role]);
@@ -2344,6 +2409,10 @@ function doLogout(force = false) {
     try { localStorage.removeItem('tp_active_branch'); } catch (e) { }
     try { Branches.refreshBranchSwitcher(); } catch (e) { }
     currentUser = null; cart = []; shopCart = [];
+    // Chiqishda kassa savatining saqlangan holati tozalanadi
+    // (keyingi kiruvchi xodimning ekranida eski savat qolmasligi uchun)
+    posClearCartState();
+    posToggleSheet(false);
 
     const topName = document.getElementById('topbarEmployeeName');
     if (topName) topName.textContent = 'Xodim';
@@ -2375,6 +2444,15 @@ function doLogout(force = false) {
     // Do'kon sahifasini ochib qo'ymaymiz: keyingi muvaffaqiyatli kirishda
     // finishLogin() foydalanuvchiga ruxsat etilgan birinchi sahifani ochadi.
     setupRoleBasedNav();
+    // XODIM (admin/menejer/kassir/boshliq) chiqishda — xavfsiz login sahifasi
+    // ochiladi (ommaviy do'kon emas). Bu sessiya muddati tugaganda ham
+    // (majburiy chiqish) qo'llaniladi. Mehmon/xaridor — ochiq do'konga qaytadi.
+    const wasStaff = user && user.role && user.role !== 'customer';
+    if (wasStaff) {
+        showLoginScreen();
+    } else {
+        goTo('page-shop', document.getElementById('nav-shop'));
+    }
 }
 
 // ============================================================
@@ -2408,6 +2486,8 @@ function initApp() {
     renderLogs();
     renderReports();
     updateCustomerDropdown();
+    // Mahsulotlar loadPOS() paytida hali tayyor bo'lmasa — shu yerda qayta uriniladi
+    posRestoreCartState();
     const rDateEl = document.getElementById('rDate');
     if (rDateEl) rDateEl.textContent = new Date().toLocaleDateString('uz-UZ');
     // Sessiya va xavfsizlik nazorati
@@ -2535,6 +2615,8 @@ function goTo(pageId, el) {
     }
     // 1) barcha page larni yopamiz
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    // Mobil kassa savat drawer'i yopiladi (body qulfi qolmaydi)
+    posToggleSheet(false);
 
     // 2) qat'iy ID tekshiruvi
     const target = document.getElementById(pageId);
@@ -2577,7 +2659,7 @@ function goTo(pageId, el) {
         contracts: ['Shartnomalar', 'Shartnomalar, kunlik va oylik savdo'],
         pos: ['Kassa (POS)', 'F2=To\'lov | Esc=Tozala | F3=Kassa | F8=Chek'],
         branches: ['Filiallar va joylashuv', 'Filiallar ro\'yxati va boshqaruv'],
-        cashflow: ['Kirim / Chiqim / Harajat', 'Filiallar bo\'yicha pul harakati nazorati'],
+        cashflow: ['Kirim-chiqim', 'Pul harakatlarini boshqaring'],
         settings: ['Sozlamalar', 'Tizim sozlamalari'],
         assistant: ['AI Yordamchi', 'Bazadagi real ko\'rsatkichlar bo\'yicha yordamchi (admin)'],
     };
@@ -3534,6 +3616,8 @@ function loadPOS() {
         renderProductGrid();
     }
     if (typeof renderPosHeld === 'function') renderPosHeld();
+    // Sahifani yangilashdan keyin savat holatini tiklash (yagona `cart` manbasi)
+    posRestoreCartState();
 }
 
 // POS kategoriya tugmalari — doimiy CATEGORIES ro'yxatidan quriladi,
@@ -4239,6 +4323,7 @@ function updateCustomerDropdown() {
     if (!sel) return;
     sel.innerHTML = '<option value="">Mijoz tanlanmagan</option>' +
         customers.map(c => `<option value="${Number(c.id)}">${escapeHTML(c.name)} (${escapeHTML(c.phone)})</option>`).join('');
+    posApplyPendingCustomer();
 }
 
 function addToCartWithEvent(event, id) {
@@ -4413,9 +4498,118 @@ function posUpdateChange() {
     else { out.textContent = fmt(Math.round(-diff)) + ' so\'m'; out.className = 'bad'; if (label) label.textContent = 'Yetishmaydi'; }
 }
 
+// ---- Mobil kassa: savat drawer'i (bottom sheet) ----
+// Ochish/YOPISh faqat bitta yo'ldan o'tadi: posToggleSheet(). Esc (global
+// listener), savat bo'sh holat, sahifadan chiqish va KENGLIK mobil
+// diapazondan chiqish — hammasi shu funksiyani chaqiradi (parallel
+// mexanizm yaratilmagan, tugmada takroriy listener yo'q).
+const POS_DRAWER_MQ = '(max-width: 768px)';
+
+function posIsMobileLayout() {
+    try { return window.matchMedia(POS_DRAWER_MQ).matches; } catch (e) { return false; }
+}
+
 function posToggleSheet(open) {
-    const el = document.querySelector('#page-pos .pos-right');
-    if (el) el.classList.toggle('sheet-open', !!open);
+    const panel = document.querySelector('#page-pos .pos-right');
+    const scrim = document.getElementById('posCartScrim');
+    const bar = document.getElementById('posMobileBar');
+    const posPage = document.getElementById('page-pos');
+    const onPos = !!(posPage && posPage.classList.contains('active'));
+    // Desktopda drawer yo'q: `.pos-right` odatdagidek ustunda turadi,
+    // shuning uchun holat faqat mobil + KASSA sahifasi ochiq bo'lganda o'zgaradi.
+    const willOpen = !!open && posIsMobileLayout() && onPos;
+    if (panel) panel.classList.toggle('sheet-open', willOpen);
+    if (scrim) scrim.classList.toggle('show', willOpen);
+    if (bar) bar.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    document.body.classList.toggle('pos-cart-lock', willOpen);
+    return willOpen;
+}
+
+// Mobil → desktop kenglik o'zgarsa drawer yopiladi (body qulfi qolmaydi)
+try {
+    const _posMq = window.matchMedia(POS_DRAWER_MQ);
+    const _posMqChange = () => { if (!_posMq.matches) posToggleSheet(false); };
+    if (typeof _posMq.addEventListener === 'function') _posMq.addEventListener('change', _posMqChange);
+    else if (typeof _posMq.addListener === 'function') _posMq.addListener(_posMqChange);
+} catch (e) { }
+
+// ---- Kassa savatining sessiya holati (sahifani yangilashda tiklanadi) ----
+// YAGONA manba: `cart` massivi. Bu yerda ikkinchi nusxa yaratilmaydi —
+// faqat xotiraga ko'chiriladi/undan qaytariladi.
+var POS_CART_KEY = 'tp_pos_cart';
+// `var` bilan e'lon qilingan: updateCustomerDropdown() skriptning boshida
+// (hoisting davrida) chaqirilsa ham TDZ xatosi bo'lmaydi.
+var posCartStateRestored = false;
+var posPendingCustomer = '';
+
+function posCartOwnerKey() {
+    return (currentUser && (currentUser.role || '')) + '|' + (currentUser && (currentUser.name || ''));
+}
+
+function posClearCartState() {
+    try { sessionStorage.removeItem(POS_CART_KEY); } catch (e) { }
+    posCartStateRestored = false;
+    posPendingCustomer = '';
+}
+
+function posSaveCartState() {
+    // Saqlash faqat tiklash urinishidan keyin boshlanadi: aks holda ilova
+    // ochilishi bilan bo'sh savat yozilib, yangilashdan oldingi holat yo'qoladi.
+    if (!posCartStateRestored) return;
+    try {
+        sessionStorage.setItem(POS_CART_KEY, JSON.stringify({
+            u: posCartOwnerKey(),
+            t: Date.now(),
+            cart: cart,
+            disc: document.getElementById('discountInput')?.value || '',
+            cust: document.getElementById('cartCustomer')?.value || '',
+            promo: document.getElementById('posPromoCode')?.value || ''
+        }));
+    } catch (e) { /* xotira bloklangan bo'lsa — jim o'tamiz */ }
+}
+
+/** Mijoz select'i qayta to'ldirilganda kutilayotgan mijozni qayta tiklaydi. */
+function posApplyPendingCustomer() {
+    if (!posPendingCustomer) return;
+    const sel = document.getElementById('cartCustomer');
+    if (!sel) return;
+    if (Array.from(sel.options || []).some(o => o.value === posPendingCustomer)) {
+        sel.value = posPendingCustomer;
+        posPendingCustomer = '';
+    }
+}
+
+function posRestoreCartState() {
+    if (posCartStateRestored) return false;
+    if (!Array.isArray(products) || !products.length) return false; // hali yuklanmagan — keyin qayta uriniladi
+    let s = null;
+    try { s = JSON.parse(sessionStorage.getItem(POS_CART_KEY) || 'null'); } catch (e) { s = null; }
+    if (!s || !Array.isArray(s.cart) || !s.cart.length) { posCartStateRestored = true; return false; }
+    // Boshqa xodimning savati qayta tiklanmasin
+    if (s.u && s.u !== posCartOwnerKey()) { posCartStateRestored = true; posClearCartState(); return false; }
+    posCartStateRestored = true;
+    const restored = [];
+    s.cart.forEach(it => {
+        if (!it) return;
+        const p = products.find(x => x.id === it.id);
+        if (!p) return; // mahsulot o'chirilgan
+        const stock = Number(p.stock) || 0;
+        if (stock <= 0) return; // qoldiq tugagan
+        const qty = Math.max(1, Math.min(Number(it.qty) || 1, stock));
+        restored.push({ id: p.id, name: p.name, price: p.price, qty, img: p.img, cat: p.cat, cost: p.cost });
+    });
+    if (!restored.length) return false;
+    cart = restored;
+    const di = document.getElementById('discountInput');
+    if (di && s.disc !== undefined && s.disc !== null) di.value = s.disc;
+    const pr = document.getElementById('posPromoCode');
+    if (pr && typeof s.promo === 'string') pr.value = s.promo;
+    posPendingCustomer = typeof s.cust === 'string' ? s.cust : '';
+    updateCustomerDropdown(); // ichida posApplyPendingCustomer() chaqiriladi
+    posApplyPendingCustomer();
+    updateCart();
+    showNotif('info', 'Savat tiklandi', 'Sahifani yangilashdan oldingi savat qaytarildi');
+    return true;
 }
 
 /** Har bir savat o'zgarishidan keyin: badge, tugma, mobil panel, qaytim. */
@@ -4438,6 +4632,7 @@ function posAfterCartUpdate() {
     const cash = document.getElementById('posCashPanel');
     if (cash) cash.classList.toggle('show', payType === 'cash' && cart.length > 0);
     if (!cart.length) { const r = document.getElementById('posReceived'); if (r) r.value = ''; posToggleSheet(false); }
+    posSaveCartState();
     posUpdateChange();
 }
 
@@ -5580,6 +5775,14 @@ function employeeCardHtml(e) {
 }
 
 function openEmployeeDetail(id) {
+    // Bosilgan xodimning o'zini ochamiz: mos maosh yozuvi bo'lsa — tahrirlash,
+    // bo'lmasa — nomi bilan to'ldirilgan qo'shish formasi (avval doim "Yangi Xodim"
+    // ochilardi). Bu amal hech qachon ommaviy do'kon sahifasiga o'tkazmaydi.
+    const emp = employees.find(e => Number(e.id) === Number(id));
+    if (emp && typeof SalaryModule !== 'undefined' && typeof SalaryModule.openForEmployee === 'function') {
+        SalaryModule.openForEmployee(emp.name, 'Xodim Tahrirlash');
+        return;
+    }
     if (typeof openEmployeeModal === 'function') {
         openEmployeeModal();
     }
@@ -7044,7 +7247,19 @@ const SalaryModule = (() => {
     }
 
     // ── PUBLIC API ─────────────────────────────────────────────
-    return { init, render, openPayModal, markPaid, openAddModal, openEditModal, saveEmployee, deleteRecord, setFilter, applyFilter, search, exportCSV };
+    /** Xodim nomiga mos maosh yozuvini ochadi (ko'rish/tahrirlash).
+        Topilmasa — "Yangi Xodim" formasi xodim nomi bilan to'ldiriladi. */
+    function openForEmployee(name, title = 'Yangi Xodim') {
+        const key = (name || '').trim();
+        const rec = key ? salaryRecords.find(r => (r.name || '').trim() === key) : null;
+        if (rec) { openEditModal(rec.id); return true; }
+        openAddModal(title);
+        const el = document.getElementById('sal-emp-name');
+        if (el && key) el.value = key;
+        return false;
+    }
+
+    return { init, render, openPayModal, markPaid, openAddModal, openEditModal, openForEmployee, saveEmployee, deleteRecord, setFilter, applyFilter, search, exportCSV };
 })();
 
 /* ============================================================
@@ -9736,20 +9951,33 @@ function buildContractPrintHTML(c) {
 
 applySavedTheme();
 async function bootstrapApp() {
+    // Eski sessiya belgisi bormi? (tp_session yoki server tokeni). Muddati
+    // tugagan / bekor qilingan sessiyani xavfsiz login sahifasiga yo'naltirish
+    // uchun restoreSession'dan AVVAL tekshiriladi — aks holda foydalanuvchi
+    // ommaviy onlayn do'kon (page-shop) ko'rib qolardi.
+    let hadStaleSession = false;
+    try {
+        hadStaleSession = !!(sessionStorage.getItem(SESSION_KEY) || sessionStorage.getItem('tp_token'));
+    } catch (e) { /* storage blocked */ }
     // 1) Sahifa refresh/yuklashda saqlangan sessiyani tiklash (Security.restoreSession
-    //    ichki ravishda loginWithUser → initApp ni chaqiradi). Bu yo'q bo'lsa har bir
-    //    yangilanish guest rejimga qaytadi va sidebar navigatsiyasi "Ruxsat yo'q" bo'ladi.
+    //    ichki ravishda loginWithUser → initApp → goToLandingFor ni chaqiradi).
     //    restoreSession async — server tokeni (tp_token) yaroqliligi ham tekshiriladi.
     if (!currentUser && typeof Security !== 'undefined' && typeof Security.restoreSession === 'function') {
-        try { await Security.restoreSession(); } catch (e) { /* buzilgan sessiya — guest rejimda davom */ }
+        try { await Security.restoreSession(); } catch (e) { /* buzilgan sessiya — keyingi bosqichda login */ }
     }
     if (currentUser) {
-        // Sessiya tiklandi: initApp allaqachon loginWithUser ichida ishga tushdi,
-        // Dashboard esa HTML'da default .active — qayta init qilmasdan chiqamiz.
+        // Sessiya tiklandi: loginWithUser allaqachon ro'lga mos ICHKI sahifaga
+        // o'tkazdi — bu yerda qayta navigatsiya qilmaymiz.
         renderShop();
         return;
     }
     initApp();
+    // Sessiya bor edi lekin tiklanmadi (muddati tugagan yoki server rad etdi)
+    // → xavfsiz login sahifasi. Rostdan mehmon (hech sessiya bo'lmagan) → ochiq do'kon.
+    if (hadStaleSession) {
+        showLoginScreen();
+        return;
+    }
     goTo('page-shop', document.getElementById('nav-shop'));
     renderShop();
 }
@@ -9952,14 +10180,14 @@ function deleteCategory(name) {
     showNotif('success', 'O\'chirildi', name);
 }
 
-/** Kategoriyadagi mahsulotlarni do'konda ko'rsatadi. */
+/** Kategoriyadagi mahsulotlarni ICHKI boshqaruv panelida ochadi — ommaviy
+    do'kon emas (bu amal faqat administrator/menejer boshqaruv sahifasidan
+    chaqiriladi, shuning uchun foydalanuvchi hech qachon do'kon sahifasiga
+    tashlab yuborilmaydi). */
 function viewCategoryProducts(cat) {
-    shopCat = cat;
-    goTo('page-shop', document.getElementById('nav-shop'));
-    const search = document.getElementById('shopSearch');
-    if (search) search.value = '';
-    shopFilter = '';
-    renderShop();
+    currentCategory = cat;
+    goTo('page-products', navElForPage('page-products'));
+    if (typeof renderProducts === 'function') renderProducts();
 }
 
 /* Ombor qidiruvi va holat filtri — desktop jadval va mobil kartalar uchun umumiy filtr */
@@ -10490,6 +10718,9 @@ function loginWithUser(user) {
     }
 
     initApp();
+    // Sessiya tiklash (refresh / orqaga qaytish / qayta login) da ham
+    // ro'lga mos ICHKI sahifa ochiladi — xodim tasodifan do'konni ko'rib qolmasin.
+    if (user && user.role !== 'customer') goToLandingFor(user);
     playSuccess();
 }
 
@@ -10499,6 +10730,16 @@ function toggleEmployeesDropdown(el) {
     if (sb && !sidebarIsMobile() && sb.classList.contains('collapsed')) setSidebarOpen(true);
     const submenu = document.getElementById('employees-submenu');
     const arrow = el.querySelector('.submenu-arrow');
+    // Agar submenu ichida hech qanday bo'lim (item) bo'lmasa — bo'sh dropdown
+    // ko'rsatish o'rniga Xodimlar sahifasining o'ziga o'tamiz (aks holda menyu
+    // hech qayerga olib bormaydi). Mavjud itemlar bo'lsa — avvalgidek ochiladi.
+    const hasItems = !!submenu && submenu.querySelector('a, button, [onclick], .nav-item, .submenu-item');
+    if (!hasItems) {
+        const pageId = el.getAttribute('data-page') || 'page-employees';
+        const navEl = document.getElementById('nav-employees');
+        goTo(pageId, navEl);
+        return;
+    }
     if (submenu) {
         const isOpen = submenu.classList.toggle('open');
         submenu.style.display = isOpen ? 'flex' : 'none';
@@ -11360,14 +11601,32 @@ const Branches = {
 // ============================================================
 // Admin asosan kirim/chiqim/harajatga qaraydi: har bir filial bo'yicha
 // pul harakati kuzatiladi, savdo tushumi esa alohida ko'rsatiladi.
+// ============================================================
+// KIRIM-CHIQIM MODULI — dizaynga mos qayta ishlangan ko'rinish
+// ============================================================
+// Mantiq o'zgartirilmadi: yozuvlar `cashFlow` kaliti ostida, POS
+// savdosi esa `sales` ro'yxatida alohida saqlanadi (takroriy
+// hisob yo'q). Sof pul oqimi = kirim − chiqim − xarajat.
+const CF_TYPE_HINTS = {
+    kirim: "Kirim: kassaga yoki hisobga pul tushgan holatlar (savdo tushumi, qarz to'lov, bankdan o'tkazma va h.k.).",
+    chiqim: "Chiqim: kassadan pul chiqqan holatlar (ta'minotchi to'lovi, maosh, ijara va h.k.).",
+    harajat: "Xarajat: do'kon operatsiyasiga tegishli sarflar (kommunal, reklama, ta'mirlash va h.k.).",
+};
+
 const CashFlow = {
     _type: 'kirim',
+    _page: 1,
+    _size: 10,
+    _open: false,
 
     init() {
+        this._wireGlobal();
         this.setType('kirim');
         const dateEl = document.getElementById('cf-date');
         if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
         try { this.fillBranchSelects(); } catch (e) { }
+        try { this.fillCategorySelects(); } catch (e) { }
+        try { this.fillCategoryFilter(); } catch (e) { }
         try { CompanyLive.fill(); } catch (e) { }
         try {
             const f = document.getElementById('cfFrom'), t = document.getElementById('cfTo');
@@ -11378,8 +11637,23 @@ const CashFlow = {
 
     onPageOpen() {
         try { this.fillBranchSelects(); } catch (e) { }
+        try { this.fillCategorySelects(); } catch (e) { }
+        try { this.fillCategoryFilter(); } catch (e) { }
         try { CompanyLive.fill(); } catch (e) { }
         this.render();
+    },
+
+    /** Esc = yopish, tashqi bosish = menyu yopish (bir marta ulanadi). */
+    _wireGlobal() {
+        if (CashFlow._wired) return;
+        CashFlow._wired = true;
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && CashFlow._open) CashFlow.closePanel();
+        });
+        document.addEventListener('click', e => {
+            const menu = e.target.closest && e.target.closest('.cf-actions');
+            if (!menu) document.querySelectorAll('.cf-actions.open').forEach(m => m.classList.remove('open'));
+        });
     },
 
     /** Yozuv formasi va filtr uchun filial tanlagichlarini to'ldiradi. */
@@ -11402,25 +11676,105 @@ const CashFlow = {
         }
     },
 
+    /** Formaning kategoriya tanlagichini ro'yxat + real yozuvlardan to'ldiradi. */
+    fillCategorySelects() {
+        const sel = document.getElementById('cf-category');
+        if (!sel) return;
+        const cur = sel.value;
+        const list = this.categoryList();
+        sel.innerHTML = list.map(c => '<option value="' + escapeHTML(c) + '">' + escapeHTML(c) + '</option>').join('');
+        if (cur && list.indexOf(cur) !== -1) sel.value = cur;
+    },
+
+    /** Filtr uchun kategoriyalar: standart ro'yxat + bazadagi real qiymatlar. */
+    fillCategoryFilter() {
+        const sel = document.getElementById('cfFilterCat');
+        if (!sel) return;
+        const cur = sel.value;
+        const list = this.categoryList();
+        sel.innerHTML = '<option value="">Barcha kategoriyalar</option>' +
+            list.map(c => '<option value="' + escapeHTML(c) + '">' + escapeHTML(c) + '</option>').join('');
+        if (cur && list.indexOf(cur) !== -1) sel.value = cur;
+    },
+
+    categoryList() {
+        const seen = new Set(CASHFLOW_CATEGORIES);
+        cashFlow.forEach(c => { const v = cleanText(c.category, 60); if (v) seen.add(v); });
+        return Array.from(seen);
+    },
+
+    /** Panel ichidagi tur tugmasi — faqat turni tanlaydi (panelni ochmaydi). */
     setType(type) {
         this._type = Object.prototype.hasOwnProperty.call(CASHFLOW_TYPES, type) ? type : 'kirim';
         document.querySelectorAll('[data-cf-type]').forEach(btn => {
             btn.classList.toggle('active', btn.getAttribute('data-cf-type') === this._type);
         });
+        const meta = CASHFLOW_TYPES[this._type];
+        const panel = document.getElementById('cfPanel');
+        if (panel) panel.setAttribute('data-type', this._type);
+        const sub = document.getElementById('cfPanelSub');
+        if (sub) sub.textContent = meta.label + " yozuvini qo'shish";
+        const hint = document.getElementById('cfHintText');
+        if (hint) hint.textContent = CF_TYPE_HINTS[this._type] || '';
+        document.querySelectorAll('.cf-op').forEach(card => {
+            card.classList.toggle('active', card.getAttribute('data-op') === this._type);
+        });
+    },
+
+    /** Kartochka bosilganda o'ng panel ochiladi va tur avtomatik tanlanadi. */
+    openPanel(type) {
+        if (typeof type === 'string') this.setType(type);
+        this._open = true;
+        const layout = document.getElementById('cfLayout');
+        const panel = document.getElementById('cfPanel');
+        const scrim = document.getElementById('cfScrim');
+        if (layout) layout.classList.add('panel-open');
+        if (panel) {
+            panel.classList.add('open');
+            panel.setAttribute('aria-hidden', 'false');
+        }
+        if (scrim) scrim.classList.add('show');
+        const amount = document.getElementById('cf-amount');
+        if (amount) setTimeout(() => { try { amount.focus(); } catch (e) { } }, 60);
+    },
+
+    closePanel() {
+        this._open = false;
+        const layout = document.getElementById('cfLayout');
+        const panel = document.getElementById('cfPanel');
+        const scrim = document.getElementById('cfScrim');
+        if (layout) layout.classList.remove('panel-open');
+        if (panel) {
+            panel.classList.remove('open');
+            panel.setAttribute('aria-hidden', 'true');
+        }
+        if (scrim) scrim.classList.remove('show');
+    },
+
+    onSearch() { this._page = 1; this.render(); },
+    onFilter() { this._page = 1; this.render(); },
+
+    /** Sana + filial filtri — ko'rsatkichlar shu bo'yicha hisoblanadi. */
+    scoped() {
+        const branch = (document.getElementById('cfFilterBranch') || {}).value || '';
+        return cashFlow.filter(c =>
+            (!branch || String(c.branchId || '') === String(branch)) && this.inRange(c.date));
     },
 
     /** Filtrlar bo'yicha yozuvlar (eng yangisi birinchi). */
     filtered() {
         const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
-        const branch = val('cfFilterBranch');
         const type = val('cfFilterType');
-        const from = val('cfFrom');
-        const to = val('cfTo');
-        return cashFlow.filter(c => {
-            if (branch && String(c.branchId || '') !== String(branch)) return false;
+        const cat = val('cfFilterCat');
+        const q = String(val('cfSearch') || '').trim().toLowerCase();
+        return this.scoped().filter(c => {
             if (type && c.type !== type) return false;
-            if (from && String(c.date) < from) return false;
-            if (to && String(c.date) > to) return false;
+            if (cat && String(c.category || '') !== cat) return false;
+            if (q) {
+                const amt = String(c.amount || '') + ' ' + fmt(Number(c.amount) || 0);
+                const hay = [c.category, c.note, c.user, amt].join(' ').toLowerCase();
+                if (hay.indexOf(q) === -1) return false;
+            }
             return true;
         }).sort((a, b) => String(b.date + ' ' + b.createdAt).localeCompare(String(a.date + ' ' + a.createdAt)));
     },
@@ -11450,9 +11804,10 @@ const CashFlow = {
         else if (p === 'year') { from = now.getFullYear() + '-01-01'; to = now.getFullYear() + '-12-31'; }
         const f = document.getElementById('cfFrom'), t = document.getElementById('cfTo'), sel = document.getElementById('cfPeriod');
         if (f) f.value = from; if (t) t.value = to; if (sel) sel.value = p;
+        this._page = 1;
         this.render();
     },
-    /** Filtrga mos to'langan savdolar tushumi (davr bo'yicha). */
+    /** Filtrga mos to'langan savdolar tushumi (filial nazorati uchun). */
     saleRevenue() {
         const el = document.getElementById('cfFilterBranch');
         const branch = el ? el.value : '';
@@ -11461,73 +11816,44 @@ const CashFlow = {
             .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
     },
 
-    /** Kirim va Chiqim alohida ustunlarda: jami, kategoriyalar bo'yicha ulush va oxirgi yozuvlar. */
-    renderSplit() {
-        const box = document.getElementById('cfSplit'); if (!box) return;
-        const val = id => (document.getElementById(id) || {}).value || '';
-        const branch = val('cfFilterBranch');
-        const list = cashFlow.filter(c => (!branch || String(c.branchId || '') === String(branch)) && this.inRange(c.date))
-            .sort((a, b) => String(b.date + ' ' + b.createdAt).localeCompare(String(a.date + ' ' + a.createdAt)));
-        const inc = list.filter(c => c.type === 'kirim');
-        const out = list.filter(c => c.type !== 'kirim');
-        const sale = this.saleRevenue();
-        const sum = a => a.reduce((t, c) => t + (Number(c.amount) || 0), 0);
-        const incTotal = sale + sum(inc), outTotal = sum(out), net = incTotal - outTotal;
-        const canDel = requireRoleSilent('admin', 'manager');
-        const cats = (arr, extra) => {
-            const m = {}; if (extra && extra[1]) m[extra[0]] = extra[1];
-            arr.forEach(c => { m[c.category || 'Boshqa'] = (m[c.category || 'Boshqa'] || 0) + (Number(c.amount) || 0); });
-            return Object.entries(m).sort((a, b) => b[1] - a[1]);
-        };
-        const panel = (title, icon, color, tint, total, catRows, rows, empty) => {
-            const max = catRows.length ? catRows[0][1] : 1;
-            return `<div class="panel" style="border-top:4px solid ${color};margin-bottom:0">
-              <div class="panel-header" style="background:${tint}"><h3 style="color:${color}"><i class="fas ${icon}"></i> ${title}</h3>
-                <div style="font-size:22px;font-weight:800;color:${color}">${fmt(total)} so'm</div></div>
-              <div class="panel-body">
-                ${catRows.length ? catRows.map(([n, v]) => `<div style="margin-bottom:10px">
-                  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${escapeHTML(n)}</span><b style="color:${color}">${fmt(v)}</b></div>
-                  <div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:${Math.max(4, Math.round(v / max * 100))}%;background:${color}"></div></div></div>`).join('')
-                : `<div style="text-align:center;color:var(--muted);padding:14px;font-size:13px">${empty}</div>`}
-                ${rows.length ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--muted);font-weight:700">OXIRGI YOZUVLAR</div>` + rows.slice(0, 6).map(c => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12px">
-                  <span><b>${escapeHTML(c.category || '')}</b> <span style="color:var(--muted)">${escapeHTML(c.date)}${c.note ? ' · ' + escapeHTML(c.note) : ''}</span></span>
-                  <span style="white-space:nowrap;font-weight:800;color:${color}">${fmt(c.amount)}${canDel ? ` <button class="btn btn-outline btn-sm" style="padding:2px 7px;color:var(--danger)" onclick="CashFlow.remove('${jsStrAttr(c.id)}')"><i class="fas fa-trash"></i></button>` : ''}</span></div>`).join('') : ''}
-              </div></div>`;
-        };
-        box.innerHTML = `
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px" class="cf-split-grid">
-            ${panel('KIRIM (pul kirdi)', 'fa-arrow-down-long', '#10b981', 'rgba(16,185,129,.10)', incTotal, cats(inc, ['Savdo tushumi (kassa)', sale]), inc, "Kirim yo'q")}
-            ${panel('CHIQIM (pul chiqdi)', 'fa-arrow-up-long', '#ef4444', 'rgba(239,68,68,.10)', outTotal, cats(out), out, "Chiqim yo'q")}
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 18px;border-radius:14px;margin-bottom:20px;font-weight:800;background:${net >= 0 ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};color:${net >= 0 ? '#10b981' : '#ef4444'}">
-            <span>${net >= 0 ? '✅ Qoldiq (kirim − chiqim)' : '⚠️ Kamomad (chiqim kirimdan ko\'p)'}</span>
-            <span style="font-size:20px">${net >= 0 ? '+' : '−'} ${fmt(Math.abs(net))} so'm</span></div>
-          <style>@media(max-width:800px){.cf-split-grid{grid-template-columns:1fr!important}}</style>`;
-    },
-
     render() {
         const tbody = document.getElementById('cashFlowTableBody');
         if (!tbody) return;
-        this.fillBranchSelects();
+        try { this.fillBranchSelects(); } catch (e) { }
+        try { this.fillCategoryFilter(); } catch (e) { }
 
         const list = this.filtered();
-        const totals = cashFlowTotals(list);
-        const revenue = this.saleRevenue();
-        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        const pages = Math.max(1, Math.ceil(list.length / this._size));
+        if (this._page > pages) this._page = pages;
+        const start = (this._page - 1) * this._size;
 
-        setText('cfSaleRevenue', fmt(revenue) + " so'm");
+        this.renderMetrics();
+        const cnt = document.getElementById('cfRecordCount');
+        if (cnt) cnt.textContent = list.length + ' ta yozuv';
+
+        this.renderBranchMonitor();
+        this.renderTable(list.slice(start, start + this._size), start);
+        this.renderPager(list.length, start, pages);
+    },
+
+    /** To'rtta moliyaviy ko'rsatkich: sana va filial filtriga bog'liq. */
+    renderMetrics() {
+        const totals = cashFlowTotals(this.scoped());
+        const counts = { kirim: 0, chiqim: 0, harajat: 0 };
+        this.scoped().forEach(c => { if (counts[c.type] !== undefined) counts[c.type]++; });
+        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
         setText('cfKirim', fmt(totals.kirim) + " so'm");
         setText('cfChiqim', fmt(totals.chiqim) + " so'm");
         setText('cfHarajat', fmt(totals.harajat) + " so'm");
-        setText('cfNet', fmt(revenue + totals.kirim - totals.chiqim - totals.harajat) + " so'm");
-        setText('cfRecordCount', list.length + ' ta yozuv');
-
-        this.renderSplit();
-        this.renderBranchMonitor();
-        this.renderTable(list);
+        setText('cfNet', fmt(totals.net) + " so'm");
+        setText('cfKirimCount', counts.kirim + ' ta operatsiya');
+        setText('cfChiqimCount', counts.chiqim + ' ta operatsiya');
+        setText('cfHarajatCount', counts.harajat + ' ta operatsiya');
+        const net = document.getElementById('cfNet');
+        if (net) net.classList.toggle('neg', totals.net < 0);
     },
 
-    /** Har bir filial bo'yicha: savdo, kirim, chiqim, harajat va sof natija. */
+    /** Har bir filial bo'yicha: savdo, kirim, chiqim, xarajat va sof natija. */
     renderBranchMonitor() {
         const tbody = document.getElementById('branchMonitorTable');
         if (!tbody) return;
@@ -11549,8 +11875,8 @@ const CashFlow = {
                 '<td style="color:var(--warning);font-weight:700">' + fmt(t.harajat) + '</td>' +
                 '<td style="font-weight:800;color:' + (net >= 0 ? 'var(--success)' : 'var(--danger)') + '">' +
                 fmt(net) + '</td>' +
-                '<td><button class="btn btn-outline btn-sm" onclick="CashFlow.focusBranch(\'' +
-                escapeHTML(b.id) + '\')" title="Shu filial yozuvlarini ko\'rish">' +
+                '<td><button class="btn btn-outline btn-sm" onclick="CashFlow.focusBranch(' +
+                jsStrLiteral(b.id) + ')" title="Shu filial yozuvlarini ko\'rish">' +
                 '<i class="fas fa-filter"></i></button></td></tr>';
         });
 
@@ -11569,35 +11895,97 @@ const CashFlow = {
             '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">' +
             'Filial qo\'shilmagan — «Filiallar» bo\'limidan qo\'shing</td></tr>';
     },
-    renderTable(list) {
+
+    /** Sahifalangan jadval qatorlari. */
+    renderTable(list, offset) {
         const tbody = document.getElementById('cashFlowTableBody');
         if (!tbody) return;
         if (!list.length) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">' +
-                'Yozuv topilmadi — yuqoridagi forma orqali kirim/chiqim/harajat qo\'shing</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:34px;color:var(--muted)">' +
+                '<i class="fas fa-inbox" style="font-size:26px;display:block;margin-bottom:8px;opacity:.45"></i>' +
+                'Yozuv topilmadi — yuqoridagi kartalar orqali kirim/chiqim/xarajat qo\'shing</td></tr>';
             return;
         }
-        tbody.innerHTML = list.slice(0, 500).map(c => {
+        const canDel = requireRoleSilent('admin', 'manager');
+        tbody.innerHTML = list.map((c, i) => {
             const meta = CASHFLOW_TYPES[c.type] || CASHFLOW_TYPES.chiqim;
             const branch = getBranchById(c.branchId);
             const sign = c.type === 'kirim' ? '+' : '\u2212';
-            const color = c.type === 'kirim' ? 'var(--success)'
-                : (c.type === 'harajat' ? 'var(--warning)' : 'var(--danger)');
-            return '<tr style="box-shadow:inset 4px 0 0 ' + (c.type === 'kirim' ? '#10b981' : '#ef4444') + '">' +
-                '<td><span class="badge">' + escapeHTML(c.date) + '</span>' +
-                (c.createdAt ? '<div style="font-size:11px;color:var(--muted)">' +
-                    escapeHTML(String(c.createdAt).slice(-8)) + '</div>' : '') + '</td>' +
-                '<td><i class="fas ' + meta.icon + '" style="color:' + color + '"></i> ' +
-                escapeHTML(meta.label) + '</td>' +
+            const tone = c.type === 'kirim' ? 'kirim' : (c.type === 'harajat' ? 'harajat' : 'chiqim');
+            const createdAt = String(c.createdAt || '');
+            const time = createdAt.slice(-8).indexOf(':') > 0 ? createdAt.slice(-8) : '';
+            return '<tr>' +
+                '<td class="cf-c-num">' + (offset + i + 1) + '</td>' +
+                '<td class="cf-c-date"><b>' + escapeHTML(c.date) + '</b>' +
+                (time ? '<small>' + escapeHTML(time) + '</small>' : '') + '</td>' +
+                '<td><span class="cf-badge cf-badge-' + tone + '">' +
+                '<i class="fas ' + meta.icon + '"></i>' + escapeHTML(meta.label) + '</span></td>' +
                 '<td>' + escapeHTML(c.category) + '</td>' +
+                '<td class="cf-c-note">' + escapeHTML(c.note || '—') + '</td>' +
                 '<td>' + (branch ? escapeHTML(branch.name) : '<span style="color:var(--muted)">Umumiy</span>') + '</td>' +
-                '<td style="font-weight:800;color:' + color + '">' + sign + ' ' + fmt(c.amount) + '</td>' +
-                '<td style="font-size:12px;color:var(--text-secondary)">' + escapeHTML(c.note || '—') + '</td>' +
-                '<td>' + (requireRoleSilent('admin', 'manager')
-                    ? '<button class="btn btn-outline btn-sm" style="color:var(--danger)" ' +
-                    'onclick="CashFlow.remove(\'' + escapeHTML(c.id) + '\')" title="O\'chirish">' +
-                    '<i class="fas fa-trash"></i></button>' : '') + '</td></tr>';
+                '<td class="cf-c-amt cf-amt-' + tone + '">' + sign + ' ' + fmt(c.amount) + " so'm</td>" +
+                '<td class="cf-c-user">' + escapeHTML(c.user || '—') + '</td>' +
+                '<td class="cf-c-act">' + (canDel
+                    ? '<div class="cf-actions"><button class="cf-act-btn" title="Amallar" ' +
+                    'onclick="CashFlow.toggleActions(event)"><i class="fas fa-ellipsis"></i></button>' +
+                    '<div class="cf-actions-menu">' +
+                    '<button onclick="CashFlow.remove(' + jsStrLiteral(c.id) + ')">' +
+                    '<i class="fas fa-trash"></i> O\'chirish</button></div></div>'
+                    : '<span style="color:var(--muted);opacity:.5">—</span>') + '</td></tr>';
         }).join('');
+    },
+
+    renderPager(total, start, pages) {
+        const box = document.getElementById('cfPager');
+        if (!box) return;
+        if (!total) { box.innerHTML = ''; box.classList.remove('show'); return; }
+        box.classList.add('show');
+        const shown = Math.min(this._size, total - start);
+        const nums = [];
+        const push = p => nums.push('<button type="button" class="cf-pg' + (p === this._page ? ' active' : '') +
+            '" onclick="CashFlow.gotoPage(' + p + ')">' + p + '</button>');
+        const win = [];
+        for (let p = 1; p <= pages; p++) {
+            if (p === 1 || p === pages || Math.abs(p - this._page) <= 1) win.push(p);
+        }
+        win.forEach((p, i) => {
+            if (i && p - win[i - 1] > 1) nums.push('<span class="cf-pg-gap">…</span>');
+            push(p);
+        });
+        box.innerHTML =
+            '<div class="cf-pg-nums">' +
+            '<button type="button" class="cf-pg cf-pg-arrow" ' + (this._page <= 1 ? 'disabled' : '') +
+            ' onclick="CashFlow.gotoPage(' + (this._page - 1) + ')"><i class="fas fa-chevron-left"></i></button>' +
+            nums.join('') +
+            '<button type="button" class="cf-pg cf-pg-arrow" ' + (this._page >= pages ? 'disabled' : '') +
+            ' onclick="CashFlow.gotoPage(' + (this._page + 1) + ')"><i class="fas fa-chevron-right"></i></button>' +
+            '</div>' +
+            '<div class="cf-pg-side">' +
+            '<span class="cf-pg-info">' + (start + 1) + '–' + (start + shown) + ' / ' + total + ' ta yozuv</span>' +
+            '<select class="form-control cf-pg-size" onchange="CashFlow.setSize(this.value)">' +
+            [10, 20, 50].map(n => '<option value="' + n + '"' + (n === this._size ? ' selected' : '') + '>' +
+                n + ' ta</option>').join('') + '</select></div>';
+    },
+
+    gotoPage(p) {
+        const total = this.filtered().length;
+        const pages = Math.max(1, Math.ceil(total / this._size));
+        this._page = Math.min(Math.max(1, Number(p) || 1), pages);
+        this.render();
+    },
+    setSize(v) {
+        this._size = Math.max(10, Math.min(200, Number(v) || 10));
+        this._page = 1;
+        this.render();
+    },
+
+    toggleActions(e) {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const wrap = e && e.currentTarget ? e.currentTarget.closest('.cf-actions') : null;
+        if (!wrap) return;
+        const was = wrap.classList.contains('open');
+        document.querySelectorAll('.cf-actions.open').forEach(m => m.classList.remove('open'));
+        if (!was) wrap.classList.add('open');
     },
 
     save() {
@@ -11607,7 +11995,8 @@ const CashFlow = {
         if (!Number.isFinite(amount) || amount <= 0) {
             playError();
             showNotif('error', 'Xato!', 'Summani kiriting (0 dan katta bo\'lishi kerak)');
-            return;
+            const a = document.getElementById('cf-amount'); if (a) a.focus();
+            return; // panel yopilmaydi
         }
         const record = normalizeCashFlow({
             type: this._type,
@@ -11621,7 +12010,7 @@ const CashFlow = {
         if (!record) {
             playError();
             showNotif('error', 'Xato!', 'Ma\'lumotlar yaroqsiz — qayta tekshiring');
-            return;
+            return; // panel yopilmaydi
         }
         cashFlow.unshift(record);
         saveToStorage();
@@ -11633,6 +12022,8 @@ const CashFlow = {
         const noteEl = document.getElementById('cf-note');
         if (amountEl) amountEl.value = '';
         if (noteEl) noteEl.value = '';
+        const cnt = document.getElementById('cfNoteCount'); if (cnt) cnt.textContent = '0';
+        this.closePanel();
         this.render();
         playSuccess();
         showNotif('success', 'Saqlandi!', CASHFLOW_TYPES[record.type].label + ' — ' +
@@ -11641,6 +12032,7 @@ const CashFlow = {
 
     remove(id) {
         if (!requireRole('admin', 'manager')) return;
+        document.querySelectorAll('.cf-actions.open').forEach(m => m.classList.remove('open'));
         const rec = cashFlow.find(c => String(c.id) === String(id));
         if (!rec) return;
         if (!confirm('Bu yozuvni o\'chirasizmi? (' + fmt(rec.amount) + " so'm)")) return;
@@ -11655,17 +12047,19 @@ const CashFlow = {
     focusBranch(branchId) {
         const el = document.getElementById('cfFilterBranch');
         if (el) el.value = branchId;
+        this._page = 1;
         this.render();
         const b = getBranchById(branchId);
         showNotif('info', 'Filtr', (b ? b.name : 'Filial') + ' bo\'yicha yozuvlar ko\'rsatilmoqda');
     },
 
     clearFilters() {
-        ['cfFilterBranch', 'cfFilterType', 'cfFrom', 'cfTo'].forEach(id => {
+        ['cfFilterBranch', 'cfFilterType', 'cfFilterCat', 'cfFrom', 'cfTo', 'cfSearch'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
         const sel = document.getElementById('cfPeriod'); if (sel) sel.value = 'all';
+        this._page = 1;
         this.render();
     },
 
@@ -11676,10 +12070,11 @@ const CashFlow = {
             return;
         }
         const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-        const head = ['Sana', 'Turi', 'Kategoriya', 'Filial', 'Summa', 'Izoh', 'Xodim'].join(';');
+        const head = ['Sana', 'Vaqt', 'Turi', 'Kategoriya', 'Filial', 'Summa', 'Izoh', 'Xodim'].join(';');
         const lines = list.map(c => {
             const b = getBranchById(c.branchId);
-            return [c.date, CASHFLOW_TYPES[c.type] ? CASHFLOW_TYPES[c.type].label : c.type,
+            return [c.date, String(c.createdAt || '').slice(-8),
+            CASHFLOW_TYPES[c.type] ? CASHFLOW_TYPES[c.type].label : c.type,
             c.category, b ? b.name : 'Umumiy', c.amount, c.note, c.user].map(esc).join(';');
         });
         const csv = '\ufeff' + head + '\n' + lines.join('\n');

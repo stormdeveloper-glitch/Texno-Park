@@ -439,6 +439,13 @@ body {
     position: relative;
 }
 
+/* ── Parol maydoni: ikonlar INPUT ustida qat'iy turadi ──
+   .form-group o'lchami (xato xabari qatorlari) o'zgarsa ham ko'zcha/qulf
+   siljimaydi — position: absolute konteyneri aynan input qutisi. */
+.pass-field {
+    position: relative;
+}
+
 .phone-field .phone-prefix {
     position: absolute;
     left: 40px;
@@ -9464,10 +9471,26 @@ body {
 
 #loginPage .pass-toggle {
     color: #9c8480;
+    /* QAT'IY o'lcham + flex markazlash: fa-eye ↔ fa-eye-slash almashganda
+       tugma qutisi o'zgarmaydi (FA ikonlari eni har xil) — ikon bir joyda
+       turadi, sakramaydi. Tugma absolute bo'lgani uchun bu hech qanday
+       qo'shni elementni siljitmaydi. */
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 #loginPage .pass-toggle:hover {
     color: #ff8a45;
+}
+
+/* Matn ko'zcha ostiga kirib ketmasin (desktop: right 12px + 36px = 48px). */
+#loginPage #loginPass {
+    padding-right: 50px;
 }
 
 #loginPage .btn-login {
@@ -12717,7 +12740,11 @@ body {
     height: auto !important;
     min-height: 100dvh;
     overflow-y: auto;
-    align-content: start;
+    /* start EMAS: karta sahifaning yuqori qismiga yopishib qolgan edi
+       (fon bilan muvozanatsiz). "safe center" — kontent ekrandan oshsa
+       avtomatik start'ga tushadi (klaviatura ochilganda ham to'liq ko'rinadi),
+       aks holda login kartasi ekranning vizual markazida turadi. */
+    align-content: safe center;
   }
   #loginPage { overflow-y: auto; }
   .login-showcase {
@@ -12763,7 +12790,9 @@ body {
     padding-left: 92px !important;
   }
   .form-group .input-icon { left: 14px; font-size: 14px; }
-  .pass-toggle { right: 8px; min-width: 38px; min-height: 38px; border-radius: 10px; }
+  /* right 6px + width 36px = 44px — matn padding-right (44px) bilan aynan
+     teng, ko'zcha matn ustiga chiqmaydi. O'lcham 36px: katta bosish maydoni. */
+  .pass-toggle { right: 6px; min-width: 36px; min-height: 36px; border-radius: 10px; }
   .btn-login {
     min-height: 52px;
     border-radius: 14px;

@@ -999,10 +999,30 @@ function setLoginPasswordVisible(visible) {
     const inp = document.getElementById('loginPass');
     const ico = document.querySelector('#loginPage .pass-toggle i');
     const btn = document.querySelector('#loginPage .pass-toggle');
-    loginPasswordVisible = !!visible;
-    if (inp) inp.type = loginPasswordVisible ? 'text' : 'password';
-    if (ico) ico.className = loginPasswordVisible ? 'fas fa-eye-slash' : 'fas fa-eye';
-    if (btn) btn.setAttribute('aria-label', loginPasswordVisible ? 'Parolni yashirish' : 'Parolni ko\'rsatish');
+    const want = !!visible;
+    loginPasswordVisible = want;
+    if (inp) {
+        // type almashganda kursor/selection ba'zi brauzerlarda oxiriga
+        // "sakraydi" — pozitsiyani saqlaymiz.
+        let sStart = null, sEnd = null;
+        try { sStart = inp.selectionStart; sEnd = inp.selectionEnd; } catch (e) { }
+        inp.type = want ? 'text' : 'password';
+        try { if (sStart !== null) inp.setSelectionRange(sStart, sEnd); } catch (e) { }
+        // Fokus PAROL MAYDONIDA qolishi shart: tugmaga o'tsa mobil
+        // klaviatura yopiladi → viewport (100dvh) o'zgaradi → butun karta
+        // qayta joylanadi. preventScroll — brauzer "scroll into view"
+        // qilmasin, sahifa sirg'almasin. (Avval fokusda bo'lmagan bo'lsa
+        // klaviaturasiz kiritishga xalaqit bermaymiz.)
+        if (inp.dataset.focusSeen === '1' && document.activeElement !== inp) {
+            try { inp.focus({ preventScroll: true }); } catch (e) { try { inp.focus(); } catch (e2) { } }
+        }
+    }
+    if (ico) ico.className = want ? 'fas fa-eye-slash' : 'fas fa-eye';
+    if (btn) {
+        btn.setAttribute('aria-label', want ? 'Parolni yashirish' : "Parolni ko'rsatish");
+        // A11y: tugma bosilgan/bo'sh holati (role=button uchun majburiy)
+        btn.setAttribute('aria-pressed', want ? 'true' : 'false');
+    }
 }
 
 /** Parolni yashirin holatga qaytaradi (foydalanuvchi ko'rsatmagan bo'lsa). */
@@ -1018,6 +1038,17 @@ function initLoginPasswordGuard() {
     inp.dataset.guardBound = '1';
     loginPasswordVisible = false;
     enforceLoginPasswordHidden();
+    // Parol maydoni birinchi marta fokuslangani — ko'zcha bosilganda
+    // fokusni shu yerga qaytarish uchun kerak (klaviatura yopilmasligi uchun).
+    inp.addEventListener('focus', function () { inp.dataset.focusSeen = '1'; });
+    // Ko'zcha bosilganda fokus inputdan yiqilmasin: mousedown default'ini
+    // bekor qilamiz (click baribir ishlaydi) — shunda fokus, kursor,
+    // klaviatura va sahifa joylanishi BUTUNLAY o'zgarmaydi.
+    const eyeBtn = document.querySelector('#loginPage .pass-toggle');
+    if (eyeBtn && eyeBtn.dataset.focusGuard !== '1') {
+        eyeBtn.dataset.focusGuard = '1';
+        eyeBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    }
     if (typeof MutationObserver !== 'undefined') {
         // Ruxsatsiz `type` o'zgarishi (autofill/kengaytma/boshqa kod)
         // darhol bekor qilinadi.

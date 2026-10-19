@@ -57,12 +57,18 @@
       </div>
       <div class="form-group">
         <label for="loginPass">Parol</label>
-        <input type="password" id="loginPass" placeholder="••••••••••••" autocomplete="current-password"
-          autocapitalize="off" autocorrect="off" spellcheck="false"
-          aria-describedby="loginPassError">
-        <i class="fas fa-lock input-icon"></i>
-        <button type="button" class="pass-toggle" onclick="togglePassword()" aria-label="Parolni ko'rsatish"><i
-            class="fas fa-eye"></i></button>
+        <!-- .pass-field — input atrofidagi QAT'IY anchor (.phone-field kabi).
+             Ko'zcha va qulf ikonasi form-group balandligiga emas, AYNAN INPUT
+             balandligiga bog'lanadi: xato xabari 2-3 qatorga yozilsa ham
+             (form-group o'sadi) ikonlar joyidan siljimaydi. -->
+        <div class="pass-field">
+          <input type="password" id="loginPass" placeholder="••••••••••••" autocomplete="current-password"
+            autocapitalize="off" autocorrect="off" spellcheck="false"
+            aria-describedby="loginPassError">
+          <i class="fas fa-lock input-icon"></i>
+          <button type="button" class="pass-toggle" onclick="togglePassword()" aria-label="Parolni ko'rsatish"
+            aria-controls="loginPass" aria-pressed="false"><i class="fas fa-eye"></i></button>
+        </div>
         <p class="login-error" id="loginPassError" role="alert" aria-live="polite"></p>
       </div>
       <!-- Cloudflare Turnstile (CAPTCHA) — faqat sozlangan bo'lsa ko'rinadi.

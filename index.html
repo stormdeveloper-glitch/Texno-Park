@@ -57,11 +57,18 @@
       </div>
       <div class="form-group">
         <label for="loginPass">Parol</label>
-        <input type="password" id="loginPass" placeholder="••••••••••••" autocomplete="current-password"
-          autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="loginPassError">
-        <i class="fas fa-lock input-icon"></i>
-        <button type="button" class="pass-toggle" onclick="togglePassword()" aria-label="Parolni ko'rsatish"><i
-            class="fas fa-eye"></i></button>
+        <!-- .pass-field — input atrofidagi QAT'IY anchor (.phone-field kabi).
+             Ko'zcha va qulf ikonasi form-group balandligiga emas, AYNAN INPUT
+             balandligiga bog'lanadi: xato xabari 2-3 qatorga yozilsa ham
+             (form-group o'sadi) ikonlar joyidan siljimaydi. -->
+        <div class="pass-field">
+          <input type="password" id="loginPass" placeholder="••••••••••••" autocomplete="current-password"
+            autocapitalize="off" autocorrect="off" spellcheck="false"
+            aria-describedby="loginPassError">
+          <i class="fas fa-lock input-icon"></i>
+          <button type="button" class="pass-toggle" onclick="togglePassword()" aria-label="Parolni ko'rsatish"
+            aria-controls="loginPass" aria-pressed="false"><i class="fas fa-eye"></i></button>
+        </div>
         <p class="login-error" id="loginPassError" role="alert" aria-live="polite"></p>
       </div>
       <!-- Cloudflare Turnstile (CAPTCHA) — faqat sozlangan bo'lsa ko'rinadi.
@@ -99,7 +106,7 @@
         <div class="nav-item" onclick="goTo('page-dashboard',this)" data-role="admin,cashier,manager">
           <i class="fas fa-th-large"></i><span>Dashboard</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="manager,cashier">
+        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="admin,manager,cashier">
           <i class="fas fa-cash-register"></i><span>Kassa (POS)</span>
         </div>
 
@@ -364,8 +371,7 @@
             <div class="panel">
               <div class="panel-header">
                 <h3><i class="fas fa-clock" style="color:var(--accent)"></i> Oxirgi Sotuvlar</h3>
-                <button class="btn btn-outline btn-sm"
-                  onclick="if(requireRole('boss','manager','cashier'))goTo('page-pos',document.getElementById('navPos'))">+
+                <button class="btn btn-outline btn-sm" onclick="if(requireRole('boss','admin','manager','cashier'))goTo('page-pos',document.getElementById('navPos'))">+
                   Yangi</button>
               </div>
               <div class="panel-body" style="padding:0">
@@ -1037,10 +1043,13 @@
           </div>
 
           <!-- RIGHT: savat va to'lov -->
-          <div class="pos-right">
+          <div class="pos-right" id="posCartPanel">
             <div class="cart-header">
               <h3><i class="fas fa-shopping-cart"></i> Savat</h3>
               <p id="cartCount">0 ta mahsulot</p>
+              <!-- Mobil: drawer'ni yopish tugmasi (desktop'da yashirilgan) -->
+              <button type="button" class="pos-cart-close" onclick="posToggleSheet(false)"
+                aria-label="Savatni yopish"><i class="fas fa-times"></i></button>
             </div>
             <div class="cart-items" id="cartItems"></div>
             <div class="cart-footer">
@@ -1137,6 +1146,24 @@
             </div>
           </div>
         </div>
+
+        <!-- MOBIL (≤768px): pastki doimiy savat paneli.
+             `posMobileCount` / `posMobileTotal` ID'lari posAfterCartUpdate()
+             orqali avtomatik yangilanadi (mavjud funksiya o'zgartirilmagan). -->
+        <button type="button" class="pos-mobile-bar" id="posMobileBar" title="Savatni ochish"
+          aria-controls="posCartPanel" aria-expanded="false" onclick="posToggleSheet(true)">
+          <span class="pos-mobile-bar-badge">
+            <i class="fas fa-shopping-cart"></i>
+            <b id="posMobileCount">0</b>
+          </span>
+          <span class="pos-mobile-bar-info">
+            <small>Savatdagi mahsulot</small>
+            <strong id="posMobileTotal">0 so'm</strong>
+          </span>
+          <span class="pos-mobile-bar-cta" aria-hidden="true"><i class="fas fa-chevron-up"></i></span>
+        </button>
+        <!-- Mobil: drawer ortidagi qoramtir qatlam -->
+        <div class="pos-cart-scrim" id="posCartScrim" onclick="posToggleSheet(false)"></div>
       </div>
 
       <!-- ===== PRODUCTS ===== -->
@@ -1919,178 +1946,255 @@
 
       <!-- ===== KIRIM / CHIQIM / HARAJAT ===== -->
       <div class="page" id="page-cashflow">
-        <div
-          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-          <div>
-            <h2 style="font-size:20px;font-weight:700">💵 Kirim / Chiqim / Harajat</h2>
-            <p style="color:var(--muted);font-size:13px;margin-top:3px">
-              Filiallar bo'yicha pul harakati nazorati — admin barcha filialni bir joyda kuzatadi
-            </p>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline btn-sm" onclick="CashFlow.render()"><i class="fas fa-rotate"></i>
-              Yangilash</button>
-            <button class="btn btn-outline btn-sm" onclick="CashFlow.exportCSV()"><i class="fas fa-file-csv"></i>
-              CSV</button>
-          </div>
-        </div>
+        <div class="cf-layout" id="cfLayout">
 
-        <div class="stat-grid" style="gap:14px;margin-bottom:20px">
-          <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
-            <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
-                class="fas fa-cash-register"></i></div>
-            <div class="stat-num" id="cfSaleRevenue">0 so'm</div>
-            <div class="stat-label">Savdo tushumi</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
-            <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i
-                class="fas fa-arrow-down-long"></i></div>
-            <div class="stat-num" id="cfKirim">0 so'm</div>
-            <div class="stat-label">Kirim</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(239,68,68,.12)">
-            <div class="stat-icon" style="background:rgba(239,68,68,.15);color:#FCA5A5"><i
-                class="fas fa-arrow-up-long"></i></div>
-            <div class="stat-num" id="cfChiqim">0 so'm</div>
-            <div class="stat-label">Chiqim</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(245,158,11,.12)">
-            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i class="fas fa-receipt"></i>
-            </div>
-            <div class="stat-num" id="cfHarajat">0 so'm</div>
-            <div class="stat-label">Harajat</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
-            <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i
-                class="fas fa-scale-balanced"></i></div>
-            <div class="stat-num" id="cfNet">0 so'm</div>
-            <div class="stat-label">Sof natija</div>
-          </div>
-        </div>
+          <div class="cf-main">
 
-        <div class="panel" style="margin-bottom:18px">
-          <div class="panel-header">
-            <h3><i class="fas fa-plus-circle" style="color:var(--primary)"></i> Yangi yozuv qo'shish</h3>
-          </div>
-          <div class="panel-body">
-            <div class="cf-type-group" id="cfTypeGroup">
-              <button type="button" class="cf-type-btn active" data-cf-type="kirim" onclick="CashFlow.setType('kirim')">
-                <i class="fas fa-arrow-down-long"></i> Kirim (pul kirdi)</button>
-              <button type="button" class="cf-type-btn" data-cf-type="chiqim" onclick="CashFlow.setType('chiqim')">
-                <i class="fas fa-arrow-up-long"></i> Chiqim (pul chiqdi)</button>
-              <button type="button" class="cf-type-btn" data-cf-type="harajat" onclick="CashFlow.setType('harajat')">
-                <i class="fas fa-receipt"></i> Harajat (xarajat)</button>
-            </div>
-            <div class="form-row">
-              <div class="form-col"><label>Summa (so'm) *</label>
-                <input class="form-control" id="cf-amount" type="number" min="0" placeholder="0">
+            <!-- ========== SARLAVHA ========== -->
+            <div class="cf-head">
+              <div class="cf-head-left">
+                <div class="cf-head-icon"><i class="fas fa-wallet"></i></div>
+                <div class="cf-head-txt">
+                  <h2>Kirim-chiqim</h2>
+                  <p>Pul harakatlarini boshqaring</p>
+                </div>
               </div>
-              <div class="form-col"><label>Kategoriya</label>
-                <select class="form-control" id="cf-category">
-                  <option>Savdo tushumi</option>
-                  <option>Ta'minotchi to'lovi</option>
-                  <option>Ijara</option>
-                  <option>Oylik maosh</option>
-                  <option>Kommunal</option>
-                  <option>Soliq</option>
-                  <option>Transport</option>
-                  <option>Reklama</option>
-                  <option>Ta'mirlash</option>
-                  <option>Kanselyariya</option>
-                  <option>Boshqa</option>
-                </select>
+              <div class="cf-head-right">
+                <div class="cf-daterange">
+                  <i class="fas fa-calendar-days"></i>
+                  <input type="date" id="cfFrom" onchange="CashFlow.onFilter()" title="Boshlanish sanasi">
+                  <span class="cf-dash">—</span>
+                  <input type="date" id="cfTo" onchange="CashFlow.onFilter()" title="Tugash sanasi">
+                </div>
+                <button class="btn btn-primary cf-new-btn" onclick="CashFlow.openPanel()">
+                  <i class="fas fa-plus"></i> Yangi operatsiya</button>
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-col"><label>Filial</label>
-                <select class="form-control" id="cf-branch">
-                  <option value="">Umumiy (filialga bog'lanmagan)</option>
-                </select>
-              </div>
-              <div class="form-col"><label>Sana</label>
-                <input class="form-control" id="cf-date" type="date">
-              </div>
-            </div>
-            <div class="form-col" style="margin-bottom:14px">
-              <label>Izoh</label>
-              <input class="form-control" id="cf-note" maxlength="240" placeholder="Masalan: sentabr oyi ijarasi">
-            </div>
-            <button class="btn btn-primary" onclick="CashFlow.save()"><i class="fas fa-save"></i> Yozuvni
-              saqlash</button>
-          </div>
-        </div>
 
-        <div class="panel" style="margin-bottom:18px">
-          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
-            <h3><i class="fas fa-building-columns" style="color:var(--accent)"></i> Filiallar bo'yicha moliyaviy nazorat
-            </h3>
-            <small style="color:var(--muted);font-size:12px">Barcha filial bir jadvalda — savdo, kirim, chiqim, harajat
-              va sof natija</small>
-          </div>
-          <div class="panel-body" style="padding:0">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Filial</th>
-                    <th>Savdo tushumi</th>
-                    <th>Kirim</th>
-                    <th>Chiqim</th>
-                    <th>Harajat</th>
-                    <th>Sof natija</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="branchMonitorTable"></tbody>
-              </table>
+            <!-- ========== UCHTA OPERATSIYA KARTASI ========== -->
+            <div class="cf-ops">
+              <button type="button" class="cf-op cf-op-kirim" data-op="kirim"
+                onclick="CashFlow.openPanel('kirim')">
+                <span class="cf-op-ico"><i class="fas fa-arrow-down"></i></span>
+                <span class="cf-op-txt"><b>Kirim</b><small>Pul kirdi</small></span>
+                <i class="fas fa-chevron-right cf-op-chev"></i>
+              </button>
+              <button type="button" class="cf-op cf-op-chiqim" data-op="chiqim"
+                onclick="CashFlow.openPanel('chiqim')">
+                <span class="cf-op-ico"><i class="fas fa-arrow-up"></i></span>
+                <span class="cf-op-txt"><b>Chiqim</b><small>Pul chiqdi</small></span>
+                <i class="fas fa-chevron-right cf-op-chev"></i>
+              </button>
+              <button type="button" class="cf-op cf-op-harajat" data-op="harajat"
+                onclick="CashFlow.openPanel('harajat')">
+                <span class="cf-op-ico"><i class="fas fa-receipt"></i></span>
+                <span class="cf-op-txt"><b>Xarajat</b><small>Do'kon xarajati</small></span>
+                <i class="fas fa-chevron-right cf-op-chev"></i>
+              </button>
             </div>
-          </div>
-        </div>
 
-        <div class="panel">
-          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
-            <h3><i class="fas fa-list-ul" style="color:var(--primary)"></i> Yozuvlar tarixi
-              <small id="cfRecordCount" style="color:var(--muted);font-size:12px;font-weight:400"></small>
-            </h3>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <select class="form-control" id="cfFilterBranch" style="height:38px;width:auto"
-                onchange="CashFlow.render()">
-                <option value="">Barcha filiallar</option>
-              </select>
-              <select class="form-control" id="cfFilterType" style="height:38px;width:auto"
-                onchange="CashFlow.render()">
+            <!-- ========== TORTTA MOLIYAVIY KO'RSATKICH ========== -->
+            <div class="cf-metrics">
+              <div class="cf-metric cf-metric-kirim">
+                <span class="cf-metric-ico"><i class="fas fa-arrow-down"></i></span>
+                <div class="cf-metric-body">
+                  <small>Jami kirim</small>
+                  <strong id="cfKirim">0 so'm</strong>
+                  <em id="cfKirimCount">0 ta operatsiya</em>
+                </div>
+              </div>
+              <div class="cf-metric cf-metric-chiqim">
+                <span class="cf-metric-ico"><i class="fas fa-arrow-up"></i></span>
+                <div class="cf-metric-body">
+                  <small>Jami chiqim</small>
+                  <strong id="cfChiqim">0 so'm</strong>
+                  <em id="cfChiqimCount">0 ta operatsiya</em>
+                </div>
+              </div>
+              <div class="cf-metric cf-metric-harajat">
+                <span class="cf-metric-ico"><i class="fas fa-receipt"></i></span>
+                <div class="cf-metric-body">
+                  <small>Jami xarajat</small>
+                  <strong id="cfHarajat">0 so'm</strong>
+                  <em id="cfHarajatCount">0 ta operatsiya</em>
+                </div>
+              </div>
+              <div class="cf-metric cf-metric-net">
+                <span class="cf-metric-ico"><i class="fas fa-scale-balanced"></i></span>
+                <div class="cf-metric-body">
+                  <small>Sof pul oqimi</small>
+                  <strong id="cfNet">0 so'm</strong>
+                  <em>Kirim − Chiqim − Xarajat</em>
+                </div>
+              </div>
+            </div>
+
+            <!-- ========== FILTRLAR ========== -->
+            <div class="cf-filters">
+              <div class="cf-search">
+                <i class="fas fa-magnifying-glass"></i>
+                <input id="cfSearch" type="text" oninput="CashFlow.onSearch()"
+                  placeholder="Izoh, kategoriya yoki summa bo'yicha qidirish...">
+              </div>
+              <select class="form-control cf-fsel" id="cfFilterType" onchange="CashFlow.onFilter()">
                 <option value="">Barcha turlar</option>
                 <option value="kirim">Kirim</option>
                 <option value="chiqim">Chiqim</option>
-                <option value="harajat">Harajat</option>
+                <option value="harajat">Xarajat</option>
               </select>
-              <input class="form-control" id="cfFrom" type="date" style="height:38px;width:auto"
-                onchange="CashFlow.render()" title="Boshlanish sanasi">
-              <input class="form-control" id="cfTo" type="date" style="height:38px;width:auto"
-                onchange="CashFlow.render()" title="Tugash sanasi">
-              <button class="btn btn-outline btn-sm" onclick="CashFlow.clearFilters()"><i
-                  class="fas fa-filter-circle-xmark"></i> Tozalash</button>
+              <select class="form-control cf-fsel" id="cfFilterCat" onchange="CashFlow.onFilter()">
+                <option value="">Barcha kategoriyalar</option>
+              </select>
+              <select class="form-control cf-fsel" id="cfFilterBranch" onchange="CashFlow.onFilter()">
+                <option value="">Barcha filiallar</option>
+              </select>
+              <select class="form-control cf-fsel" id="cfPeriod" onchange="CashFlow.setPeriod(this.value)">
+                <option value="all">Barcha davr</option>
+                <option value="today">Bugun</option>
+                <option value="month">Bu oy</option>
+                <option value="prev">O'tgan oy</option>
+                <option value="year">Bu yil</option>
+              </select>
+              <button class="btn btn-outline btn-sm cf-fclr" onclick="CashFlow.clearFilters()">
+                <i class="fas fa-filter-circle-xmark"></i> Tozalash</button>
             </div>
-          </div>
-          <div class="panel-body" style="padding:0">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sana</th>
-                    <th>Turi</th>
-                    <th>Kategoriya</th>
-                    <th>Filial</th>
-                    <th>Summa</th>
-                    <th>Izoh</th>
-                    <th>Amal</th>
-                  </tr>
-                </thead>
-                <tbody id="cashFlowTableBody"></tbody>
-              </table>
+
+            <!-- ========== OPERATSIYALAR TARIXI ========== -->
+            <div class="panel cf-table-panel">
+              <div class="panel-header cf-thd">
+                <h3><i class="fas fa-list-ul cf-thd-ico"></i> Operatsiyalar tarixi
+                  <span class="cf-count" id="cfRecordCount">0 ta yozuv</span></h3>
+                <div class="cf-thd-tools">
+                  <button class="btn btn-outline btn-sm" onclick="CashFlow.render()">
+                    <i class="fas fa-rotate"></i> Yangilash</button>
+                  <button class="btn btn-outline btn-sm" onclick="CashFlow.exportCSV()">
+                    <i class="fas fa-file-csv"></i> CSV</button>
+                </div>
+              </div>
+              <div class="panel-body" style="padding:0">
+                <div class="table-wrap">
+                  <table class="cf-table">
+                    <thead>
+                      <tr>
+                        <th class="cf-c-num">#</th>
+                        <th>Sana va vaqt</th>
+                        <th>Turi</th>
+                        <th>Kategoriya</th>
+                        <th class="cf-c-note">Izoh</th>
+                        <th>Filial</th>
+                        <th class="cf-c-amt">Summa</th>
+                        <th class="cf-c-user">Bajaruvchi</th>
+                        <th class="cf-c-act">Amallar</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cashFlowTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="cf-pager" id="cfPager"></div>
             </div>
-          </div>
-        </div>
+
+            <!-- ========== FILIAL NAZORATI (mavjud funksiya saqlanadi) ========== -->
+            <div class="panel cf-branch-panel">
+              <div class="panel-header cf-thd">
+                <h3><i class="fas fa-building-columns cf-thd-ico"></i> Filiallar bo'yicha moliyaviy nazorat</h3>
+                <small class="cf-thd-sub">Savdo tushumi, kirim, chiqim, xarajat va sof natija</small>
+              </div>
+              <div class="panel-body" style="padding:0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Filial</th>
+                        <th>Savdo tushumi</th>
+                        <th>Kirim</th>
+                        <th>Chiqim</th>
+                        <th>Xarajat</th>
+                        <th>Sof natija</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="branchMonitorTable"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /.cf-main -->
+
+          <!-- ========== O'NG PANEL: YANGI OPERATSIYA ========== -->
+          <aside class="cf-panel" id="cfPanel" data-type="kirim" aria-hidden="true">
+            <div class="cf-panel-head">
+              <span class="cf-panel-ico" id="cfPanelIco"><i class="fas fa-arrow-down"></i></span>
+              <div class="cf-panel-title">
+                <h3>Yangi operatsiya</h3>
+                <p id="cfPanelSub">Kirim yozuvini qo'shish</p>
+              </div>
+              <button class="cf-panel-x" onclick="CashFlow.closePanel()" title="Yopish" aria-label="Yopish">
+                <i class="fas fa-xmark"></i>
+              </button>
+            </div>
+
+            <div class="cf-panel-body">
+              <div class="cf-type-group" id="cfTypeGroup">
+                <button type="button" class="cf-type-btn active" data-cf-type="kirim"
+                  onclick="CashFlow.setType('kirim')">
+                  <i class="fas fa-arrow-down"></i> Kirim</button>
+                <button type="button" class="cf-type-btn" data-cf-type="chiqim"
+                  onclick="CashFlow.setType('chiqim')">
+                  <i class="fas fa-arrow-up"></i> Chiqim</button>
+                <button type="button" class="cf-type-btn" data-cf-type="harajat"
+                  onclick="CashFlow.setType('harajat')">
+                  <i class="fas fa-receipt"></i> Xarajat</button>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-amount">Summa (so'm) <b>*</b></label>
+                <div class="cf-input-ico">
+                  <input class="form-control" id="cf-amount" type="number" min="0" placeholder="0">
+                  <i class="fas fa-coins"></i>
+                </div>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-category">Kategoriya <b>*</b></label>
+                <select class="form-control" id="cf-category"></select>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-branch">Filial <b>*</b></label>
+                <select class="form-control" id="cf-branch"></select>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-date">Sana <b>*</b></label>
+                <input class="form-control" id="cf-date" type="date">
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-note">Izoh</label>
+                <textarea class="form-control" id="cf-note" maxlength="240" rows="3"
+                  placeholder="Masalan: kassa tushumi, bankdan o'tkazma va h.k."></textarea>
+                <div class="cf-note-count"><span id="cfNoteCount">0</span>/240</div>
+              </div>
+
+              <div class="cf-hint">
+                <i class="fas fa-circle-info"></i>
+                <p id="cfHintText"></p>
+              </div>
+            </div>
+
+            <div class="cf-panel-foot">
+              <button class="btn btn-outline cf-btn-cancel" onclick="CashFlow.closePanel()">
+                <i class="fas fa-xmark"></i> Bekor qilish</button>
+              <button class="btn btn-primary cf-btn-save" onclick="CashFlow.save()">
+                <i class="fas fa-floppy-disk"></i> Yozuvni saqlash</button>
+            </div>
+          </aside>
+
+        </div><!-- /.cf-layout -->
+
+        <div class="cf-scrim" id="cfScrim" onclick="CashFlow.closePanel()"></div>
       </div>
 
       <!-- ===== REPORTS ===== -->
@@ -4043,7 +4147,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.5.2"></script>
+  <script src="scripts.js?v=1.6.0"></script>
   <script src="boss.js?v=2.1.6"></script>
     <script>
       /* Header: surilganda ixchamlashadi */
