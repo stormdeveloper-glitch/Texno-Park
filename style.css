@@ -27,6 +27,10 @@
     /* Semantic */
     --success: #22c55e;
     --success-bg: rgba(34, 197, 94, 0.10);
+    /* Accent — ba'zi tugma/badge'lar `--accent` dan foydalanadi. Bu
+       o'zgaruvchi e'lon qilinmaganligi sababli `.btn-success` foni
+       shaffof bo'lib, oq matn oq fonda ko'rinmay qolgan edi. */
+    --accent: var(--success);
     --danger: #ef4444;
     --danger-bg: rgba(239, 68, 68, 0.10);
     --warning: #f59e0b;
@@ -1994,8 +1998,8 @@ button[class*="btn"]:active {
 }
 
 .btn-success {
-    background: var(--accent);
-    color: white;
+    background: var(--accent, var(--success));
+    color: #111111;
     box-shadow: 0 4px 12px rgba(16, 185, 129, .3);
 }
 

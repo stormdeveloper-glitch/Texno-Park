@@ -15,7 +15,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.12.2">
+  <link rel="stylesheet" href="style.css?v=5.12.3">
   <link rel="stylesheet" href="boss.css?v=2.1.2">
 </head>
 
@@ -133,13 +133,11 @@
         <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
           <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
-        <!-- XODIMLAR bo'limi faqat MENEDJER menyusida (wrapper data-role="manager"):
-             ADMIN menyusidan butunlay olib tashlandi — bo'sh dropdown ham qolmaydi.
-             nav-employees `data-page="page-employees"` bilan saqlanadi — bu
-             canAccessPage() uchun ruxsat manbai (admin/menejer topbar'dagi
-             «Xodim qo'shish» orqali sahifaga kira oladi), ko'rinishi esa
-             wrapper data-role orqali boshqariladi. -->
-        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="manager" style="width:100%">
+        <!-- XODIMLAR bo'limi ADMIN va MENEDJER menyusida (wrapper
+             data-role="admin,manager"): barcha adminlar ham Xodimlar
+             bo'limini ko'radi. nav-employees `data-page="page-employees"`
+             bilan saqlanadi — bu canAccessPage() uchun ruxsat manbai. -->
+        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="admin,manager" style="width:100%">
           <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees" data-role="admin,manager"
             data-page="page-employees">
             <i class="fas fa-id-badge"></i><span>Xodimlar</span>
