@@ -503,6 +503,7 @@ class DBManager:
             self.db_type = 'mysql'
             
         self._pg_pool = None
+        self._sqlite_path = None  # SQLite yo'li bir marta aniqlanadi (kesh)
         if self.db_type == 'postgres':
             try:
                 self._pg_pool = PG8000ConnectionPool(self.db_url, minconn=2, maxconn=10)
@@ -541,36 +542,33 @@ class DBManager:
             )
             
         else:
-            db_path = os.getenv('DB_PATH')
+            # MUHIM: SQLite yo'li BIR MARTA aniqlanadi va keshlanadi.
+            # Ilgari har bir ulanishda "/app/data" yozish qobiliyati tekshirilar
+            # va vaqtincha xato bo'lsa `Data/database.db` ga (boshqa, bo'sh
+            # bazaga) o'tib ketardi. Natijada bitta so'rov bo'sh bazani ko'rib
+            # "xodimlar yo'q" deb standart xodimlarni QAYTA seed qilishi va
+            # haqiqiy xodimlar ro'yxatini bosib ketishi mumkin edi.
+            db_path = getattr(self, '_sqlite_path', None)
             if not db_path:
-                for vpath in ["/app/data", "/data", "/data/app", "/dara/app"]:
-                    try:
-                        if os.path.exists(vpath) or os.path.isdir(vpath):
-                            # Test if directory is writeable
-                            test_file = os.path.join(vpath, ".write_test")
-                            with open(test_file, 'w') as f:
-                                f.write('test')
-                            os.remove(test_file)
-                            
+                db_path = os.getenv('DB_PATH')
+                if not db_path:
+                    for vpath in ["/app/data", "/data", "/data/app", "/dara/app"]:
+                        if os.path.isdir(vpath):
                             db_path = os.path.join(vpath, "database.db")
                             break
-                    except Exception:
-                        pass
                 if not db_path:
                     db_path = os.path.join('Data', 'database.db')
-            
+                self._sqlite_path = db_path
+
             try:
                 db_dir = os.path.dirname(db_path)
                 if db_dir:
                     os.makedirs(db_dir, exist_ok=True)
                 return sqlite3.connect(db_path)
             except Exception as e:
-                print(f"Failed to connect to SQLite at {db_path}: {str(e)}. Falling back to local project database.")
-                fallback_path = os.path.join('Data', 'database.db')
-                fallback_dir = os.path.dirname(fallback_path)
-                if fallback_dir:
-                    os.makedirs(fallback_dir, exist_ok=True)
-                return sqlite3.connect(fallback_path)
+                # BOSHQA bazaga o'tmaymiz — o'sha faylga qayta urinamiz.
+                print(f"Failed to connect to SQLite at {db_path}: {str(e)}. Retrying same database.")
+                return sqlite3.connect(db_path, timeout=10)
 
     def init_db(self):
         conn = self.get_connection()
@@ -1089,7 +1087,13 @@ def capture_staff_password(user, password):
     """
     if not vault_available():
         return False
-    if str(user.get('passVault') or ''):
+    # Nusxa mavjud bo'lsa ham, u HAQIQIY parolga mos kelishini tekshiramiz.
+    # Ilgari bu yerda faqat "nusxa bormi?" tekshirilardi: parol CLI orqali
+    # (masalan _tp_set_staff_password.py) yoki eski yo'l bilan almashtirilsa,
+    # xazinada ESKI parol qolib, boshliq panelida "mos kelmaydigan" parol
+    # ko'rinardi. Endi muvaffaqiyatli kirishda nusxa yangilanadi.
+    current = str(user.get('passVault') or '')
+    if current and vault_decrypt(current) == str(password):
         return False
     token = vault_encrypt(password)
     if not token:
@@ -2622,6 +2626,17 @@ def boss_staff_list():
     role_filter = str(request.args.get('role') or '').strip().lower()
     branch_filter = str(request.args.get('branchId') or '').strip()
 
+    # Oylik maosh: frontend'dagi SalaryModule yozuvlari (salaryRecords)
+    # ism bo'yicha moslashtiriladi — xodimlar jadvalida ko'rinadi.
+    salary_by_name = {}
+    for rec in (store.get('salaryRecords') or []):
+        if not isinstance(rec, dict):
+            continue
+        name_key = str(rec.get('name') or '').strip().lower()
+        amount = _num(rec.get('salary'))
+        if name_key and amount:
+            salary_by_name[name_key] = amount
+
     rows = []
     for user in staff:
         role = str(user.get('role', '')).strip().lower()
@@ -2642,6 +2657,7 @@ def boss_staff_list():
         view['branchName'] = str((branches.get(str(user.get('branchId') or '')) or {})
                                  .get('name', '') or '')[:80]
         view['lastSeen'] = last_seen_by_login(user.get('login')) or view['lastSeen']
+        view['salary'] = salary_by_name.get(str(user.get('name') or '').strip().lower(), 0)
         rows.append(view)
 
     sort_key = str(request.args.get('sort') or 'total').strip()

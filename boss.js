@@ -436,7 +436,7 @@ function setPeriod(value) {
     }
 
     function staffRowsHtml(rows) {
-        if (!rows.length) return `<tr><td colspan="10">${emptyState('Xodim topilmadi')}</td></tr>`;
+        if (!rows.length) return `<tr><td colspan="11">${emptyState('Xodim topilmadi')}</td></tr>`;
         return rows.map(s => {
             const blocked = String(s.status || '').toLowerCase() === 'blocked';
             const me = currentUser && s.login === currentUser.login;
@@ -462,6 +462,9 @@ function setPeriod(value) {
                     <small>${s.units || 0} dona</small></td>
                 <td data-label="Savdo summasi"><strong>${fmt(s.total || 0)}</strong> so'm
                     <small>o'rtacha: ${fmt(s.avgCheck || 0)}</small></td>
+                <td data-label="Oylik maosh">${s.salary
+                    ? `<strong>${fmt(s.salary)}</strong> so'm`
+                    : '<span style="color:var(--muted)">—</span>'}</td>
                 <td data-label="Holat">${statusBadge(s.status)}
                     <small>${escapeHTML(s.lastSeen || s.updatedAt || '—')}</small></td>
                 <td data-label="Amallar" class="boss-actions">
@@ -505,6 +508,7 @@ function setPeriod(value) {
                 <div class="bsc-rows">
                     <div class="bsc-row"><i class="fas fa-phone"></i><span>${escapeHTML(s.phone || '—')}</span></div>
                     <div class="bsc-row"><i class="fas fa-store"></i><span>${escapeHTML(s.branchName || '—')}</span></div>
+                    <div class="bsc-row"><i class="fas fa-money-bill-wave"></i><span>${s.salary ? fmt(s.salary) + " so'm" : '—'}</span></div>
                 </div>
                 <div class="bsc-foot">
                     <span class="bsc-status ${blocked ? 'blocked' : 'active'}"><i class="fas fa-circle"></i>${blocked ? 'Bloklangan' : 'Faol'}</span>
@@ -537,6 +541,7 @@ function setPeriod(value) {
                 ${field('Telefon', p.phone)}
                 ${showLogin ? field('Login identifikatori', p.login) : ''}
                 ${field('Filial', p.branchName)}
+                ${field('Oylik maosh', p.salary ? fmt(p.salary) + " so'm" : '')}
                 ${field('Ro\'yxatdan o\'tgan', p.createdAt)}
                 ${field('Oxirgi faollik', p.lastSeen || p.updatedAt)}
             </div>

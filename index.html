@@ -15,7 +15,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.12.0">
+  <link rel="stylesheet" href="style.css?v=5.12.2">
   <link rel="stylesheet" href="boss.css?v=2.1.2">
 </head>
 
@@ -46,9 +46,9 @@
         <p>Xodimlar uchun kirish</p>
       </div>
       <div class="form-group">
-        <label for="loginPhone">Foydalanuvchi</label>
+        <label for="loginPhone">Telefon yoki login</label>
         <div class="phone-field">
-          <input type="tel" id="loginPhone" inputmode="numeric" placeholder="90 123 45 67" autocomplete="username"
+          <input type="text" id="loginPhone" inputmode="text" placeholder="90 123 45 67 yoki admin" autocomplete="username"
             autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="loginPhoneError">
           <span class="phone-prefix" aria-hidden="true">+998</span>
           <i class="fas fa-mobile-screen input-icon"></i>
@@ -1439,6 +1439,7 @@
                   <th>Filial</th>
                   <th>Sotuvlar</th>
                   <th>Savdo summasi</th>
+                  <th>Oylik maosh</th>
                   <th>Holat</th>
                   <th>Amallar</th>
                 </tr>
@@ -1631,6 +1632,7 @@
                     <th>Rol</th>
                     <th>Sotuvlar</th>
                     <th>Daromad</th>
+                    <th>Oylik maosh</th>
                     <th>Login</th>
                     <th>Status</th>
                   </tr>
@@ -4147,8 +4149,8 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.6.0"></script>
-  <script src="boss.js?v=2.1.6"></script>
+  <script src="scripts.js?v=1.6.3"></script>
+  <script src="boss.js?v=2.1.7"></script>
     <script>
       /* Header: surilganda ixchamlashadi */
       (function () {

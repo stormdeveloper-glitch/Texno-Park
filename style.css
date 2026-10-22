@@ -464,6 +464,17 @@ body {
     letter-spacing: .4px;
 }
 
+/* Login nomi rejimi (admin, boss2, ...) — telefon prefiksi va mobil ikonka
+   yashiriladi, matn maydoni chapdan to'liq ochiladi. */
+.phone-field.login-mode .phone-prefix,
+.phone-field.login-mode .input-icon {
+    display: none;
+}
+
+#loginPage .form-group .phone-field.login-mode input {
+    padding-left: 14px;
+}
+
 /* ID selektorlardan kuchli bo'lishi shart — aks holda bazaviy 42-44px
    padding g'alaba qozonib, matn +998 prefiksi ustiga tushadi. */
 #loginPage .form-group .phone-field input {
@@ -1232,6 +1243,13 @@ body {
     display: flex;
     flex-direction: column;
     width: 100%;
+    /* Savat paneli balandligi cheklangan (max-height), lekin uning ichidagi
+       to'lov turlari + tugma undan baland bo'lishi mumkin. Ilgari ular
+       panel fonidan tashqariga chiqib, oq fon "kesilgandek" ko'rinardi.
+       Endi butun panel ichki scroll bo'ladi — fon har doim qoplaydi. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--surface);
 }
 
 #page-pos .cart-items {

@@ -45,6 +45,37 @@ def hash_password(password: str, salt: str) -> str:
     return hashlib.sha256(f'{salt}::{password}'.encode('utf-8')).hexdigest()
 
 
+def vault_encrypt(conn: sqlite3.Connection, password: str) -> str:
+    """Parolning shifrlangan nusxasi (boshliq paneli uchun).
+
+    app.py bilan bir xil sxema: PASSWORD_VAULT_KEY yoki auth_secret dan
+    hosil qilingan Fernet kaliti. Kutubxona/kalit bo'lmasa — '' qaytadi
+    (xesh baribir yangilanadi; nusxa keyingi kirishda yozib olinadi).
+    """
+    try:
+        import base64
+        from cryptography.fernet import Fernet
+    except Exception:
+        return ''
+    raw = (os.getenv('PASSWORD_VAULT_KEY') or '').strip()
+    key = None
+    if raw:
+        try:
+            key = Fernet(raw.encode('ascii'))
+        except Exception:
+            key = None
+    if key is None:
+        secret = load_key(conn, 'auth_secret')
+        if isinstance(secret, str):
+            secret = secret.strip().strip('"')
+        if not secret:
+            return ''
+        derived = base64.urlsafe_b64encode(
+            hashlib.sha256(b'tp-pos-parol-xazinasi::' + str(secret).encode()).digest())
+        key = Fernet(derived)
+    return 'fernet:' + key.encrypt(password.encode('utf-8')).decode('ascii')
+
+
 def read_password() -> str:
     pwd = (os.getenv('TP_STAFF_PASSWORD') or '').strip()
     if pwd:
@@ -116,6 +147,14 @@ def main() -> int:
         user['passHash'] = expected
         user['mustChange'] = False
         user['updatedAt'] = stamp
+        # Boshliq paneli ESKI parolni ko'rsatib qolmasligi uchun shifrlangan
+        # nusxani ham shu yerda yangilaymiz.
+        vault = vault_encrypt(conn, password)
+        if vault:
+            user['passVault'] = vault
+            user['passVaultAt'] = stamp
+            user['passChangedAt'] = stamp
+            user['passChangedBy'] = 'Tizim (CLI)'
 
     if not rows:
         print('[XATO] Maqsadli loginlar bazadan topilmadi:', ', '.join(TARGET_LOGINS))

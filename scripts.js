@@ -949,30 +949,40 @@ function normalizePhoneUz(value) {
     return '+998' + d;
 }
 
+/** Login maydonida telefon emas, LOGIN NOMI kiritilganini aniqlaydi.
+ *  Masalan: admin, boss2, manager@texnopark.uz. Bunday qiymatga telefon
+ *  maskasi qo'llanmaydi — aks holda harflar darhol o'chib ketardi va
+ *  admin login bilan kirish umuman imkonsiz edi. */
+function isLoginNameValue(value) {
+    return /[A-Za-z@._-]/.test(String(value || ''));
+}
+
+/** Login maydonini telefon maskasiga keltiradi va +998 prefiksini boshqaradi. */
+function formatLoginField(inp) {
+    if (!inp) return;
+    const nameMode = isLoginNameValue(inp.value);
+    const wrap = inp.closest('.phone-field');
+    if (wrap) wrap.classList.toggle('login-mode', nameMode);
+    if (nameMode) return;            // login nomi — maskani tegmymiz
+    const masked = formatPhoneMaskUz(inp.value);
+    if (inp.value !== masked) {
+        inp.value = masked;
+        // Kursor doim matn oxirida qoladi
+        try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
+    }
+}
+
 /** Login telefon maydoniga maskani bog'laydi (bir marta). */
 function initLoginPhoneMask() {
     const inp = document.getElementById('loginPhone');
     if (!inp || inp.dataset.maskBound === '1') return;
     inp.dataset.maskBound = '1';
-    inp.addEventListener('input', () => {
-        const masked = formatPhoneMaskUz(inp.value);
-        if (inp.value !== masked) {
-            inp.value = masked;
-            // Kursor doim matn oxirida qoladi
-            try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
-        }
-    });
+    inp.addEventListener('input', () => formatLoginField(inp));
 }
 
 /** Login telefon maydonidagi qiymatni bir xil maskaga keltiradi. */
 function formatLoginPhoneField() {
-    const inp = document.getElementById('loginPhone');
-    if (!inp) return;
-    const masked = formatPhoneMaskUz(inp.value);
-    if (inp.value !== masked) {
-        inp.value = masked;
-        try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
-    }
+    formatLoginField(document.getElementById('loginPhone'));
 }
 
 /** Brauzer autofill uchun telefon qiymatini ham bir xil maskaga keltiradi. */
@@ -1578,7 +1588,11 @@ async function serverLogin(login, password) {
  *  «Sessiya yo'q / Qayta kiring» xatini takrorlaydi. Shuning uchun
  *  frontend sessiyasi ham yakunlanib, login ekranga qaytiladi. */
 function handleSessionExpired() {
-    if (!staffToken) return;
+    // Token bo'lmasa ham `currentUser` "kirgan" holatda qolgan bo'lishi mumkin
+    // (lokal sessiya server tokenisiz tiklangan). Bunday holatda ham login
+    // ekraniga qaytaramiz — aks holda barcha amallar "Avtorizatsiya talab
+    // qilinadi" xatosi bilan tugaydi va foydalanuvchi sababini bilmaydi.
+    if (!staffToken && !currentUser) return;
     clearStaffToken();
     if (currentUser && currentUser.role !== 'customer') {
         showNotif('warning', 'Sessiya tugadi', 'Xavfsizlik uchun tizimga qaytadan kiring');
@@ -2152,16 +2166,22 @@ async function doLogin() {
 
     clearLoginFieldErrors();
 
-    // ── Validatsiya (telefon + parol) ──
-    const phone = normalizePhoneUz(phoneRaw);
-    if (!phoneRaw.replace(/\D/g, '')) {
-        showLoginFieldError('loginPhoneError', 'Telefon raqamini kiriting');
+    // ── Validatsiya (telefon YOKI login nomi + parol) ──
+    const rawLogin = String(phoneRaw).trim();
+    const phone = normalizePhoneUz(rawLogin);
+    // Login nomi: admin, boss2, manager@texnopark.uz kabi qiymatlar.
+    // Server ikkala shaklni ham qabul qiladi (telefon yoki login).
+    const username = /^[A-Za-z0-9][A-Za-z0-9._@+-]{1,119}$/.test(rawLogin) ? rawLogin : '';
+    const loginKey = phone || username;
+
+    if (!rawLogin) {
+        showLoginFieldError('loginPhoneError', 'Telefon yoki loginni kiriting');
         phoneInp?.focus();
         playError();
         return;
     }
-    if (!phone) {
-        showLoginFieldError('loginPhoneError', 'Telefon raqami noto\u2018g\u2018ri');
+    if (!loginKey) {
+        showLoginFieldError('loginPhoneError', 'Telefon raqami yoki login noto\u2018g\u2018ri');
         phoneInp?.focus();
         playError();
         return;
@@ -2173,14 +2193,14 @@ async function doLogin() {
         return;
     }
 
-    if (hasSqlInjectionPattern(phone) || hasSqlInjectionPattern(p) || hasXssPattern(phone) || hasXssPattern(p)) {
+    if (hasSqlInjectionPattern(loginKey) || hasSqlInjectionPattern(p) || hasXssPattern(loginKey) || hasXssPattern(p)) {
         playError();
         showNotif('error', 'Xavfsizlik!', 'Login ma\'lumotlarida shubhali belgilar topildi');
         securityLog('login-injection-block', 'high', 'Kirish maydonida shubhali belgilar aniqlandi');
         return;
     }
 
-    // ── Brute-force himoyasi (telefon raqami bo'yicha) ──
+    // ── Brute-force himoyasi (telefon/login bo'yicha) ──
     // MUHIM (ROOT CAUSE FIX): lokal (brauzer) lockout FAQAT noto'g'ri parol
     // urinishlarini cheklashi kerak. To'g'ri telefon + parol eski (stale)
     // `tp_login_guard` holatidan bloklanmaydi — haqiqiy tekshiruv
@@ -2189,15 +2209,15 @@ async function doLogin() {
     // registerLoginFailure() lockoutni qayta qo'llaydi (5 xato urinish -> blok).
     // Server xavfsizligi o'zgartirilmaydi: IP-ratelimit (429) va bloklangan
     // hisob (403 account_blocked) xuddi avvalgidek ishlaydi.
-    const guard = loginGuardStatus(phone);
+    const guard = loginGuardStatus(loginKey);
     if (guard.locked) {
-        securityLog('lockout', 'high', 'Bloklangan telefon raqami uchun login tekshiruvi: ' + phone);
+        securityLog('lockout', 'high', 'Bloklangan login uchun tekshiruv: ' + loginKey);
     }
 
     // Yuklanish holati: tugma o'chadi — ikki marta bosish duplicate request yubormaydi
     setLoginLoading(true);
     try {
-        await attemptLogin(phone, p);
+        await attemptLogin(loginKey, p);
     } finally {
         setLoginLoading(false);
         // Turnstile tokeni bir martalik — muvaffaqiyatsiz urinishdan keyin
@@ -5757,6 +5777,7 @@ function employeeCardHtml(e) {
           <div class="tpm-staff-info">
             <span class="tpm-info-item"><i class="fas fa-phone"></i> ${escapeHTML(phone)}</span>
             <span class="tpm-info-item"><i class="fas fa-location-dot"></i> ${escapeHTML(branchName)}</span>
+            <span class="tpm-info-item"><i class="fas fa-money-bill-wave"></i> ${e.salary ? fmt(e.salary) + " so'm" : '—'}</span>
           </div>
         </div>
         <div class="tpm-staff-end">
@@ -5791,6 +5812,18 @@ function openEmployeeDetail(id) {
 function renderEmployees() {
     if (currentUser && !canAccessPage('page-employees')) return;
     const all = employees.map(e => ({ ...e, ...employeeStats(e) }));
+
+    // Oylik maosh: SalaryModule yozuvlari (tp_salary_records) ism bo'yicha
+    // moslashtiriladi — xodimlar ro'yxatida ko'rinadi.
+    const salaryByName = new Map();
+    (readLocalJSON('tp_salary_records', []) || []).forEach(rec => {
+        if (!rec || !rec.name) return;
+        const amount = Number(rec.salary) || 0;
+        if (amount) salaryByName.set(String(rec.name).trim().toLowerCase(), amount);
+    });
+    all.forEach(e => {
+        e.salary = salaryByName.get(String(e.name || '').trim().toLowerCase()) || 0;
+    });
     const actCount = all.filter(e => e.status === 'active').length;
     const blkCount = all.filter(e => e.status !== 'active').length;
 
@@ -5852,9 +5885,10 @@ function renderEmployees() {
       <div style="margin-bottom:4px;font-weight:700">${fmt(e.total)} so'm</div>
       <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, (e.total / maxTotal) * 100)}%;background:linear-gradient(90deg,var(--primary),var(--warning))"></div></div>
     </td>
+    <td>${e.salary ? `<strong>${fmt(e.salary)}</strong> so'm` : '<span style="color:var(--muted)">—</span>'}</td>
     <td>${escapeHTML(e.login)}</td>
     <td><span class="badge ${e.status === 'active' ? 'badge-green' : 'badge-red'}">${e.status === 'active' ? 'Aktiv' : 'Nofaol'}</span></td>
-  </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${emptyMsg}</td></tr>`);
+  </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">${emptyMsg}</td></tr>`);
 
     // Mobil kartalar (≤768px'da ko'rinadi, desktopda yashirin)
     uiSetHtml('employeesMobileList', list.map(employeeCardHtml).join('')
@@ -7477,6 +7511,14 @@ const Security = {
         if (Number(sess.expiresAt) <= Date.now()) {
             try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
             securityLog('session-expired', 'low', 'Saqlangan sessiya muddati tugagan — qayta kirish talab qilinadi');
+            return;
+        }
+        // Server tokeni yo'q bo'lsa lokal sessiyani TIKLAMAYMIZ: aks holda
+        // foydalanuvchi "kirgan" ko'rinadi, lekin har bir amal 401 beradi
+        // ("Avtorizatsiya talab qilinadi") — xodim qo'shish kabi amallar
+        // shu sababdan bajarilmay qolardi. Qayta kirish talab qilinadi.
+        if (!staffToken) {
+            try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
             return;
         }
         // Server sessiyasi: rol/filial token bilan tasdiqlanadi (quyida).

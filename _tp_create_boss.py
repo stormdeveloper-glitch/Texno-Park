@@ -47,10 +47,14 @@ def create(phone, password, name):
         'createdAt': tp.datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'updatedAt': tp.datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
     }
+    # Parolning shifrlangan nusxasini ham yozamiz — aks holda boshliq
+    # panelida "Parol (joriy)" ustunida "yozilmagan" chiqadi. Xesh bilan
+    # bir xil parol; nusxa faqat egasi (boshliq) uchun ochiladi.
+    tp.apply_staff_password(account, password, 'Tizim (akount yaratildi)')
     staff.append(account)
     tp.db_manager.save_keys({'staff_users': staff})
     print('[OK] Boshliq akounti yaratildi: ' + name + ' | ' + phone + ' | login=' + login)
-    print("     Parol bazada SHA-256 xesh ko'rinishida saqlanadi (ochiq matn YO'Q).")
+    print("     Parol bazada SHA-256 xesh + shifrlangan nusxa ko'rinishida saqlanadi (ochiq matn YO'Q).")
     return 0
 
 
