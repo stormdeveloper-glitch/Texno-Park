@@ -29,6 +29,9 @@ from werkzeug.utils import secure_filename
 
 load_dotenv()
 
+# Loyiha ildizi: DB yo'li ishga tushirish papkasiga bog'liq bo'lib qolmasin.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Fiskal chek moduli (QR-kodli chek) — O'zbekiston qonunchiligi talablari.
 # Modul bo'lmasa ham ilova ishga tushadi (fiskal chek chiqmaydi).
 try:
@@ -85,6 +88,9 @@ FORCE_HTTPS = os.getenv('FORCE_HTTPS', 'false').lower() == 'true'
 # (aks holda hujumchi ularni qalbakilashtirib IP asosidagi limitlarni chetlab
 #  o'tishi mumkin).
 TRUST_CLOUDFLARE = os.getenv('TRUST_CLOUDFLARE', 'false').lower() == 'true'
+# Umumiy teskari proxy (Railway, Nginx va h.k.) ortida ishlaganda X-Forwarded-For
+# ga ishonish uchun. Faqat proxy haqiqatan sozlangan bo'lsa true qilinadi.
+TRUST_PROXY = os.getenv('TRUST_PROXY', 'false').lower() == 'true'
 
 # Cloudflare Turnstile (CAPTCHA) — saytdagi "bot emasligingizni tasdiqlang"
 CF_TURNSTILE_SITE_KEY = (os.getenv('CF_TURNSTILE_SITE_KEY') or '').strip()
@@ -120,7 +126,9 @@ if SITE_DOMAIN:
 for origin in ([SITE_URL, f'https://www.{SITE_DOMAIN}'] if SITE_DOMAIN else []):
     if origin not in ALLOWED_ORIGINS:
         ALLOWED_ORIGINS.append(origin)
-CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS or "*"}})
+# Xavfsizlik: bo'sh ro'yxat CORS sarlavhalarini umuman qo'shmaydi. Same-origin
+# SPA uchun bu yetarli; boshqa domen kerak bo'lsa ALLOWED_ORIGINS ga yoziladi.
+CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
 
 # Cloudflare API (Turnstile domenlarini avtomatik qo'shish uchun).
 # Token faqat "Turnstile: Edit" huquqi bilan yaratilsa yetarli.
@@ -172,17 +180,18 @@ def rate_limit_middleware():
 def get_client_ip():
     """Haqiqiy mijoz IP manzilini aniqlaydi (Cloudflare orqasida ham).
 
-    Ustuvorlik: CF-Connecting-IP (faqat TRUST_CLOUDFLARE=true bo'lsa) →
-    X-Forwarded-For (birinchi qiymat) → bevosita ulanish IP'si.
+    Ustuvorlik: CF-Connecting-IP (faqat TRUST_CLOUDFLARE=true bo'lsa) ->
+    X-Forwarded-For (faqat TRUST_PROXY=true bo'lsa) -> bevosita ulanish IP'si.
     Fake sarlavhalar orqali IP limitlarini chetlab o'tishning oldi olinadi.
     """
     if TRUST_CLOUDFLARE:
         cf_ip = (request.headers.get('CF-Connecting-IP') or '').strip()
         if cf_ip:
             return cf_ip[:60]
-    forwarded = request.headers.get('X-Forwarded-For', '')
-    if forwarded:
-        return forwarded.split(',')[0].strip()[:60]
+    if TRUST_PROXY:
+        forwarded = request.headers.get('X-Forwarded-For', '')
+        if forwarded:
+            return forwarded.split(',')[0].strip()[:60]
     return (request.remote_addr or 'unknown')[:60]
 
 
@@ -502,6 +511,7 @@ class DBManager:
         elif self.db_url.startswith('mysql://'):
             self.db_type = 'mysql'
             
+        self.db_path = None
         self._pg_pool = None
         if self.db_type == 'postgres':
             try:
@@ -541,8 +551,13 @@ class DBManager:
             )
             
         else:
-            db_path = os.getenv('DB_PATH')
-            if not db_path:
+            configured = (os.getenv('DB_PATH') or '').strip()
+            if configured:
+                # Nisbiy DB_PATH loyiha ildiziga nisbatan olinadi — server qaysi
+                # papkadan ishga tushirilishidan qat'i nazar bitta baza ishlatiladi.
+                db_path = configured if os.path.isabs(configured) else os.path.join(BASE_DIR, configured)
+            else:
+                db_path = ''
                 for vpath in ["/app/data", "/data", "/data/app", "/dara/app"]:
                     try:
                         if os.path.exists(vpath) or os.path.isdir(vpath):
@@ -551,14 +566,15 @@ class DBManager:
                             with open(test_file, 'w') as f:
                                 f.write('test')
                             os.remove(test_file)
-                            
+
                             db_path = os.path.join(vpath, "database.db")
                             break
                     except Exception:
                         pass
                 if not db_path:
-                    db_path = os.path.join('Data', 'database.db')
-            
+                    db_path = os.path.join(BASE_DIR, 'Data', 'database.db')
+
+            self.db_path = db_path
             try:
                 db_dir = os.path.dirname(db_path)
                 if db_dir:
@@ -566,7 +582,8 @@ class DBManager:
                 return sqlite3.connect(db_path)
             except Exception as e:
                 print(f"Failed to connect to SQLite at {db_path}: {str(e)}. Falling back to local project database.")
-                fallback_path = os.path.join('Data', 'database.db')
+                fallback_path = os.path.join(BASE_DIR, 'Data', 'database.db')
+                self.db_path = fallback_path
                 fallback_dir = os.path.dirname(fallback_path)
                 if fallback_dir:
                     os.makedirs(fallback_dir, exist_ok=True)
@@ -935,28 +952,17 @@ def auth_secret():
 
 
 # ============================================================
-# PAROL XAZINASI — Boshliq panelida xodimlarning JORIY parolini ko'rish
+# PAROL SIYOSATI — faqat bir tomonlama xesh, qayta tiklanadigan nusxa YO'Q
 # ============================================================
-# Talab: Boshliq HAR BIR xodimning hozir amal qilayotgan parolini panelda
-# ko'rishi kerak — xodim parolni O'ZI almashtirgandan keyin ham.
-#
-# Nega faqat xesh bilan bo'lmaydi: `sha256(salt + '::' + parol)` — bir
-# tomonlama. Undan parolni tiklab bo'lmaydi (bu uning butun ma'nosidir).
-# Shu sababli parolning QAYTA TIKLANADIGAN nusxasi qo'shimcha saqlanadi.
-#
-# XAVFSIZLIK (o'qib chiqing):
-#  • Nusxa SHIFRLANGAN holda saqlanadi (Fernet: AES-128-CBC + HMAC-SHA256).
-#    Kalit: PASSWORD_VAULT_KEY (.env); berilmasa API_AUTH_SECRET dan hosil
-#    qilinadi. Baza dump'i/backup'i tushsa ham parollar ochiq ko'rinmaydi.
-#  • Ammo KALIT (.env) ham qo'lga tushsa — nusxalar o'qiladi. Shu sababli
-#    .env faqat serverda, gitdan tashqarida saqlansin.
-#  • Har bir "ko'rish" xavfsizlik jurnaliga yoziladi (kim, qachon, kimning).
-#  • Bu funksiya STAFF_PASSWORD_VAULT=false bilan butunlay o'chiriladi —
-#    o'shanda yangi nusxalar saqlanmaydi va mavjudlari ham ko'rsatilmaydi.
-#  • Shifrlash kutubxonasi (cryptography) bo'lmasa — HECH NARSA saqlanmaydi
-#    (ochiq matnda saqlashdan ko'ra ko'rsatmaslik xavfsizroq).
-PASSWORD_VAULT_ENABLED = ((os.getenv('STAFF_PASSWORD_VAULT') or 'true').strip().lower()
-                          not in ('false', '0', 'no'))
+# Ilgari bu yerda parollarning shifrlangan (qayta tiklanadigan) nusxasi
+# saqlanardi va Boshliq ularni panelda ko'ra olardi. Yangi xavfsizlik
+# talabiga ko'ra bu AMALDA O'CHIRILGAN:
+#   • parol faqat PBKDF2-SHA256 xesh ko'rinishida saqlanadi;
+#   • `passVault` / `passVaultAt` maydonlari yangi yozuvlarda yaratilmaydi;
+#   • mavjud nusxalar `load_staff()` migratsiyasida bazadan o'chiriladi;
+#   • parolni ko'rsatish API'si 410 (Gone) qaytaradi.
+# Bu ataylab kodda qat'iy `False` — .env orqali qayta yoqib bo'lmaydi.
+PASSWORD_VAULT_ENABLED = False
 
 try:
     from cryptography.fernet import Fernet as _Fernet
@@ -1032,21 +1038,24 @@ def _now_stamp():
 
 def apply_staff_password(user, password, changed_by='', 
                          revoke_sessions=False, keep_jti=''):
-    """Xodim parolini o'rnatadi: xesh + shifrlangan nusxa + meta ma'lumot.
+    """Xodim parolini o'rnatadi: faqat xesh + audit meta ma'lumoti.
 
     Meta maydonlar (boshliq panelida ko'rinadi):
       • passChangedAt — parol oxirgi marta qachon o'zgargani;
       • passChangedBy — kim o'zgartirgani ("Xodim o'zi" / xodim nomi / Boshliq).
+
+    Parolning qayta tiklanadigan nusxasi SAQLANMAYDI. Eski bazalarda qolib
+    ketgan `passVault` maydonlari ham shu yerda o'chiriladi.
     """
     salt = make_salt('tp-' + str(user.get('role', 'usr'))[:3] + '-')
     user['salt'] = salt
     user['passHash'] = hash_password(str(password), salt)
-    user['mustChange'] = False
+    # Standart/ma'lum zaif parol qo'yilsa, keyingi kirishda almashtirish shart.
+    user['mustChange'] = is_known_default_password(password)
     user['updatedAt'] = _now_stamp()
-    vault = vault_encrypt(password)
-    if vault:
-        user['passVault'] = vault
-        user['passVaultAt'] = user['updatedAt']
+    # Qayta tiklanadigan parol nusxasi umuman saqlanmaydi.
+    user.pop('passVault', None)
+    user.pop('passVaultAt', None)
     user['passChangedAt'] = user['updatedAt']
     user['passChangedBy'] = str(changed_by or '')[:120]
     if revoke_sessions:
@@ -1152,6 +1161,63 @@ _DEFAULT_STAFF = [
 ]
 _DEFAULT_PASSWORD = '123456'
 
+
+def known_default_passwords():
+    """Ma'lum standart/zaif parollar ro'yxati (ochiq matnda qaytarilmaydi)."""
+    values = {_DEFAULT_PASSWORD}
+    for env_name in ('STAFF_DEFAULT_PASSWORD', 'TP_STAFF_PASSWORD',
+                     'BOSS_DEFAULT_PASSWORD'):
+        value = (os.getenv(env_name) or '').strip()
+        if value:
+            values.add(value)
+    return values
+
+
+def is_known_default_password(password):
+    candidate = str(password or '')
+    return bool(candidate) and candidate in known_default_passwords()
+
+
+_DEFAULT_PASSWORD_AUDIT_DONE = False
+
+
+def audit_default_passwords():
+    """Bazadagi ma'lum standart parolli akountlarni `mustChange` qiladi.
+
+    Parol o'zgartirilmaydi — foydalanuvchi birinchi kirishda o'zi almashtiradi.
+    Bu migratsiya bir marta ishlaydi; natija bazaga saqlanadi.
+    """
+    global _DEFAULT_PASSWORD_AUDIT_DONE
+    if _DEFAULT_PASSWORD_AUDIT_DONE:
+        return 0
+    _DEFAULT_PASSWORD_AUDIT_DONE = True
+    staff = load_staff()
+    changed = 0
+    shown = []
+    for item in staff:
+        if not isinstance(item, dict) or item.get('mustChange'):
+            continue
+        salt = item.get('salt', '')
+        pass_hash = item.get('passHash', '')
+        if not pass_hash:
+            continue
+        for password in known_default_passwords():
+            if verify_password(password, salt, pass_hash):
+                item['mustChange'] = True
+                item['passChangedBy'] = 'Tizim (standart parol aniqlandi)'
+                changed += 1
+                shown.append(f"{item.get('login')} ({item.get('role')})")
+                break
+    if changed:
+        try:
+            db_manager.save_keys({'staff_users': staff})
+        except Exception as e:
+            print(f'[SECURITY] Standart parol migratsiyasini saqlab bo\'lmadi: {e}')
+            return 0
+        print(f'[SECURITY] {changed} ta akount standart parolda: '
+              f'{", ".join(shown[:8])}. Kirishda parol almashtirish majburiy.')
+    return changed
+
 # Kanonik login → telefon raqami. Mavjud bazadagi yozuvlarga bir marta
 # (migratsiya sifatida) telefon qo'shish uchun ishlatiladi.
 _PHONE_BY_LOGIN = {
@@ -1184,6 +1250,12 @@ def _ensure_staff_fields(staff):
     for item in staff:
         if not isinstance(item, dict):
             continue
+        # Xavfsizlik migratsiyasi: eski parol xazinasi nusxalarini butunlay
+        # o'chiramiz. Xesh (`passHash`) o'zgarmaydi — kirish buzilmaydi.
+        if item.pop('passVault', None) is not None:
+            changed = True
+        if item.pop('passVaultAt', None) is not None:
+            changed = True
         try:
             current_id = int(item.get('id') or 0)
         except (TypeError, ValueError):
@@ -1293,13 +1365,14 @@ def _ensure_boss_account_locked():
         'name': (os.getenv('BOSS_DISPLAY_NAME') or '').strip() or BOSS_NAME,
         'role': 'boss',
         'status': 'active',
-        'mustChange': False,
+        'mustChange': True,
         'branchId': '',
         'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
     }
-    # Parol: xesh + shifrlangan nusxa (boshliq panelida ko'rish uchun)
+    # Parol: faqat xesh + meta. Boshlang'ich parol har doim almashtiriladi.
     apply_staff_password(account, password, 'Tizim (akount yaratildi)')
+    account['mustChange'] = True
     staff.append(account)
     try:
         db_manager.save_keys({'staff_users': staff})
@@ -1344,8 +1417,6 @@ def load_staff():
         generated_password = True
     password_is_default = password == _DEFAULT_PASSWORD
     seeded = []
-    # Shifrlangan nusxa bir marta hisoblanadi (barcha standart xodimlar uchun)
-    vault_token = vault_encrypt(password)
     for idx, item in enumerate(_DEFAULT_STAFF, start=1):
         salt = item['salt'] if password_is_default else make_salt('tp-' + item['role'][:3] + '-')
         seeded.append({
@@ -1357,9 +1428,8 @@ def load_staff():
             'name': item['name'],
             'role': item['role'],
             'status': 'active',
-            'mustChange': password_is_default or generated_password,
-            'passVault': vault_token,
-            'passVaultAt': _now_stamp(),
+            # Boshlang'ich/umumiy parol har qanday holatda almashtiriladi.
+            'mustChange': True,
             'passChangedAt': _now_stamp(),
             'passChangedBy': "Tizim (boshlang'ich parol)",
         })
@@ -1387,10 +1457,42 @@ def load_staff():
     return seeded
 
 
+def is_legacy_alias(user, staff=None):
+    """Eski `login@domen` aliasi ekanini aniqlaydi.
+
+    Bunday yozuvlar faqat ko'rinish uchun emas — login uchun ham yaroqsiz.
+    Asosiy (telefonli yoki oddiy loginli) bir xil ism+rol yozuvi mavjud bo'lsa,
+    alias orqali autentifikatsiya qilish taqiqlanadi.
+    """
+    if not isinstance(user, dict):
+        return False
+    login = str(user.get('login') or '').strip()
+    if '@' not in login:
+        return False
+    if normalize_phone(user.get('phone')):
+        return False
+    key = (str(user.get('name') or '').strip().lower(),
+           str(user.get('role') or '').strip().lower())
+    rows = staff if staff is not None else load_staff()
+    for other in rows:
+        if not isinstance(other, dict) or other is user:
+            continue
+        other_key = (str(other.get('name') or '').strip().lower(),
+                     str(other.get('role') or '').strip().lower())
+        if other_key != key:
+            continue
+        other_login = str(other.get('login') or '').strip()
+        if '@' not in other_login or normalize_phone(other.get('phone')):
+            return True
+    return False
+
+
 def find_staff(login):
     key = str(login or '').strip().lower()
-    for user in load_staff():
-        if str(user.get('login', '')).lower() == key:
+    staff = load_staff()
+    for user in staff:
+        if (str(user.get('login', '')).lower() == key
+                and not is_legacy_alias(user, staff)):
             return user
     return None
 
@@ -1400,8 +1502,10 @@ def find_staff_by_phone(phone):
     key = normalize_phone(phone)
     if not key:
         return None
-    for user in load_staff():
-        if phones_match(user.get('phone'), key):
+    staff = load_staff()
+    for user in staff:
+        if (phones_match(user.get('phone'), key)
+                and not is_legacy_alias(user, staff)):
             return user
     return None
 
@@ -1445,6 +1549,7 @@ def create_token(user):
         'sub': user.get('login'),
         'name': user.get('name'),
         'role': user.get('role'),
+        'mustChange': bool(user.get('mustChange')),
         'jti': secrets.token_hex(8),
         'exp': int(time.time()) + TOKEN_TTL_HOURS * 3600,
         'iat': int(time.time()),
@@ -1588,7 +1693,16 @@ def verify_token(token):
 
 
 def current_staff():
-    """So'rovdagi tokendan foydalanuvchini oladi."""
+    """So'rovdagi tokendan foydalanuvchini oladi va JORIY holatini tekshiradi.
+
+    Token ichidagi rol/ism eskirgan bo'lishi mumkin (masalan, Boshliq xodimni
+    bloklagan yoki rolini pasaytirgan). Shuning uchun har bir so'rovda:
+      1) xodim bazada hali ham mavjudligi;
+      2) holati `active` ekanligi;
+      3) roli va ismi bazadagi ENG SO'NGGI qiymat ekanligi tekshiriladi.
+
+    Bloklangan/arxivlangan xodimning eski tokeni darhol kuchini yo'qotadi.
+    """
     header = request.headers.get('Authorization', '')
     token = ''
     if header.lower().startswith('bearer '):
@@ -1604,7 +1718,44 @@ def current_staff():
         if not find_session(jti):
             return None
         touch_session(jti)
+
+    login = str(payload.get('sub') or '').strip()
+    try:
+        user = find_staff(login) or find_staff_by_phone(login)
+    except Exception as e:
+        print(f'[AUTH] Xodim holatini tekshirib bo\'lmadi: {e}')
+        user = None
+    if not user:
+        if jti:
+            revoke_session(jti)
+        return None
+
+    status = str(user.get('status') or 'active').strip().lower()
+    if status not in ('active', ''):
+        if jti:
+            revoke_session(jti)
+        server_security_log('auth-revoked', 'medium',
+                            f'{status} holatdagi akount tokeni rad etildi: {login}',
+                            user.get('name', '—'))
+        return None
+
+    # Rol/ism/ID ni bazadagi joriy qiymatlar bilan yangilaymiz. Shu tufayli
+    # rol pasaytirilganda eski token bilan yuqori huquq saqlanib qolmaydi.
+    payload['sub'] = str(user.get('login') or login)
+    payload['role'] = str(user.get('role') or payload.get('role') or '')
+    payload['name'] = str(user.get('name') or payload.get('name') or '')
+    payload['id'] = user.get('id')
+    payload['mustChange'] = bool(user.get('mustChange'))
     return payload
+
+
+# Majburiy parol almashtirish rejimida ham ruxsat etiladigan yo'llar.
+PASSWORD_CHANGE_ALLOWED_PATHS = {
+    '/api/auth/change-password',
+    '/api/auth/session',
+    '/api/auth/logout',
+    '/api/boss/password',
+}
 
 
 def require_staff(*roles):
@@ -1627,6 +1778,12 @@ def require_staff(*roles):
                                     payload.get('name', '—'))
                 return jsonify({'status': 'error', 'code': 'forbidden',
                                 'message': 'Bu amal uchun huquq yetarli emas'}), 403
+            # Standart/zaif parol aniqlansa, boshqa API'lar yopiladi: foydalanuvchi
+            # avval parolni almashtirishi shart (aks holda default parol bilan
+            # butun tizimdan foydalanish mumkin bo'lib qoladi).
+            if payload.get('mustChange') and request.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
+                return jsonify({'status': 'error', 'code': 'password_change_required',
+                                'message': 'Xavfsizlik uchun avval parolni almashtiring'}), 403
             request.staff = payload  # type: ignore[attr-defined]
             return fn(*args, **kwargs)
         return wrapper
@@ -1645,6 +1802,12 @@ def login_allowed(ip):
 def register_login_attempt(ip):
     with _login_lock:
         _login_attempts.setdefault(ip, []).append(time.time())
+
+
+def clear_login_attempts(ip):
+    """Muvaffaqiyatli kirishdan keyin IP uchun eski urinishlarni tozalaydi."""
+    with _login_lock:
+        _login_attempts.pop(ip, None)
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -1694,13 +1857,11 @@ def auth_login():
         return jsonify({'status': 'error', 'code': 'bad_credentials',
                         'message': 'Login yoki parol xato'}), 401
 
-    # Parol to'g'ri kirdi — xazinada nusxa bo'lmasa, shu yerda yozib olamiz:
-    # eski (xazina yoqilishidan oldin yaratilgan) akountlar ham boshliq
-    # panelida ko'rinadigan bo'ladi.
-    capture_staff_password(user, password)
+    # Parolning qayta tiklanadigan nusxasi SAQLANMAYDI (xavfsizlik siyosati).
     # Eski (SHA-256) xesh bo'lsa — jimgina yangi PBKDF2 sxemasiga o'tkazamiz.
     # Foydalanuvchi buni sezmaydi; keyingi kirishlar allaqachon xavfsiz xeshda.
     rehash_staff_password(user, password)
+    clear_login_attempts(ip)
 
     token, payload = create_token(user)
     session = register_session(payload)
@@ -1748,7 +1909,15 @@ def auth_logout():
 
 @app.route('/api/auth/change-password', methods=['POST'])
 def auth_change_password():
-    """Parolni almashtirish: o'zi yoki admin boshqa xodim uchun."""
+    """Parolni almashtirish: o'zi yoki yuqori rolli rahbar boshqa xodim uchun.
+
+    Xavfsizlik qoidasi:
+      - o'z parolini har qanday faol xodim almashtira oladi;
+      - boshqa xodim parolini faqat undan YUQORI rol (admin yoki boss)
+        almashtira oladi. Shu bilan admin `boss` parolini o'zgartirib,
+        uning nomidan token olib, huquqni oshirishi mumkin emas.
+      - boshqa xodimga parol qo'yilganda unga token QAYTARILMAYDI.
+    """
     payload = current_staff()
     if not payload:
         return jsonify({'status': 'error', 'code': 'unauthorized',
@@ -1763,24 +1932,28 @@ def auth_change_password():
         return jsonify({'status': 'error', 'message': 'Yangi parol kamida 6 belgidan iborat bo\'lishi kerak'}), 400
 
     is_self = str(payload.get('sub', '')).lower() == target_login.lower()
-    # Rol iyerarxiyasi: Boshliq ham boshqa xodim parolini o'zgartira oladi
-    # (admin kabi), lekin pastroq rol hech qachon.
-    if not is_self and role_rank(payload.get('role')) < role_rank('admin'):
-        server_security_log('password-change-denied', 'high',
-                            f'Boshqa xodim parolini o\'zgartirishga urinish: {target_login}',
-                            payload.get('name', '—'))
-        return jsonify({'status': 'error', 'code': 'forbidden',
-                        'message': 'Faqat administrator yoki boshliq boshqa xodim '
-                                   'parolini o\'zgartira oladi'}), 403
 
+    # Alias (`admin@texnopark.uz`) orqali kirish yoki parol almashtirish yo'q.
     staff = load_staff()
     target = None
     for item in staff:
-        if str(item.get('login', '')).lower() == target_login.lower():
+        if (str(item.get('login', '')).lower() == target_login.lower()
+                and not is_legacy_alias(item, staff)):
             target = item
             break
     if not target:
         return jsonify({'status': 'error', 'message': 'Xodim topilmadi'}), 404
+
+    if not is_self:
+        actor_rank = role_rank(payload.get('role'))
+        target_rank = role_rank(target.get('role'))
+        if actor_rank < role_rank('admin') or target_rank >= actor_rank:
+            server_security_log('password-change-denied', 'high',
+                                f'Ruxsatsiz parol almashtirish urinishi: {target_login}',
+                                payload.get('name', '-'))
+            return jsonify({'status': 'error', 'code': 'forbidden',
+                            'message': 'Faqat o\'zingizdan yuqori bo\'lmagan xodim '
+                                       'parolini o\'zgartira olasiz'}), 403
 
     if is_self:
         if not verify_password(current_password, target.get('salt', ''), target.get('passHash', '')):
@@ -1788,8 +1961,6 @@ def auth_change_password():
                                 'Joriy parol xato', target_login)
             return jsonify({'status': 'error', 'message': 'Joriy parol xato'}), 401
 
-    # Parol: xesh + shifrlangan nusxa + meta (kim/qachon o'zgartirdi).
-    # Xodim O'ZI almashtirsa ham, yangi parol boshliq panelida ko'rinadi.
     apply_staff_password(target, new_password,
                          "Xodim o'zi" if is_self else str(payload.get('name') or ''))
     try:
@@ -1798,13 +1969,20 @@ def auth_change_password():
         return jsonify({'status': 'error', 'message': 'Parolni saqlab bo\'lmadi'}), 500
 
     server_security_log('password-changed', 'medium', f'Parol yangilandi: {target_login}',
-                        payload.get('name', '—'))
-    # Parol o'zgargani uchun shu xodimning barcha eski sessiyalari yopiladi
+                        payload.get('name', '-'))
+
+    if not is_self:
+        # Boshqa xodimning barcha sessiyalari yopiladi; token qaytarilmaydi.
+        revoke_login_sessions(target_login)
+        return jsonify({'status': 'success',
+                        'message': 'Parol yangilandi. Xodim qayta kirishi kerak.'})
+
+    # O'z paroli: eski sessiyalar yopiladi va yangi token beriladi.
     new_token, new_payload = create_token(target)
     revoke_login_sessions(target_login, keep_jti=new_payload.get('jti'))
     register_session(new_payload)
-    return jsonify({'status': 'success', 'message': 'Parol yangilandi. Qayta kiring.',
-                    'token': new_token})
+    return jsonify({'status': 'success', 'message': 'Parol yangilandi.',
+                    'token': new_token, 'mustChangePassword': False})
 
 
 @app.route('/api/auth/change-phone', methods=['POST'])
@@ -2176,6 +2354,16 @@ def sales_in_period(store, period, rng=None):
     return [s for s in rows if isinstance(s, dict) and in_period(s.get('date'), period, rng)]
 
 
+def completed_sales(rows):
+    """Takrorlanmagan va bekor qilinmagan (yakunlangan) savdolar."""
+    return [sale for sale in _dedupe_sales(rows or [])
+            if sale_is_completed(sale)]
+
+
+def completed_sales_in_period(store, period, rng=None):
+    return completed_sales(sales_in_period(store, period, rng))
+
+
 def boss_scope(store, args):
     """Boshliq endpointlari uchun davr + custom sana oralig'i.
 
@@ -2186,7 +2374,7 @@ def boss_scope(store, args):
     """
     period = normalize_period((args or {}).get('period'))
     rng = custom_period_range(args)
-    scoped = sales_in_period(store, period, rng)
+    scoped = completed_sales_in_period(store, period, rng)
     return period, rng, scoped
 
 
@@ -2270,34 +2458,40 @@ def branches_index(store):
 
 
 def unique_staff(staff):
-    """Xodimlarni ism bo'yicha birlashtiradi (alias loginlarni olib tashlaydi).
+    """Legacy `@` aliaslarini olib tashlaydi, REAL xodimlarni birlashtirmaydi.
 
-    Bazada bir xodim uchun ikki yozuv bo'lishi mumkin: `admin` va
-    `admin@texnopark.uz` (eski username loginlari bilan moslik uchun).
-    Ularning ismi bir xil — reytingda esa ikki marta ko'rinardi va
-    "jami xodimlar" soni sun'iy oshardi.
+    Ilgari barcha yozuvlar ISM bo'yicha birlashtirilardi. Natijada bir xil
+    ismli ikki haqiqiy xodimdan bittasi jadvaldan BUTUNLAY yo'qolardi va
+    uning savdolari ikkinchisiga qo'shilib ketardi. Endi faqat eski
+    `admin@texnopark.uz` kabi aliaslar filtrlanadi: ularning logini `@`
+    belgisini o'z ichiga oladi, telefoni yo'q va xuddi shu ism + roldagi
+    asosiy (telefonli / oddiy loginli) yozuv mavjud.
 
-    Qaytaradi: har bir xodim uchun BITTА asosiy yozuv (telefoni bor,
-    login'ida '@' yo'q).
+    Bir xil ismli haqiqiy xodimlar (masalan, ikkita "Aliyev Ali") o'z
+    yozuvlari bilan qoladi — bu savdo statistikasini to'g'ri ajratish uchun
+    muhim.
     """
+    people = [u for u in staff
+              if isinstance(u, dict) and str(u.get('name', '')).strip()]
     primaries = {}
-    for user in staff:
-        if not isinstance(user, dict):
-            continue
-        name = str(user.get('name', '')).strip().lower()
-        if not name:
-            continue
-        current = primaries.get(name)
-        if current is None:
-            primaries[name] = user
-            continue
-        # Yaxshiroq yozuvni tanlaymiz: telefonli va '@'siz login ustun.
-        def score(u):
-            return (1 if str(u.get('phone') or '').strip() else 0,
-                    0 if '@' in str(u.get('login', '')) else 1)
-        if score(user) > score(current):
-            primaries[name] = user
-    return list(primaries.values())
+    for user in people:
+        login = str(user.get('login') or '').strip()
+        if '@' not in login:
+            key = (str(user.get('name', '')).strip().lower(),
+                   str(user.get('role', '')).strip().lower())
+            primaries.setdefault(key, []).append(user)
+
+    result = []
+    for user in people:
+        login = str(user.get('login') or '').strip()
+        phone = str(user.get('phone') or '').strip()
+        if '@' in login and not phone:
+            key = (str(user.get('name', '')).strip().lower(),
+                   str(user.get('role', '')).strip().lower())
+            if primaries.get(key):
+                continue  # eski alias — asosiy yozuv allaqachon bor
+        result.append(user)
+    return result
 
 
 def staff_public_view(user, stats=None):
@@ -2313,14 +2507,18 @@ def staff_public_view(user, stats=None):
         'status': str(user.get('status') or 'active')[:30],
         'branchId': str(user.get('branchId') or '')[:40],
         'mustChange': bool(user.get('mustChange')),
-        'passKnown': bool(vault_decrypt(user.get('passVault'))),
+        # Parolning O'ZI hech qachon qaytarilmaydi — faqat mavjudligi.
+        'hasPassword': bool(str(user.get('passHash') or '')),
         'passChangedAt': str(user.get('passChangedAt') or '')[:30],
         'passChangedBy': str(user.get('passChangedBy') or '')[:120],
         'phonePrev': str(user.get('phonePrev') or '')[:40],
         'phoneChangedAt': str(user.get('phoneChangedAt') or '')[:30],
         'phoneChangedBy': str(user.get('phoneChangedBy') or '')[:120],
         'createdAt': str(user.get('createdAt') or '')[:30],
+        'createdBy': str(user.get('createdBy') or '')[:120],
         'updatedAt': str(user.get('updatedAt') or '—')[:30],
+        'deletedAt': str(user.get('deletedAt') or '')[:30],
+        'deletedBy': str(user.get('deletedBy') or '')[:120],
         'lastSeen': str(user.get('lastSeen') or '')[:30],
         'sales': stats.get('sales', 0),
         'units': stats.get('units', 0),
@@ -2330,10 +2528,116 @@ def staff_public_view(user, stats=None):
     }
 
 
+# Yakunlanmagan / bekor qilingan savdolar statistikaga QO'SHILMAYDI.
+# Bo'sh status eski yozuvlar uchun — ular tarixda yakunlangan hisoblanadi.
+VOID_SALE_STATUSES = frozenset({
+    'cancelled', 'canceled', 'refunded', 'refund', 'returned', 'return',
+    'void', 'voided', 'failed', 'expired', 'pending', 'draft', 'deleted',
+})
+
+
+def sale_is_completed(sale):
+    """Savdo yakunlangan (pul olingan) holatdami?"""
+    status = str(sale.get('status') or '').strip().lower()
+    return status not in VOID_SALE_STATUSES
+
+
+def _dedupe_sales(sales):
+    """Bir xil `id` bilan ikki marta kelgan savdoni bir marta hisoblaydi."""
+    seen = set()
+    unique = []
+    for sale in sales or []:
+        if not isinstance(sale, dict):
+            continue
+        raw_id = sale.get('id')
+        key = str(raw_id).strip() if raw_id is not None else ''
+        if key:
+            if key in seen:
+                continue
+            seen.add(key)
+        unique.append(sale)
+    return unique
+
+
+def staff_name_counts(staff):
+    """Ism → nechta faol xodimda uchraydi (noaniq ism mosligini oldini oladi)."""
+    counts = {}
+    for user in staff or []:
+        if not isinstance(user, dict) or role_rank(user.get('role')) <= 0:
+            continue
+        name = str(user.get('name') or '').strip().lower()
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def sale_belongs_to_staff(sale, user, name_counts):
+    """Savdo aynan shu xodimga tegishlimi.
+
+    Ustuvorlik:
+      1) `cashierId` / `staffId` — eng ishonchli;
+      2) `cashierLogin` — yangi savdolarda server tomonidan to'ldiriladi;
+      3) eski savdolarda login yo'q — ism bo'yicha FAQAT ism yagona bo'lsa.
+         Bir xil ismli ikki xodim bo'lsa, savdo hech biriga ikki marta
+         qo'shilmaydi (0 bo'lib qoladi) — bu noto'g'ri taqsimlashdan yaxshiroq.
+    """
+    user_id = str(user.get('id') or '').strip()
+    if user_id:
+        for field in ('cashierId', 'staffId'):
+            if str(sale.get(field) or '').strip() == user_id:
+                return True
+
+    login = str(user.get('login') or '').strip().lower()
+    phone = normalize_phone(user.get('phone'))
+    sale_login = str(sale.get('cashierLogin') or '').strip().lower()
+    if sale_login:
+        if login and sale_login == login:
+            return True
+        if phone and normalize_phone(sale_login) == phone:
+            return True
+        return False
+
+    name = str(user.get('name') or '').strip().lower()
+    if not name or counts_for_name(name_counts, name) != 1:
+        return False
+    return str(sale.get('cashier') or '').strip().lower() == name
+
+
+def counts_for_name(name_counts, name):
+    return int((name_counts or {}).get(name, 0) or 0)
+
+
+def staff_metrics(sales, user, staff, branch_id='', products_by_id=None):
+    """Bitta xodimning haqiqiy, takrorlanmagan savdo ko'rsatkichlari."""
+    name_counts = staff_name_counts(staff)
+    rows = _dedupe_sales(sales)
+    mine = []
+    for sale in rows:
+        if not sale_is_completed(sale):
+            continue
+        if branch_id and products_by_id is not None:
+            if str(sale_branch(sale, products_by_id)) != str(branch_id):
+                continue
+        if sale_belongs_to_staff(sale, user, name_counts):
+            mine.append(sale)
+    total = sum(_num(s.get('total')) for s in mine)
+    profit = sum(sale_profit(s) for s in mine)
+    units = sum(sale_units(s) for s in mine)
+    count = len(mine)
+    return {
+        'sales': count,
+        'units': units,
+        'total': round(total, 2),
+        'profit': round(profit, 2),
+        'avgCheck': round(total / count, 2) if count else 0.0,
+    }
+
+
 def employee_metrics(sales, cashier_name):
-    """Bitta xodimning haqiqiy savdo ko'rsatkichlari (nom bo'yicha)."""
+    """Eski imzo uchun zaxira: ism bo'yicha yakunlangan savdolar."""
     name = str(cashier_name or '').strip().lower()
-    mine = [s for s in sales if str(s.get('cashier', '')).strip().lower() == name]
+    mine = [s for s in _dedupe_sales(sales)
+            if sale_is_completed(s) and str(s.get('cashier', '')).strip().lower() == name]
     total = sum(_num(s.get('total')) for s in mine)
     profit = sum(sale_profit(s) for s in mine)
     units = sum(sale_units(s) for s in mine)
@@ -2374,7 +2678,7 @@ def boss_overview():
     va kam qolganlar soni, mijozlar, xodimlar (jami/faol), filiallar (jami/faol).
     """
     store = db_manager.get_all() or {}
-    sales = store.get('sales') if isinstance(store.get('sales'), list) else []
+    sales = completed_sales(store.get('sales') if isinstance(store.get('sales'), list) else [])
     products = [p for p in (store.get('products') or []) if isinstance(p, dict)]
     customers = [c for c in (store.get('customers') or []) if isinstance(c, dict)]
     branches = [b for b in (store.get('branches') or []) if isinstance(b, dict)]
@@ -2388,9 +2692,9 @@ def boss_overview():
             'profit': round(sum(sale_profit(s) for s in rows), 2),
         }
 
-    today_stats = totals(sales_in_period(store, 'day'))
-    week_stats = totals(sales_in_period(store, 'week'))
-    month_stats = totals(sales_in_period(store, 'month'))
+    today_stats = totals(completed_sales_in_period(store, 'day'))
+    week_stats = totals(completed_sales_in_period(store, 'week'))
+    month_stats = totals(completed_sales_in_period(store, 'month'))
     all_stats = totals(sales)
 
     threshold = low_stock_threshold()
@@ -2612,8 +2916,10 @@ def boss_staff_list():
            role, branchId, sort, order, limit, offset.
     """
     store = db_manager.get_all() or {}
-    staff = unique_staff(load_staff())
+    all_staff = [u for u in unique_staff(load_staff())
+                 if isinstance(u, dict) and role_rank(u.get('role')) > 0]
     branches = branches_index(store)
+    products_by_id = products_index(store)
     period = normalize_period(request.args.get('period'))
     rng = custom_period_range(request.args)
     scoped = sales_in_period(store, period, rng)
@@ -2621,12 +2927,22 @@ def boss_staff_list():
     query = str(request.args.get('q') or '').strip().lower()
     role_filter = str(request.args.get('role') or '').strip().lower()
     branch_filter = str(request.args.get('branchId') or '').strip()
+    status_filter = str(request.args.get('status') or '').strip().lower()
+    if status_filter not in STAFF_STATUSES:
+        status_filter = ''
+
+    # Mobil paneldagi umumiy ko'rsatkichlar — barcha xodimlar bo'yicha
+    # (qidiruv/filtrdan qat'i nazar), shunda raqamlar "sakrab" ketmaydi.
+    status_counts = {'active': 0, 'blocked': 0, 'inactive': 0}
+    for user in all_staff:
+        status = str(user.get('status') or 'active').strip().lower()
+        if status not in status_counts:
+            status = 'inactive'
+        status_counts[status] += 1
 
     rows = []
-    for user in staff:
+    for user in all_staff:
         role = str(user.get('role', '')).strip().lower()
-        if role_rank(role) <= 0:
-            continue  # `customer` kabi ichki rollar xodim hisoblanmaydi
         if query:
             haystack = ' '.join([
                 str(user.get('name', '')), str(user.get('login', '')),
@@ -2638,7 +2954,13 @@ def boss_staff_list():
             continue
         if branch_filter and str(user.get('branchId') or '') != branch_filter:
             continue
-        view = staff_public_view(user, employee_metrics(scoped, user.get('name')))
+        status = str(user.get('status') or 'active').strip().lower()
+        if status_filter and status != status_filter:
+            continue
+        view = staff_public_view(
+            user,
+            staff_metrics(scoped, user, all_staff,
+                          branch_id=branch_filter, products_by_id=products_by_id))
         view['branchName'] = str((branches.get(str(user.get('branchId') or '')) or {})
                                  .get('name', '') or '')[:80]
         view['lastSeen'] = last_seen_by_login(user.get('login')) or view['lastSeen']
@@ -2647,19 +2969,26 @@ def boss_staff_list():
     sort_key = str(request.args.get('sort') or 'total').strip()
     reverse = str(request.args.get('order') or 'desc').strip().lower() != 'asc'
     if sort_key == 'sales':
-        rows.sort(key=lambda r: (r['sales'], r['total']), reverse=reverse)
+        rows.sort(key=lambda r: (r['sales'], r['total'], r['id']), reverse=reverse)
     elif sort_key == 'units':
-        rows.sort(key=lambda r: r['units'], reverse=reverse)
+        rows.sort(key=lambda r: (r['units'], r['id']), reverse=reverse)
     elif sort_key == 'profit':
-        rows.sort(key=lambda r: r['profit'], reverse=reverse)
+        rows.sort(key=lambda r: (r['profit'], r['id']), reverse=reverse)
     elif sort_key == 'avgCheck':
-        rows.sort(key=lambda r: r['avgCheck'], reverse=reverse)
+        rows.sort(key=lambda r: (r['avgCheck'], r['id']), reverse=reverse)
     elif sort_key == 'name':
-        rows.sort(key=lambda r: r['name'].lower(), reverse=reverse)
+        rows.sort(key=lambda r: (r['name'].lower(), r['id']), reverse=reverse)
     elif sort_key == 'role':
-        rows.sort(key=lambda r: (r['roleRank'], r['name'].lower()), reverse=reverse)
+        rows.sort(key=lambda r: (r['roleRank'], r['name'].lower(), r['id']),
+                  reverse=reverse)
+    elif sort_key == 'status':
+        order = {'active': 0, 'blocked': 1, 'inactive': 2}
+        rows.sort(key=lambda r: (order.get(str(r['status']).lower(), 3), r['id']),
+                  reverse=reverse)
+    elif sort_key == 'id':
+        rows.sort(key=lambda r: r['id'], reverse=reverse)
     else:
-        rows.sort(key=lambda r: (r['total'], r['sales']), reverse=reverse)
+        rows.sort(key=lambda r: (r['total'], r['sales'], r['id']), reverse=reverse)
     # Reyting raqami — saralash natijasidan kelib chiqadi.
     for index, row in enumerate(rows, start=1):
         row['rank'] = index
@@ -2675,6 +3004,8 @@ def boss_staff_list():
         'status': 'success',
         'period': period,
         'total': total,
+        'totalAll': len(all_staff),
+        'statusCounts': status_counts,
         'offset': offset,
         'limit': limit,
         'staff': rows[offset:offset + limit],
@@ -2696,10 +3027,18 @@ def boss_staff_sales(staff_id):
     rng = custom_period_range(request.args)
     branches = branches_index(store)
     products_by_id = products_index(store)
+    branch_filter = str(request.args.get('branchId') or '').strip()
 
     scoped = sales_in_period(store, period, rng)
-    mine = [s for s in scoped
-            if str(s.get('cashier', '')).strip().lower() == name.strip().lower()]
+    name_counts = staff_name_counts(staff)
+    mine = []
+    for sale in _dedupe_sales(scoped):
+        if not sale_is_completed(sale):
+            continue
+        if branch_filter and str(sale_branch(sale, products_by_id)) != branch_filter:
+            continue
+        if sale_belongs_to_staff(sale, target, name_counts):
+            mine.append(sale)
     mine.sort(key=lambda s: (parse_business_date(s.get('date')) or datetime.min,
                              str(s.get('time') or '')), reverse=True)
 
@@ -2742,7 +3081,10 @@ def boss_staff_sales(staff_id):
     return jsonify({
         'status': 'success',
         'period': period,
-        'staff': staff_public_view(target, employee_metrics(scoped, name)),
+        'staff': staff_public_view(
+            target,
+            staff_metrics(scoped, target, staff,
+                          branch_id=branch_filter, products_by_id=products_by_id)),
         'total': len(receipts),
         'offset': offset,
         'limit': limit,
@@ -2783,6 +3125,36 @@ def _staff_id_exists(staff, staff_id):
     return any(isinstance(u, dict) and _num(u.get('id'), -1) == staff_id for u in staff)
 
 
+def _branch_exists(branch_id):
+    """Filial haqiqatan mavjudmi (bo'sh qiymat — filialsiz, ruxsat)."""
+    key = str(branch_id or '').strip()
+    if not key:
+        return True
+    try:
+        store = db_manager.get_all() or {}
+    except Exception:
+        return False
+    for branch in store.get('branches') or []:
+        if isinstance(branch, dict) and str(branch.get('id') or '') == key:
+            return True
+    return False
+
+
+def _unique_staff_login(staff, staff_id):
+    """Band bo'lmagan `userN` login yaratadi (takroriy login bo'lmasin)."""
+    prefix = (os.getenv('BOSS_STAFF_LOGIN_PREFIX') or 'user').strip() or 'user'
+    prefix = re.sub(r'[^A-Za-z0-9_-]', '', prefix) or 'user'
+    used = {str(u.get('login') or '').strip().lower()
+            for u in staff if isinstance(u, dict)}
+    base = f'{prefix}{staff_id}'
+    candidate = base
+    suffix = 2
+    while candidate.lower() in used:
+        candidate = f'{base}{suffix}'
+        suffix += 1
+    return candidate
+
+
 @app.route('/api/boss/staff', methods=['POST'])
 @require_staff('boss')
 def boss_staff_create():
@@ -2798,13 +3170,15 @@ def boss_staff_create():
     branch_id = str(body.get('branchId') or '').strip()[:40]
     status = str(body.get('status') or 'active').strip().lower()
 
-    if not name:
-        return json_error('Xodim ismi majburiy')
+    if not name or len(name) < 2:
+        return json_error('Xodim ismi kamida 2 belgidan iborat bo\'lsin')
     if role not in BOSS_ASSIGNABLE_ROLES:
         return json_error('Rol noto\'g\'ri. Ruxsat etilgan rollar: '
                           + ', '.join(r.upper() for r in BOSS_ASSIGNABLE_ROLES))
     if status not in STAFF_STATUSES:
-        status = 'active'
+        return json_error('Holat noto\'g\'ri (active, blocked yoki inactive)')
+    if not _branch_exists(branch_id):
+        return json_error('Tanlangan filial topilmadi', 404)
     password, error = _validate_password(body.get('password'))
     if error:
         return json_error(error)
@@ -2817,22 +3191,22 @@ def boss_staff_create():
     staff = load_staff()
     if phone and find_staff_by_phone(phone):
         return json_error('Bu telefon raqami band', 409)
-    if any(str(u.get('name', '')).strip().lower() == name.lower() for u in staff):
-        return json_error('Bunday xodim allaqachon mavjud', 409)
 
+    new_id = _next_staff_id(staff)
     account = {
-        'id': _next_staff_id(staff),
-        'login': (os.getenv('BOSS_STAFF_LOGIN_PREFIX') or 'user') + str(_next_staff_id(staff)),
+        'id': new_id,
+        'login': _unique_staff_login(staff, new_id),
         'phone': phone,
         'name': name,
         'role': role,
         'status': status,
         'branchId': branch_id,
         'mustChange': False,
+        'createdBy': _actor_name()[:120],
         'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
     }
-    # Parol: xesh + shifrlangan nusxa (boshliq panelida ko'rish uchun)
+    # Parol: faqat xesh (qayta tiklanadigan nusxa saqlanmaydi).
     apply_staff_password(account, password, _actor_name())
     staff.append(account)
     try:
@@ -2854,37 +3228,21 @@ def serve_index():
 @app.route('/api/boss/staff/<int:staff_id>/password', methods=['GET'])
 @require_staff('boss')
 def boss_staff_password(staff_id):
-    """Xodimning JORIY (amal qilayotgan) parolini qaytaradi — faqat Boshliq.
+    """Parolni ko'rsatish ENDI MUMKIN EMAS (xavfsizlik siyosati).
 
-    Parol xazinadan (shifrlangan nusxa) o'qiladi; xodim parolni O'ZI
-    almashtirgan bo'lsa ham eng yangisi qaytariladi. Har bir ko'rish
-    xavfsizlik jurnaliga yoziladi (kim, qachon, kimning parolini ko'rdi).
-
-    Nusxa bo'lmasa 404 + sabab qaytadi (xodim keyingi kirishida avtomatik
-    yozib olinadi yoki parolni qayta o'rnatasiz).
+    Parollar faqat bir tomonlama xesh ko'rinishida saqlanadi. Eski mijoz
+    keshidan kelgan so'rovlar ham aniq javob oladi — hech qanday parol
+    qaytarilmaydi. Yangi parol faqat PUT orqali O'RNATILADI.
     """
-    staff = load_staff()
-    target = next((u for u in staff
-                   if isinstance(u, dict) and _num(u.get('id'), -1) == staff_id), None)
-    if not target:
-        return json_error('Xodim topilmadi', 404)
-
-    password, reason = staff_current_password(target)
-    if not password:
-        return jsonify({'status': 'error', 'code': 'password_unknown',
-                        'message': reason,
-                        'staff': staff_public_view(target)}), 404
-
-    audit_log('password-reveal', str(target.get('name', '')),
-              'joriy parol ko\'rildi', _actor_name())
-    server_security_log('password-reveal', 'medium',
-                        f'{target.get("name")} nomli xodimning paroli ko\'rildi',
+    server_security_log('password-reveal-denied', 'medium',
+                        f'Parolni ko\'rish urinishi rad etildi (staff_id={staff_id})',
                         _actor_name())
-    return jsonify({'status': 'success', 'password': password,
-                    'changedAt': str(target.get('passChangedAt') or ''),
-                    'changedBy': str(target.get('passChangedBy') or ''),
-                    'vaultAt': str(target.get('passVaultAt') or ''),
-                    'staff': staff_public_view(target)})
+    return jsonify({
+        'status': 'error',
+        'code': 'password_hidden',
+        'message': 'Xavfsizlik siyosati: parollar ko\'rsatilmaydi. '
+                   'Xodimga yangi parol o\'rnating.',
+    }), 410
 
 
 @app.route('/api/boss/staff/<int:staff_id>', methods=['PUT'])
@@ -2904,18 +3262,31 @@ def boss_staff_update(staff_id):
     if not target:
         return json_error('Xodim topilmadi', 404)
 
-    actor_login = str(getattr(request, 'staff', {}).get('sub', '') or '').strip().lower()
-    is_self = str(target.get('login', '')).strip().lower() == actor_login
+    actor = getattr(request, 'staff', {}) or {}
+    actor_login = str(actor.get('sub', '') or '').strip().lower()
+    actor_id = _num(actor.get('id'), -1)
+    target_id = _num(target.get('id'), -1)
+    target_login = str(target.get('login', '') or '').strip().lower()
+    is_self = (actor_id > 0 and target_id == actor_id) \
+        or (bool(actor_login) and target_login == actor_login)
+    target_role = str(target.get('role', '') or '').strip().lower()
+    old_login = target_login
+    old_phone = normalize_phone(target.get('phone'))
     changes = []
+    revoke_logins = set()
+
+    # ── Boshliq akountini himoyalash ───────────────────────────────
+    # Boshqa Boshliq akountini tahrirlash taqiqlanadi. O'zini tahrirlashda
+    # faqat ism/telefon (va parol — alohida oyna orqali) ruxsat etiladi;
+    # rol yoki holat hech qachon o'zgartirilmaydi.
+    if target_role == 'boss' and not is_self:
+        return json_error('Boshliq akountini boshqa hisobdan tahrirlash mumkin emas', 403)
 
     if 'name' in body:
         name = _clean_boss_text(body.get('name'), 120)
-        if not name:
-            return json_error('Ism bo\'sh bo\'lmaydi')
-        if any(str(u.get('name', '')).strip().lower() == name.lower()
-               and _num(u.get('id'), -1) != staff_id for u in staff):
-            return json_error('Bunday ismli xodim allaqachon mavjud', 409)
-        if name != target.get('name'):
+        if not name or len(name) < 2:
+            return json_error('Ism kamida 2 belgidan iborat bo\'lsin')
+        if name != str(target.get('name') or ''):
             changes.append('ism')
         target['name'] = name
 
@@ -2927,53 +3298,82 @@ def boss_staff_update(staff_id):
         clash = find_staff_by_phone(phone)
         if clash and _num(clash.get('id'), -1) != staff_id:
             return json_error('Bu telefon raqami band', 409)
-        if phone != target.get('phone'):
+        if phone != old_phone:
+            apply_staff_phone(target, phone, _actor_name())
+            if str(target.get('login') or '').strip().lower() != old_login:
+                revoke_logins.add(old_login)
             changes.append('telefon')
-        target['phone'] = phone
 
     if 'branchId' in body:
-        target['branchId'] = str(body.get('branchId') or '').strip()[:40]
-        changes.append('filial')
+        branch_id = str(body.get('branchId') or '').strip()[:40]
+        if not _branch_exists(branch_id):
+            return json_error('Tanlangan filial topilmadi', 404)
+        if branch_id != str(target.get('branchId') or ''):
+            target['branchId'] = branch_id
+            changes.append('filial')
 
     if 'role' in body:
         role = str(body.get('role') or '').strip().lower()
-        if role != str(target.get('role', '')).strip().lower():
+        if target_role == 'boss':
+            if role != 'boss':
+                return json_error('Boshliq rolini o\'zgartirish mumkin emas', 403)
+        elif role != target_role:
+            if is_self:
+                return json_error('O\'z rolingizni o\'zgartira olmaysiz', 403)
             if role not in BOSS_ASSIGNABLE_ROLES:
-                return json_error('Boshliq roli tayinlanmaydi. Ruxsat etilgan rollar: '
+                return json_error('Rol noto\'g\'ri. Ruxsat etilgan rollar: '
                                   + ', '.join(r.upper() for r in BOSS_ASSIGNABLE_ROLES))
+            target['role'] = role
             changes.append('rol')
-        target['role'] = role
+            revoke_logins.add(target_login)
 
     if 'status' in body:
         status = str(body.get('status') or 'active').strip().lower()
         if status not in STAFF_STATUSES:
-            return json_error('Holat noto\'g\'ri')
+            return json_error('Holat noto\'g\'ri (active, blocked yoki inactive)')
+        if target_role == 'boss' and status != 'active':
+            return json_error('Boshliq akountini bloklab yoki arxivlab bo\'lmaydi', 403)
         if status != str(target.get('status') or 'active').strip().lower():
             if is_self and status != 'active':
-                # Ruxsat xatosi — 403 (400 emas).
                 return json_error('O\'z akountingizni bloklay olmaysiz', 403)
+            target['status'] = status
             changes.append('holat')
-        target['status'] = status
+            if status in ('blocked', 'inactive'):
+                revoke_logins.add(target_login)
+                revoke_logins.add(old_login)
+            else:
+                # Blokdan/arxivdan qaytarilganda eski arxiv belgilarini tozalaymiz.
+                target.pop('deletedAt', None)
+                target.pop('deletedBy', None)
 
     if body.get('password'):
+        if is_self:
+            return json_error('O\'z parolingizni «Parolimni o\'zgartirish» '
+                              'oynasi orqali yangilang', 403)
+        if target_role == 'boss':
+            return json_error('Boshliq parolini bu formadan o\'zgartirib bo\'lmaydi', 403)
         password, error = _validate_password(body.get('password'))
         if error:
             return json_error(error)
-        # Xesh + shifrlangan nusxa + meta (kim/qachon o'zgartirdi).
-        # O'zgargan parol boshliq panelida DARHOL ko'rinadi.
-        apply_staff_password(target, password, _actor_name(), revoke_sessions=True)
+        apply_staff_password(target, password, _actor_name())
         changes.append('parol')
+        revoke_logins.add(target_login)
 
     if not changes:
         return jsonify({'status': 'success', 'message': 'O\'zgarish yo\'q',
                         'staff': staff_public_view(target)})
 
     target['updatedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    target['updatedBy'] = _actor_name()[:120]
     try:
         db_manager.save_keys({'staff_users': staff})
     except Exception as e:
         print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
         return json_error('Saqlab bo\'lmadi', 500)
+
+    # Sessiyalar faqat MA'HUMOTLAR MUVAFFAQIYATLI saqlangandan keyin yopiladi.
+    for login in {str(x or '').strip().lower() for x in revoke_logins if str(x or '').strip()}:
+        revoke_login_sessions(login)
 
     audit_log('staff-update', str(target.get('name', '')),
               'o\'zgarishlar: ' + ', '.join(changes), _actor_name())
@@ -2981,7 +3381,10 @@ def boss_staff_update(staff_id):
         server_security_log('staff-status-change', 'medium',
                             f'{target.get("name")}: holat → {target.get("status")}',
                             _actor_name())
-    return jsonify({'status': 'success', 'message': 'Xodim yangilandi',
+    return jsonify({'status': 'success',
+                    'message': 'Xodim yangilandi' if 'holat' not in changes
+                    else ('Xodim bloklandi' if target.get('status') == 'blocked'
+                          else 'Xodim holati yangilandi'),
                     'changed': changes, 'staff': staff_public_view(target)})
 @app.route('/robots.txt')
 def serve_robots():
@@ -2996,12 +3399,16 @@ def serve_robots():
 @app.route('/api/boss/staff/<int:staff_id>', methods=['DELETE'])
 @require_staff('boss')
 def boss_staff_delete(staff_id):
-    """Xodim akountini o'chirish — qat'iy himoyalar bilan.
+    """Xodimni ARXIVLASH (soft delete) — savdo tarixi yo'qolmaydi.
+
+    Yozuv `staff_users` dan O'CHIRILMAYDI: status `inactive` bo'ladi va
+    `deletedAt/deletedBy` belgilanadi. Shu sababli eski savdolar, audit
+    jurnali va hisobotlar o'sha xodimga bog'langan holda qoladi.
 
     Rad etiladi:
-      • o'z akountini o'chirish;
-      • oxirgi faol BOSHLIQ akountini o'chirish;
-      • o'zidan yuqori yoki teng roldagi akountni o'chirish.
+      • o'z akountini arxivlash;
+      • Boshliq akountini arxivlash (oxirgi boshliq himoyasi);
+      • o'zidan yuqori yoki teng roldagi akountni arxivlash.
 
     Frontend tasdiqlash oynasini ko'rsatadi, lekin qaror QAYTADA serverda
     tekshiriladi — frontend tekshiruvi ishlatilmaydi.
@@ -3014,41 +3421,50 @@ def boss_staff_delete(staff_id):
 
     actor = getattr(request, 'staff', {}) or {}
     actor_login = str(actor.get('sub', '') or '').strip().lower()
-    target_login = str(target.get('login', '')).strip().lower()
+    actor_id = _num(actor.get('id'), -1)
+    target_login = str(target.get('login', '') or '').strip().lower()
+    target_id = _num(target.get('id'), -1)
 
     if target_login and target_login == actor_login:
-        return json_error('O\'z akountingizni o\'chira olmaysiz', 403)
+        return json_error('O\'z akountingizni arxivlay olmaysiz', 403)
+    if actor_id > 0 and target_id == actor_id:
+        return json_error('O\'z akountingizni arxivlay olmaysiz', 403)
 
     target_role = str(target.get('role', '')).strip().lower()
     actor_role = str(actor.get('role', '')).strip().lower()
-    if role_rank(actor_role) <= role_rank(target_role):
-        return json_error('Bu akountni o\'chirish uchun yetarli huquq yo\'q', 403)
-
     if target_role == 'boss':
-        others = [u for u in staff
-                  if isinstance(u, dict)
-                  and str(u.get('role', '')).strip().lower() == 'boss'
-                  and _num(u.get('id'), -1) != staff_id]
-        if not others:
-            return json_error('Oxirgi Boshliq akountini o\'chirib bo\'lmaydi', 409)
+        return json_error('Boshliq akountini arxivlab bo\'lmaydi', 403)
+    if role_rank(actor_role) <= role_rank(target_role):
+        return json_error('Bu akountni arxivlash uchun yetarli huquq yo\'q', 403)
 
-    remaining = [u for u in staff
-                 if not (isinstance(u, dict) and _num(u.get('id'), -1) == staff_id)]
+    if str(target.get('status') or 'active').strip().lower() == 'inactive':
+        return jsonify({'status': 'success',
+                        'message': f'"{target.get("name")}" allaqachon arxivlangan',
+                        'staff': staff_public_view(target)})
+
+    stamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+    target['status'] = 'inactive'
+    target['deletedAt'] = stamp
+    target['deletedBy'] = _actor_name()[:120]
+    target['updatedAt'] = stamp
+    target['updatedBy'] = _actor_name()[:120]
     try:
-        db_manager.save_keys({'staff_users': remaining})
+        db_manager.save_keys({'staff_users': staff})
     except Exception as e:
-        print(f'[BOSS] Xodimni o\'chirib bo\'lmadi: {e}')
-        return json_error('O\'chirib bo\'lmadi', 500)
+        print(f'[BOSS] Xodimni arxivlab bo\'lmadi: {e}')
+        return json_error('Arxivlab bo\'lmadi', 500)
 
-    # O'chirilgan akountning sessiyalari darhol bekor qilinadi.
+    # Arxivlangan akountning sessiyalari darhol bekor qilinadi.
     revoke_login_sessions(target_login)
-    audit_log('staff-delete', str(target.get('name', '')),
-              f'rol={target_role}', _actor_name())
-    server_security_log('staff-deleted', 'high',
-                        f'Akount o\'chirildi: {target.get("name")} ({target_role})',
+    audit_log('staff-archive', str(target.get('name', '')),
+              f'rol={target_role} · nofaol qilindi', _actor_name())
+    server_security_log('staff-archived', 'medium',
+                        f'Akount arxivlandi: {target.get("name")} ({target_role})',
                         _actor_name())
     return jsonify({'status': 'success',
-                    'message': f'"{target.get("name")}" akounti o\'chirildi'})
+                    'message': f'"{target.get("name")}" arxivlandi (nofaol). '
+                               f'Savdo tarixi saqlandi.',
+                    'staff': staff_public_view(target)})
 
 
 # ============================================================
@@ -3277,11 +3693,18 @@ def boss_finance():
     period = normalize_period(request.args.get('period'))
     rng = custom_period_range(request.args)
     branch_filter = str(request.args.get('branchId') or '').strip()
-    scoped = sales_in_period(store, period, rng)
+    products_by_id = products_index(store)
+    scoped = completed_sales_in_period(store, period, rng)
+    if branch_filter:
+        scoped = [s for s in scoped
+                  if sale_branch(s, products_by_id) == branch_filter]
 
-    cash_flow = [c for c in (store.get('cashFlow') or store.get('expenses') or [])
-                 if isinstance(c, dict)]
-    scoped_flow = [c for c in cash_flow if in_period(c.get('date'), period)]
+    # Ikkala moliya kolleksiyasini ham hisobga olamiz: ilgari faqat bittasi
+    # olinardi va `expenses` yozuvlari butunlay yo'qolib ketardi.
+    cash_flow = []
+    for key in ('cashFlow', 'expenses'):
+        cash_flow.extend(c for c in (store.get(key) or []) if isinstance(c, dict))
+    scoped_flow = [c for c in cash_flow if in_period(c.get('date'), period, rng)]
     if branch_filter:
         scoped_flow = [c for c in scoped_flow
                        if str(c.get('branchId') or '') == branch_filter]
@@ -3345,14 +3768,15 @@ def _boss_report_rows(store, args):
     branches = branches_index(store)
 
     rows = []
-    for sale in sales_in_period(store, period, rng):
+    for sale in completed_sales_in_period(store, period, rng):
         if staff_filter and str(sale.get('cashier', '')).strip().lower() != staff_filter:
             continue
         bid = sale_branch(sale, products_by_id)
         if branch_filter and bid != branch_filter:
             continue
         items = [i for i in (sale.get('items') or []) if isinstance(i, dict)]
-        if product_filter or cat_filter:
+        filtered = bool(product_filter or cat_filter)
+        if filtered:
             matched = []
             for item in items:
                 product = products_by_id.get(item.get('id')) or {}
@@ -3367,6 +3791,23 @@ def _boss_report_rows(store, args):
                 continue
         else:
             matched = items
+
+        if filtered:
+            # Filtrlangan qatorda faqat mos mahsulot qatorlari va ularga
+            # to'g'ri keladigan chegirma ulushi hisoblanadi (butun chek emas).
+            subtotal = sum(_num(i.get('price')) * _num(i.get('qty')) for i in items)
+            matched_total = sum(_num(i.get('price')) * _num(i.get('qty')) for i in matched)
+            matched_discount = 0.0
+            if subtotal > 0:
+                matched_discount = _num(sale.get('discAmt')) * (matched_total / subtotal)
+            line_profit = sum((_num(i.get('price')) - _num(i.get('cost'))) * _num(i.get('qty'))
+                              for i in matched)
+            total = max(0.0, matched_total - matched_discount)
+            profit = line_profit - matched_discount
+        else:
+            total = _num(sale.get('total'))
+            profit = sale_profit(sale)
+
         rows.append({
             'saleId': sale.get('id'),
             'date': str(sale.get('date') or ''),
@@ -3376,8 +3817,8 @@ def _boss_report_rows(store, args):
             'branchName': str((branches.get(bid) or {}).get('name', '') or ''),
             'customer': str(sale.get('customer') or ''),
             'items': sum(_num(i.get('qty')) for i in matched),
-            'total': round(_num(sale.get('total')), 2),
-            'profit': sale_profit(sale),
+            'total': round(total, 2),
+            'profit': round(profit, 2),
             'pay': str(sale.get('pay') or ''),
         })
     rows.sort(key=lambda r: (r['date'], str(r['time'])), reverse=True)
@@ -3666,7 +4107,18 @@ def get_config():
 # Ommaviy (anonim) do'kon uchun ruxsat etilgan maydonlar — mijoz PII'si YO'Q
 CATALOG_FIELDS = ('id', 'name', 'cat', 'price', 'stock', 'img', 'desc')
 PUBLIC_DATA_KEYS = ('products', 'categories')
-PRIVATE_DATA_KEYS = ('auth_secret', 'staff_users', 'active_sessions', 'serverSecurityLog')
+PRIVATE_DATA_KEYS = ('auth_secret', 'staff_users', 'active_sessions',
+                     'serverSecurityLog', 'audit_log')
+
+# Rol bo'yicha o'qish doirasi. Admin/boss to'liq (maxfiy kalitlarsiz) oladi;
+# kassir/menejer faqat operatsion ma'lumotlarni oladi. Ish haqi, moliya,
+# shartnomalar, xavfsizlik jurnallari va SMS tarixi ularga chiqmaydi.
+DATA_SCOPE_BY_ROLE = {
+    'cashier': {'products', 'customers', 'sales', 'branches', 'categories',
+                'discounts', 'settings'},
+    'manager': {'products', 'customers', 'sales', 'contracts', 'branches',
+                'categories', 'discounts', 'cashFlow', 'expenses', 'settings'},
+}
 
 # Sinxronizatsiyada qabul qilinadigan kalitlar va ularning chegaralari
 SYNC_ALLOWED_KEYS = {
@@ -3688,10 +4140,19 @@ def json_error(message, code=400, status='error'):
     return jsonify({'status': status, 'message': message}), code
 
 
-def client_data_snapshot():
-    """Brauzerga beriladigan baza nusxasi: server maxfiy kalitlari chiqarilmaydi."""
+def client_data_snapshot(role=''):
+    """Brauzerga beriladigan baza nusxasi: rolga qarab filtrlanadi.
+
+    Admin/boss — maxfiy server kalitlaridan tashqari to'liq baza.
+    Kassir/menejer — faqat o'z ishiga kerakli operatsion kalitlar.
+    """
     data = db_manager.get_all() or {}
-    return {k: v for k, v in data.items() if k not in PRIVATE_DATA_KEYS}
+    role_key = str(role or '').strip().lower()
+    if role_key in ('boss', 'admin'):
+        return {k: v for k, v in data.items() if k not in PRIVATE_DATA_KEYS}
+    allowed = DATA_SCOPE_BY_ROLE.get(role_key, set())
+    return {k: v for k, v in data.items()
+            if k not in PRIVATE_DATA_KEYS and k in allowed}
 
 
 def _contains_non_finite(value, depth=0):
@@ -3725,7 +4186,9 @@ SALE_ITEM_NUMBER_FIELDS = (
     ('price', 0), ('qty', 0), ('cost', 0), ('discount', None),
 )
 SALE_TEXT_FIELDS = (
-    ('date', 32), ('time', 32), ('cashier', 120), ('pay', 30), ('provider', 30),
+    ('date', 32), ('time', 32), ('cashier', 120), ('cashierLogin', 80),
+    ('cashierId', 40), ('staffId', 40),
+    ('pay', 30), ('provider', 30),
     ('status', 30), ('customerId', 40), ('branchId', 40), ('orderId', 80),
     ('clickTransId', 40), ('clickPrepareId', 40), ('clickPaydocId', 40),
 )
@@ -4453,9 +4916,10 @@ def branch_delete(bid):
 @app.route('/api/data', methods=['GET'])
 @require_staff()
 def get_data():
-    """To'liq baza (mijoz PII, savdo, loglar) — faqat xodimlar uchun."""
+    """Rolga mos baza nusxasi (maxfiy server kalitlari hech qachon chiqmaydi)."""
     try:
-        return jsonify(client_data_snapshot())
+        role = str(getattr(request, 'staff', {}).get('role') or '')
+        return jsonify(client_data_snapshot(role))
     except Exception as e:
         print(f'[ERROR] /api/data: {e}')
         return json_error('Ma\'lumotni olishda xatolik', 500)
@@ -4474,6 +4938,30 @@ def sync_data():
                             request.staff.get('name', '—'))  # type: ignore[attr-defined]
         return json_error(message)
 
+    # Har bir YANGI savdoga kassirning loginini yozib qo'yamiz. Ilgari faqat
+    # ism saqlanardi — bir xil ismli ikki xodim bo'lsa savdo ikki marta
+    # hisoblanishi yoki noto'g'ri xodimga yozilishi mumkin edi. Bu yerda
+    # faqat aynan shu sessiya egasining ismi bilan kelgan yozuvlarga
+    # login qo'shiladi (boshqa xodim savdosiga tegmaymiz).
+    actor = getattr(request, 'staff', {}) or {}
+    actor_login = str(actor.get('sub') or '').strip()
+    actor_name = str(actor.get('name') or '').strip().lower()
+    if actor_login and isinstance(clean.get('sales'), list):
+        backfilled = 0
+        for sale in clean['sales']:
+            if not isinstance(sale, dict):
+                continue
+            if str(sale.get('cashierLogin') or '').strip():
+                continue
+            if str(sale.get('cashier') or '').strip().lower() != actor_name:
+                continue
+            sale['cashierLogin'] = actor_login
+            backfilled += 1
+        if backfilled:
+            server_security_log('sale-cashier-backfill', 'low',
+                                f'{backfilled} ta savdoga kassir logini yozildi',
+                                actor.get('name', '—'))
+
     # Xodimlar boshqaruvi kalitlarini faqat admin/menejer (yoki BOSHLIQ)
     # yoza oladi. Kassir ham har bir sync'da salaryRecords/salaryHistory
     # yuboradi (mijoz tomoni toza) — bu kalitlar kirsa, eski localStorage
@@ -4489,6 +4977,13 @@ def sync_data():
                 clean.pop(k, None)
             server_security_log('access-denied', 'high',
                                 f'Xodimlar kalitlari rad etildi ({", ".join(dropped)})',
+                                request.staff.get('name', '—'))  # type: ignore[attr-defined]
+
+    # Global sozlamalarni (kompaniya, to'lov, chek) faqat admin/menejer yozadi.
+    if not role_contains(('admin', 'manager'), request.staff.get('role')):  # type: ignore[attr-defined]
+        if clean.pop('settings', None) is not None:
+            server_security_log('access-denied', 'high',
+                                'Kassir settings kalitini yozishga urindi',
                                 request.staff.get('name', '—'))  # type: ignore[attr-defined]
 
     # ── Yo'q qilishdan himoya (ma'lumot yo'qolishiga qarshi) ──────────────
@@ -4509,6 +5004,13 @@ def sync_data():
         'expenses': ('admin', 'manager'),
         'discounts': ('admin', 'manager'),
         'branches': ('admin', 'manager'),
+        'customers': ('admin', 'manager'),
+        'logs': ('admin',),
+        'securityLog': ('admin',),
+        'smsHistory': ('admin',),
+        'salaryRecords': ('admin',),
+        'salaryHistory': ('admin',),
+        'employees': ('admin',),
     }
     old_store = db_manager.get_all() or {}
     staff_role = request.staff.get('role')  # type: ignore[attr-defined]
@@ -6258,6 +6760,14 @@ def assistant_chat():
                     }})
 
 
+# Bir marta: ma'lum standart parolli akountlarni majburiy almashtirish rejimiga
+# o'tkazamiz. Bu `flask run`/WSGI orqali ishga tushirilganda ham bajariladi.
+try:
+    audit_default_passwords()
+except Exception as _audit_err:  # pragma: no cover
+    print(f'[SECURITY] Standart parollar auditi xatosi: {_audit_err}')
+
+
 if __name__ == '__main__':
     debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     # Boshliq (rahbariyat) akountini idempotent yaratadi — parol FAQAT xesh
@@ -6276,7 +6786,8 @@ if __name__ == '__main__':
     print(f"Cloudflare: proxy ishonchi {'ON' if TRUST_CLOUDFLARE else 'OFF'}"
           f" | Turnstile: {turnstile_mode}"
           f" | avtomatik domen qoshish: {'ON' if (CF_AUTO_ADD_DOMAIN and CF_API_TOKEN) else 'OFF'}")
-    print(f"Server {PORT}-portda ishlamoqda. Baza turi: {db_manager.db_type}")
+    print(f"Server {PORT}-portda ishlamoqda. Baza turi: {db_manager.db_type}"
+          f" | DB: {db_manager.db_path or '(ulanish hali ochilmagan)'}")
     print(f"Debug rejimi: {'YOQILGAN (faqat lokal ishlab chiqish uchun!)' if debug_mode else 'o\'chirilgan (xavfsiz)'}")
     print(f"To'lov tizimlari: {[p for p in PAYMENT_PROVIDERS if provider_settings(p).get('enabled')] or 'faqat Naqd/Karta'}")
     # DIQQAT: debug=True ni productionda yoqmang — Werkzeug debugger orqali RCE xavfi bor.
