@@ -1581,6 +1581,106 @@ async function serverLogin(login, password) {
     }
 }
 
+/** Standart/zaif parol aniqlanganda majburiy almashtirish oynasi.
+ *  Server `mustChange=true` bo'lsa boshqa API'larni 403 bilan yopadi, shuning
+ *  uchun bu oyna yopilmaguncha ilovaga o'tilmaydi. */
+function showForcedPasswordChange(user) {
+    document.getElementById('forcedPasswordOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'forcedPasswordOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:18px;';
+    overlay.innerHTML = `
+        <div role="dialog" aria-modal="true" aria-labelledby="forcedPwTitle"
+             style="width:100%;max-width:440px;background:#fff;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.35);font-family:inherit;">
+            <h3 id="forcedPwTitle" style="margin:0 0 6px;font-size:1.15rem;color:#0f172a;">Parolni almashtirish shart</h3>
+            <p style="margin:0 0 14px;color:#475569;font-size:.92rem;line-height:1.45;">
+                <b id="forcedPwUserName"></b>, hisobingizda standart yoki zaif parol aniqlangan.
+                Xavfsizlik uchun davom etishdan oldin yangi parol o'rnating.
+            </p>
+            <form id="forcedPwForm" autocomplete="off">
+                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Joriy parol</label>
+                <input id="forcedPwOld" type="password" required autocomplete="current-password"
+                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:10px;">
+                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Yangi parol (kamida 6 belgi)</label>
+                <input id="forcedPwNew" type="password" required minlength="6" autocomplete="new-password"
+                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:10px;">
+                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Yangi parolni takrorlang</label>
+                <input id="forcedPwRepeat" type="password" required minlength="6" autocomplete="new-password"
+                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:12px;">
+                <div id="forcedPwError" style="display:none;color:#b91c1c;font-size:.86rem;margin-bottom:10px;"></div>
+                <button id="forcedPwSubmit" type="submit"
+                        style="width:100%;padding:11px 14px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;">
+                    Parolni saqlash
+                </button>
+                <button id="forcedPwLogout" type="button"
+                        style="width:100%;margin-top:8px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;cursor:pointer;">
+                    Chiqish
+                </button>
+            </form>
+        </div>`;
+    document.body.appendChild(overlay);
+    const nameEl = document.getElementById('forcedPwUserName');
+    if (nameEl) nameEl.textContent = String(user?.name || user?.login || 'Xodim');
+    const oldInput = document.getElementById('forcedPwOld');
+    const newInput = document.getElementById('forcedPwNew');
+    const repeatInput = document.getElementById('forcedPwRepeat');
+    const errorEl = document.getElementById('forcedPwError');
+    const form = document.getElementById('forcedPwForm');
+    const submitBtn = document.getElementById('forcedPwSubmit');
+    const showError = (message) => {
+        if (!errorEl) return;
+        errorEl.textContent = String(message || 'Xatolik');
+        errorEl.style.display = 'block';
+    };
+    document.getElementById('forcedPwLogout')?.addEventListener('click', () => {
+        clearStaffToken();
+        location.reload();
+    });
+    form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!errorEl) return;
+        errorEl.style.display = 'none';
+        const currentPassword = oldInput?.value || '';
+        const newPassword = newInput?.value || '';
+        const repeatPassword = repeatInput?.value || '';
+        if (newPassword.length < 6) return showError('Yangi parol kamida 6 belgidan iborat bo\'lishi kerak');
+        if (newPassword !== repeatPassword) return showError('Yangi parollar mos kelmadi');
+        if (newPassword === currentPassword) return showError('Yangi parol joriy paroldan farq qilishi kerak');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saqlanmoqda...';
+        try {
+            const response = await fetch('/api/auth/change-password', {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({
+                    login: user?.login || '',
+                    currentPassword,
+                    newPassword
+                })
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data?.token) {
+                showError(data?.message || 'Parolni almashtirib bo\'lmadi');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Parolni saqlash';
+                return;
+            }
+            setStaffToken(data.token);
+            storeUserPassword(user?.login || '', newPassword,
+                user?.name || 'Xodim');
+            overlay.remove();
+            finishLogin(user);
+            showNotif('success', 'Parol yangilandi',
+                'Yangi parol bilan ishlashda davom eting');
+        } catch (e) {
+            showError('Serverga ulanib bo\'lmadi. Qayta urinib ko\'ring.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Parolni saqlash';
+        }
+    });
+    setTimeout(() => oldInput?.focus(), 80);
+}
+
 /** Token eskirgan/bloklangan bo'lsa — xavfsiz tarzda sessiyani yopadi.
  *  Server 401 qaytarganda (token muddati tugagan / sessiya bekor qilingan)
  *  faqat token o'chirish YETARLI EMAS: foydalanuvchi "kirilgan" holatda
@@ -1834,6 +1934,17 @@ async function loadFromBackend() {
             return;
         }
         if (response.status === 403) {
+            const errorData = await response.json().catch(() => null);
+            if (errorData?.code === 'password_change_required') {
+                console.warn('Parol almashtirish talab qilinadi — token saqlanadi');
+                if (currentUser) {
+                    showForcedPasswordChange(currentUser);
+                } else {
+                    showNotif('warning', 'Parolni almashtiring',
+                        'Xavfsizlik uchun avval parolni yangilang');
+                }
+                return;
+            }
             console.warn('Xodim tokeni yo\'q yoki huquq yetarli emas — faqat ommaviy katalog yuklanadi');
             clearStaffToken();
             await loadPublicCatalog();
@@ -2287,7 +2398,7 @@ async function attemptLogin(u, p) {
         const local = findBaseUser(u);
         const role = ROLE_RANK[String(server.user?.role || '').toLowerCase()] > 0
             ? server.user.role : 'customer';
-        finishLogin({
+        const loginUser = {
             id: local?.id || Date.now(),
             login: cleanText(server.user?.login, 120) || u,
             name: cleanText(server.user?.name, 120) || u,
@@ -2299,13 +2410,14 @@ async function attemptLogin(u, p) {
             // o'z filialida boshlash uchun ishlatiladi.
             branchId: cleanText(server.user?.branchId, 40) || '',
             color: local?.color || '#2563EB'
-        });
+        };
         if (server.mustChange) {
             securityLog('weak-password', 'medium',
-                'Standart parol bilan kirildi — almashtirish tavsiya etiladi');
-            showNotif('warning', 'Parolni almashtiring',
-                'Standart parol ishlatilmoqda — Sozlamalar bo\'limidan yangilang');
+                'Standart parol bilan kirildi — almashtirish majburiy');
+            showForcedPasswordChange(loginUser);
+            return;
         }
+        finishLogin(loginUser);
         return;
     }
 
@@ -4811,6 +4923,7 @@ function checkout() {
         time: new Date().toLocaleTimeString('uz-UZ'),
         date: new Date().toLocaleDateString('uz-UZ'),
         cashier: currentUser?.name || 'Noma\'lum',
+        cashierLogin: currentUser?.login || '',
         customer: cust?.name || 'Noma\'lum',
         customerId: custId || null,
         customerPhone: cust?.phone || '',
