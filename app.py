@@ -2199,9 +2199,10 @@ def auth_staff_list():
 # ============================================================
 # BOSHLIQ BOSHQARUVI — executive dashboard + xodimlar nazorati
 # ============================================================
-# Bu bo'limdagi barcha endpoint'lar FAQAT BOSHLIQ roliga ochiq
-# (`@require_staff('boss')`). Server tomoni tekshiradi — frontend'dagi
-# `if (role === 'boss')` yashirishiga tayanib qolmaymiz.
+# Xodimlar ro'yxati va yaratish endpointlarida Menejer uchun alohida
+# filial-doirasidagi kassir siyosati bor; tahrirlash/arxivlash Admin darajasida,
+# executive/payroll endpointlari esa faqat Boshliq uchun qoladi.
+# Server tomoni tekshiradi — frontend'dagi menyu yashirishga tayanilmaydi.
 #
 # Barcha statistika MAVJUD bazadagi haqiqiy savdo (`sales`), mahsulot
 # (`products`), filial (`branches`) va kirim/chiqim (`cashFlow`) yozuvlaridan
@@ -2661,10 +2662,10 @@ def _staff_salary_for_period(user, salary_history, month):
     return _staff_salary_value(user)
 
 
-def staff_public_view(user, stats=None):
+def staff_public_view(user, stats=None, include_salary=True):
     """Xodim yozuvini ochiq maydonlarga aylantiradi (parol/xash YO'Q)."""
     stats = stats or {}
-    return {
+    view = {
         'id': user.get('id'),
         'name': str(user.get('name', ''))[:120],
         'login': str(user.get('login', ''))[:120],
@@ -2673,13 +2674,6 @@ def staff_public_view(user, stats=None):
         'roleRank': role_rank(user.get('role')),
         'status': str(user.get('status') or 'active')[:30],
         'branchId': str(user.get('branchId') or '')[:40],
-        # Belgilangan oylik maosh (so'm). None = "Belgilanmagan".
-        'salary': _staff_salary_value(user),
-        # Oylik to'lov kuni (1..28) va to'lov usuli — maosh rejasi uchun.
-        'salaryPayDay': _salary_pay_day(user),
-        'salaryMethod': _salary_method(user),
-        'salaryChangedAt': str(user.get('salaryChangedAt') or '')[:30],
-        'salaryChangedBy': str(user.get('salaryChangedBy') or '')[:120],
         'mustChange': bool(user.get('mustChange')),
         # Parolning O'ZI hech qachon qaytarilmaydi — faqat mavjudligi.
         'hasPassword': bool(str(user.get('passHash') or '')),
@@ -2700,6 +2694,15 @@ def staff_public_view(user, stats=None):
         'profit': stats.get('profit', 0.0),
         'avgCheck': stats.get('avgCheck', 0.0),
     }
+    if include_salary:
+        view.update({
+            'salary': _staff_salary_value(user),
+            'salaryPayDay': _salary_pay_day(user),
+            'salaryMethod': _salary_method(user),
+            'salaryChangedAt': str(user.get('salaryChangedAt') or '')[:30],
+            'salaryChangedBy': str(user.get('salaryChangedBy') or '')[:120],
+        })
+    return view
 
 
 # Yakunlanmagan / bekor qilingan savdolar statistikaga QO'SHILMAYDI.
@@ -3082,7 +3085,7 @@ def boss_charts():
 # 2) XODIMLAR RO'YXATI + REYTINGI
 # ============================================================
 @app.route('/api/boss/staff', methods=['GET'])
-@require_staff('boss')
+@require_staff('manager')
 def boss_staff_list():
     """Barcha xodimlar, ularning haqiqiy savdo ko'rsatkichlari va reytingi.
 
@@ -3090,8 +3093,25 @@ def boss_staff_list():
            role, branchId, sort, order, limit, offset.
     """
     store = db_manager.get_all() or {}
+    actor = getattr(request, 'staff', {}) or {}
+    actor_role = canonical_role(actor.get('role'))
+    is_boss_actor = actor_role == 'boss'
+    is_manager_actor = actor_role == 'manager'
+    manager_branch_id = ''
+    if is_manager_actor:
+        actor_user = next((u for u in load_staff()
+                           if isinstance(u, dict)
+                           and str(u.get('id')) == str(actor.get('id'))), None)
+        manager_branch_id = str((actor_user or {}).get('branchId') or '').strip()
+        if not manager_branch_id:
+            return json_error('Xodim qo\'shish uchun menejerga filial biriktirilgan bo\'lishi kerak', 403)
     all_staff = [u for u in unique_staff(load_staff())
-                 if isinstance(u, dict) and role_rank(u.get('role')) > 0]
+                 if isinstance(u, dict) and role_rank(u.get('role')) > 0
+                 and (is_boss_actor
+                      or (str(u.get('role') or '').lower() in ('manager', 'cashier')
+                          and (not is_manager_actor
+                               or (str(u.get('role') or '').lower() == 'cashier'
+                                   and str(u.get('branchId') or '') == manager_branch_id))))]
     branches = branches_index(store)
     products_by_id = products_index(store)
     period = normalize_period(request.args.get('period'))
@@ -3101,6 +3121,8 @@ def boss_staff_list():
     query = str(request.args.get('q') or '').strip().lower()
     role_filter = str(request.args.get('role') or '').strip().lower()
     branch_filter = str(request.args.get('branchId') or '').strip()
+    if is_manager_actor and branch_filter and branch_filter != manager_branch_id:
+        return json_error('Menejer faqat o\'z filialidagi xodimlarni ko\'ra oladi', 403)
     status_filter = str(request.args.get('status') or '').strip().lower()
     if status_filter not in STAFF_STATUSES:
         status_filter = ''
@@ -3138,7 +3160,8 @@ def boss_staff_list():
         view = staff_public_view(
             user,
             staff_metrics(scoped, user, all_staff,
-                          branch_id=branch_filter, products_by_id=products_by_id))
+                          branch_id=branch_filter, products_by_id=products_by_id),
+            include_salary=is_boss_actor)
         view['branchName'] = str((branches.get(str(user.get('branchId') or '')) or {})
                                  .get('name', '') or '')[:80]
         view['lastSeen'] = last_seen_by_login(user.get('login')) or view['lastSeen']
@@ -3604,7 +3627,7 @@ def boss_salary_pay():
 
 
 @app.route('/api/boss/staff/<int:staff_id>/sales', methods=['GET'])
-@require_staff('boss')
+@require_staff('admin')
 def boss_staff_sales(staff_id):
     """Xodim savdolari: har bir chek qatorlari mahsulot/qty/narx/jami bilan."""
     store = db_manager.get_all() or {}
@@ -3613,6 +3636,10 @@ def boss_staff_sales(staff_id):
                    if isinstance(u, dict) and _num(u.get('id'), -1) == staff_id), None)
     if not target:
         return jsonify({'status': 'error', 'message': 'Xodim topilmadi'}), 404
+    actor_role = str((getattr(request, 'staff', {}) or {}).get('role') or '').lower()
+    if actor_role == 'admin' and str(target.get('role') or '').lower() not in (
+            'manager', 'cashier'):
+        return json_error('Admin faqat Menejer va Kassa xodimlarining savdosini ko\'ra oladi', 403)
 
     name = str(target.get('name', '')).strip()
     period = normalize_period(request.args.get('period'))
@@ -3676,7 +3703,9 @@ def boss_staff_sales(staff_id):
         'staff': staff_public_view(
             target,
             staff_metrics(scoped, target, staff,
-                          branch_id=branch_filter, products_by_id=products_by_id)),
+                          branch_id=branch_filter, products_by_id=products_by_id),
+            include_salary=str((getattr(request, 'staff', {}) or {}).get('role') or '').lower()
+            == 'boss'),
         'total': len(receipts),
         'offset': offset,
         'limit': limit,
@@ -3760,7 +3789,7 @@ def _unique_staff_login(staff, staff_id):
 
 
 @app.route('/api/boss/staff', methods=['POST'])
-@require_staff('boss')
+@require_staff('manager')
 @_serialize_staff_write
 def boss_staff_create():
     """Yangi xodim qo'shish.
@@ -3772,23 +3801,45 @@ def boss_staff_create():
     name = _clean_boss_text(body.get('name'), 120)
     phone = normalize_phone(body.get('phone'))
     role = str(body.get('role') or '').strip().lower()
+    actor_role = str((getattr(request, 'staff', {}) or {}).get('role') or '').lower()
+    is_boss_actor = actor_role == 'boss'
+    is_admin_actor = actor_role == 'admin'
+    is_manager_actor = actor_role == 'manager'
     branch_id = str(body.get('branchId') or '').strip()[:40]
     status = str(body.get('status') or 'active').strip().lower()
 
     if not name or len(name) < 2:
         return json_error('Xodim ismi kamida 2 belgidan iborat bo\'lsin')
-    if role not in BOSS_ASSIGNABLE_ROLES:
+    assignable_roles = (BOSS_ASSIGNABLE_ROLES if is_boss_actor
+                        else ('manager', 'cashier') if is_admin_actor
+                        else ('cashier',))
+    if role not in assignable_roles:
         return json_error('Rol noto\'g\'ri. Ruxsat etilgan rollar: '
-                          + ', '.join(r.upper() for r in BOSS_ASSIGNABLE_ROLES))
+                          + ', '.join(r.upper() for r in assignable_roles), 403)
     if status not in STAFF_STATUSES:
         return json_error('Holat noto\'g\'ri (active, blocked yoki inactive)')
+    if is_manager_actor:
+        actor = getattr(request, 'staff', {}) or {}
+        actor_user = next((u for u in load_staff()
+                           if isinstance(u, dict)
+                           and str(u.get('id')) == str(actor.get('id'))), None)
+        manager_branch_id = str((actor_user or {}).get('branchId') or '').strip()
+        if not manager_branch_id:
+            return json_error('Xodim qo\'shish uchun menejerga filial biriktirilgan bo\'lishi kerak', 403)
+        if branch_id != manager_branch_id:
+            return json_error('Menejer faqat o\'z filialiga xodim qo\'sha oladi', 403)
+        if status != 'active':
+            return json_error('Menejer faqat faol kassir hisobini yaratishi mumkin', 403)
     if not _branch_exists(branch_id):
         return json_error('Tanlangan filial topilmadi', 404)
     password, error = _validate_password(body.get('password'))
     if error:
         return json_error(error)
-    # Oylik maosh MAJBURIY va faqat butun so'm qiymatida qabul qilinadi.
-    salary, salary_error = parse_staff_salary(body.get('salary'), required=True)
+    if not is_boss_actor and 'salary' in body:
+        return json_error('Maosh ma\'lumotlarini faqat Boshliq boshqarishi mumkin', 403)
+    # Admin maoshi belgilanmagan xodim yaratadi; maoshni faqat Boshliq belgilaydi.
+    salary, salary_error = parse_staff_salary(
+        body.get('salary'), required=is_boss_actor)
     if salary_error:
         return json_error(salary_error)
     # Telefon raqami MAJBURIY: xodim tizimga aynan shu raqam (login) bilan kiradi.
@@ -3812,14 +3863,15 @@ def boss_staff_create():
             'role': role,
             'status': status,
             'branchId': branch_id,
-            'salary': salary,
-            'salaryChangedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-            'salaryChangedBy': _actor_name()[:120],
             'mustChange': False,
             'createdBy': _actor_name()[:120],
             'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
             'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         }
+        if salary is not None:
+            account['salary'] = salary
+            account['salaryChangedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+            account['salaryChangedBy'] = _actor_name()[:120]
         # Parol: faqat xesh (qayta tiklanadigan nusxa saqlanmaydi).
         apply_staff_password(account, password, _actor_name())
         staff.append(account)
@@ -3829,13 +3881,14 @@ def boss_staff_create():
             print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
             return jsonify({'status': 'error', 'message': 'Xodimni saqlab bo\'lmadi'}), 500
 
-    record_staff_salary_change(account['id'], name, None, salary, _actor_name())
+    if salary is not None:
+        record_staff_salary_change(account['id'], name, None, salary, _actor_name())
     audit_log('staff-create', name,
               f'rol={role} status={status} maosh={salary}'
               + (f' filial={branch_id}' if branch_id else ''),
               _actor_name())
     return jsonify({'status': 'success', 'message': 'Xodim qo\'shildi',
-                    'staff': staff_public_view(account)}), 201
+                    'staff': staff_public_view(account, include_salary=is_boss_actor)}), 201
 
 @app.route('/')
 def serve_index():
@@ -3862,7 +3915,7 @@ def boss_staff_password(staff_id):
 
 
 @app.route('/api/boss/staff/<int:staff_id>', methods=['PUT'])
-@require_staff('boss')
+@require_staff('admin')
 @_serialize_staff_write
 def boss_staff_update(staff_id):
     """Xodimni tahrirlash: ism, telefon, rol, filial, oylik maosh, holat va parol.
@@ -3891,6 +3944,12 @@ def boss_staff_update(staff_id):
     is_self = (actor_id > 0 and target_id == actor_id) \
         or (bool(actor_login) and target_login == actor_login)
     target_role = str(target.get('role', '') or '').strip().lower()
+    actor_role = str((getattr(request, 'staff', {}) or {}).get('role') or '').lower()
+    is_admin_actor = actor_role == 'admin'
+    if is_admin_actor and role_rank(target_role) >= role_rank('admin'):
+        return json_error('Admin faqat Menejer va Kassa xodimlarini boshqarishi mumkin', 403)
+    if is_admin_actor and {'role', 'salary', 'salaryPayDay', 'salaryMethod'} & body.keys():
+        return json_error('Rol va maosh ma\'lumotlarini faqat Boshliq o\'zgartirishi mumkin', 403)
     old_login = target_login
     old_phone = normalize_phone(target.get('phone'))
     changes = []
@@ -4032,7 +4091,8 @@ def boss_staff_update(staff_id):
 
     if not changes:
         return jsonify({'status': 'success', 'message': 'O\'zgarish yo\'q',
-                        'staff': staff_public_view(target)})
+                        'staff': staff_public_view(
+                            target, include_salary=actor_role == 'boss')})
 
     target['updatedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
     target['updatedBy'] = _actor_name()[:120]
@@ -4071,7 +4131,8 @@ def boss_staff_update(staff_id):
     else:
         message = 'Xodim yangilandi'
     return jsonify({'status': 'success', 'message': message,
-                    'changed': changes, 'staff': staff_public_view(target)})
+                    'changed': changes,
+                    'staff': staff_public_view(target, include_salary=not is_admin_actor)})
 @app.route('/robots.txt')
 def serve_robots():
     """Qidiruv botlari uchun: boshqaruv va API yo'llari indekslanmasin."""
@@ -4083,7 +4144,7 @@ def serve_robots():
     return body
 
 @app.route('/api/boss/staff/<int:staff_id>', methods=['DELETE'])
-@require_staff('boss')
+@require_staff('admin')
 def boss_staff_delete(staff_id):
     """Xodimni ARXIVLASH (soft delete) — savdo tarixi yo'qolmaydi.
 
@@ -4108,6 +4169,7 @@ def boss_staff_delete(staff_id):
     actor = getattr(request, 'staff', {}) or {}
     actor_login = str(actor.get('sub', '') or '').strip().lower()
     actor_id = _num(actor.get('id'), -1)
+    actor_role = str(actor.get('role') or '').strip().lower()
     target_login = str(target.get('login', '') or '').strip().lower()
     target_id = _num(target.get('id'), -1)
 
@@ -4117,7 +4179,6 @@ def boss_staff_delete(staff_id):
         return json_error('O\'z akountingizni arxivlay olmaysiz', 403)
 
     target_role = str(target.get('role', '')).strip().lower()
-    actor_role = str(actor.get('role', '')).strip().lower()
     if target_role == 'boss':
         return json_error('Boshliq akountini arxivlab bo\'lmaydi', 403)
     if role_rank(actor_role) <= role_rank(target_role):
@@ -4126,7 +4187,8 @@ def boss_staff_delete(staff_id):
     if str(target.get('status') or 'active').strip().lower() == 'inactive':
         return jsonify({'status': 'success',
                         'message': f'"{target.get("name")}" allaqachon arxivlangan',
-                        'staff': staff_public_view(target)})
+                        'staff': staff_public_view(
+                            target, include_salary=actor_role == 'boss')})
 
     stamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
     target['status'] = 'inactive'
@@ -4150,7 +4212,8 @@ def boss_staff_delete(staff_id):
     return jsonify({'status': 'success',
                     'message': f'"{target.get("name")}" arxivlandi (nofaol). '
                                f'Savdo tarixi saqlandi.',
-                    'staff': staff_public_view(target)})
+                    'staff': staff_public_view(
+                        target, include_salary=actor_role == 'boss')})
 
 
 # ============================================================
@@ -5615,6 +5678,95 @@ def get_data():
         return json_error('Ma\'lumotni olishda xatolik', 500)
 
 
+@app.route('/api/customers', methods=['POST'])
+@require_staff('cashier')
+def create_customer():
+    """Mijoz yaratish: barcha ichki xodim rollari, takroriy telefonlar rad etiladi."""
+    actor = getattr(request, 'staff', {}) or {}
+    if canonical_role(actor.get('role')) not in ('boss', 'admin', 'manager', 'cashier'):
+        return json_error('Bu amal uchun huquq yetarli emas', 403)
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return json_error('Mijoz ma\'lumotlari noto\'g\'ri', 400)
+
+    name_raw = body.get('name')
+    phone_raw = body.get('phone')
+    if not isinstance(name_raw, str) or not isinstance(phone_raw, str):
+        return json_error('Ism va telefon matn ko\'rinishida bo\'lishi kerak', 400)
+    name = re.sub(r'[\x00-\x1f\x7f]', '', name_raw).strip()
+    phone = re.sub(r'[\x00-\x1f\x7f]', '', phone_raw).strip()
+    if not name or len(name) > 120:
+        return json_error('Mijoz ismi 1–120 belgi bo\'lishi kerak', 400)
+    if not phone or len(phone) > 40 or not re.fullmatch(r'\+?[\d\s().-]+', phone):
+        return json_error('Telefon raqami noto\'g\'ri', 400)
+    phone_digits = re.sub(r'\D', '', phone)
+    if not 7 <= len(phone_digits) <= 15:
+        return json_error('Telefon raqami 7–15 ta raqamdan iborat bo\'lishi kerak', 400)
+
+    email_raw = body.get('email', '')
+    addr_raw = body.get('addr', '')
+    bdate_raw = body.get('bdate', '')
+    if not all(isinstance(value, str) for value in (email_raw, addr_raw, bdate_raw)):
+        return json_error('Email, manzil yoki tug\'ilgan sana formati noto\'g\'ri', 400)
+    email = re.sub(r'[\x00-\x1f\x7f]', '', email_raw).strip()
+    addr = re.sub(r'[\x00-\x1f\x7f]', '', addr_raw).strip()
+    bdate = bdate_raw.strip()
+    if len(email) > 120 or (email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email)):
+        return json_error('Email manzili noto\'g\'ri', 400)
+    if len(addr) > 180:
+        return json_error('Manzil 180 belgidan oshmasligi kerak', 400)
+    if bdate:
+        try:
+            datetime.strptime(bdate, '%Y-%m-%d')
+        except ValueError:
+            return json_error('Tug\'ilgan sana noto\'g\'ri', 400)
+
+    try:
+        with _store_write_lock:
+            store = db_manager.get_all() or {}
+            existing = [item for item in (store.get('customers') or [])
+                        if isinstance(item, dict)]
+            if any(re.sub(r'\D', '', str(item.get('phone') or '')) == phone_digits
+                   for item in existing):
+                return json_error('Bu telefon raqami bilan mijoz allaqachon mavjud', 409)
+
+            numeric_ids = []
+            for item in existing:
+                try:
+                    item_id = int(item.get('id'))
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                if 0 < item_id <= 9007199254740991:
+                    numeric_ids.append(item_id)
+            customer_id = max(numeric_ids, default=0) + 1
+            if customer_id > 9007199254740991:
+                return json_error('Yangi mijoz ID yaratib bo\'lmadi', 500)
+
+            customer = {
+                'id': customer_id,
+                'name': name,
+                'phone': phone,
+                'email': email,
+                'addr': addr,
+                'bdate': bdate,
+                'orders': 0,
+                'total': 0,
+                'bonus': 0,
+                'status': 'active',
+                'createdAt': datetime.now().isoformat(timespec='seconds'),
+            }
+            db_manager.save_keys({'customers': existing + [customer]})
+    except Exception as e:
+        print(f'[ERROR] /api/customers POST: {e}')
+        return json_error('Mijozni saqlashda kutilmagan xatolik yuz berdi', 500)
+
+    audit_log('customer-create', name, 'Mijoz ro\'yxatga qo\'shildi',
+              actor.get('name', '—'))
+    return jsonify({'status': 'success', 'message': 'Mijoz muvaffaqiyatli saqlandi',
+                    'customer': customer}), 201
+
+
 @app.route('/api/sync', methods=['POST'])
 @require_staff()
 def sync_data():
@@ -5691,7 +5843,7 @@ def sync_data():
         'expenses': ('admin', 'manager'),
         'discounts': ('admin', 'manager'),
         'branches': ('admin', 'manager'),
-        'customers': ('admin', 'manager'),
+        'customers': ('admin',),
         'logs': ('admin',),
         'securityLog': ('admin',),
         'smsHistory': ('admin',),
@@ -5702,7 +5854,11 @@ def sync_data():
     # bosib ketishi mumkin.
     with _store_write_lock:
         old_store = db_manager.get_all() or {}
-        staff_role = request.staff.get('role')  # type: ignore[attr-defined]
+        staff_role = canonical_role(request.staff.get('role'))  # type: ignore[attr-defined]
+        if staff_role == 'manager' and 'customers' in clean:
+            # Menejer faqat /api/customers orqali yangi mijoz qo'shadi;
+            # umumiy snapshot mavjud mijozlarni tahrirlash/o'chirish yo'li emas.
+            clean['customers'] = old_store.get('customers') or []
         protected = {}
         for key, allowed_roles in SHRINK_ALLOWED_ROLES.items():
             incoming = clean.get(key)

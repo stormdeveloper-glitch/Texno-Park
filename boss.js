@@ -38,6 +38,34 @@ const Boss = (() => {
         cache: {}
     };
 
+    function canManageStaff() {
+        return isBoss() || !!(currentUser
+            && ['admin', 'manager'].includes(currentUser.role));
+    }
+
+    function isAdminStaffView() {
+        return !!(currentUser && currentUser.role === 'admin');
+    }
+
+    function isManagerStaffView() {
+        return !!(currentUser && currentUser.role === 'manager');
+    }
+
+    function canManageStaffRow(row) {
+        if (!row) return false;
+        if (isBoss()) return String(row.role || '').toLowerCase() !== 'boss';
+        return isAdminStaffView()
+            && ['manager', 'cashier'].includes(String(row.role || '').toLowerCase())
+            && !(currentUser && (String(row.id) === String(currentUser.id)
+                || row.login === currentUser.login));
+    }
+
+    function canViewStaffSales(row) {
+        if (isManagerStaffView()) return false;
+        return isBoss() || (isAdminStaffView() && !!row
+            && ['manager', 'cashier'].includes(String(row.role || '').toLowerCase()));
+    }
+
     /* ── Yordamchilar ───────────────────────────────── */
 
     async function api(path) {
@@ -133,13 +161,25 @@ function setPeriod(value) {
     function onPageOpen(key) {
         // Davr filtrlari har bo'limda bir xil ishlaydi.
         paintPeriodChips();
+        document.querySelectorAll('[data-boss-ownpass]').forEach(button => {
+            button.hidden = isAdminStaffView() || isManagerStaffView();
+        });
         if (key === 'boss') load();
         if (key === 'bossStaff') {
             loadStaff();
             loadBranchOptions();
+            const subtitle = document.getElementById('boss-staff-subtitle');
+            if (subtitle) subtitle.textContent = isManagerStaffView()
+                ? 'Faqat biriktirilgan filialingiz kassirlari ko\'rsatiladi'
+                : 'Barcha xodimlar, reytingi va boshqaruvi';
             // Oylik maosh moduli (ilgari alohida «Xodimlar» sahifasida edi)
             // endi shu bo'lim ichida — sahifa har ochilganda qayta chiziladi.
-            if (typeof SalaryModule !== 'undefined' && typeof SalaryModule.render === 'function') {
+            const salaryModule = document.getElementById('boss-salary-module');
+            if (salaryModule) salaryModule.hidden = isAdminStaffView() || isManagerStaffView();
+            const salaryHead = document.getElementById('boss-staff-salary-head');
+            if (salaryHead) salaryHead.hidden = isAdminStaffView() || isManagerStaffView();
+            if (!isAdminStaffView() && !isManagerStaffView()
+                && typeof SalaryModule !== 'undefined' && typeof SalaryModule.render === 'function') {
                 SalaryModule.render();
             }
         }
@@ -158,9 +198,12 @@ function setPeriod(value) {
 
     /** Hisobot filtrlaridagi filial/kategoriya variantlarini to'ldiradi. */
     async function loadBranchOptions() {
-        const data = await api('/api/boss/branches?period=all');
+        const data = await api(isAdminStaffView() || isManagerStaffView()
+            ? '/api/branches' : '/api/boss/branches?period=all');
         if (!data) return;
-        const branches = data.branches || [];
+        const ownBranchId = String(currentUser && currentUser.branchId || '');
+        const branches = (data.branches || []).filter(branch =>
+            !isManagerStaffView() || String(branch.id) === ownBranchId);
         const fill = (id, emptyLabel) => {
             const sel = document.getElementById(id);
             if (!sel) return;
@@ -176,6 +219,13 @@ function setPeriod(value) {
         fill('boss-staff-branch', 'Barcha filiallar');
         fill('boss-staff-branch-m', 'Barcha filiallar');
         fill('boss-new-branch', 'Filialsiz');
+        if (isManagerStaffView()) {
+            const branchSelect = document.getElementById('boss-new-branch');
+            if (branchSelect) {
+                branchSelect.value = ownBranchId;
+                branchSelect.disabled = true;
+            }
+        }
     }
 
     /** Hisobot kategoriya filtri variantlarini to'ldiradi. */
@@ -387,7 +437,7 @@ function setPeriod(value) {
     }
 
     async function loadStaff() {
-        if (!isBoss()) return;
+        if (!canManageStaff()) return;
         const data = await api('/api/boss/staff?' + staffParams());
         if (!data) return;
         state.cache.staff = data;
@@ -537,7 +587,9 @@ function setPeriod(value) {
     }
 
     function staffRowsHtml(rows) {
-        if (!rows.length) return `<tr><td colspan="11">${emptyState('Xodim topilmadi')}</td></tr>`;
+        const restrictedView = isAdminStaffView() || isManagerStaffView();
+        const colSpan = restrictedView ? 10 : 11;
+        if (!rows.length) return `<tr><td colspan="${colSpan}">${emptyState('Xodim topilmadi')}</td></tr>`;
         return rows.map(s => {
             const status = String(s.status || 'active').toLowerCase();
             const blocked = status === 'blocked';
@@ -547,7 +599,10 @@ function setPeriod(value) {
             const me = !!(currentUser && (
                 String(s.id) === String(currentUser.id)
                 || s.login === currentUser.login));
-            const canManage = !me && !isBossRow;
+            const canManage = canManageStaffRow(s);
+            const canEdit = isBoss()
+                ? (!isBossRow || me)
+                : canManage;
             const money = Number(s.total || 0);
             return `<tr data-id="${escapeHTML(String(s.id))}">
                 <td data-label="№"><span class="boss-rank r${Math.min(3, s.rank || 99)}"
@@ -572,28 +627,29 @@ function setPeriod(value) {
                 <td data-label="Savdo summasi"><strong class="boss-money"
                     title="${fmt(money)} so'm">${fmt(money)}</strong> so'm
                     <small>o'rtacha: ${fmt(s.avgCheck || 0)}</small></td>
-                <td data-label="Oylik maosh">${salaryHtml(s.salary)}</td>
+                ${restrictedView ? '' : `<td data-label="Oylik maosh">${salaryHtml(s.salary)}</td>`}
                 <td data-label="Holat">${statusBadge(s.status)}
                     <small>${escapeHTML(staffStatusHint(s))}</small></td>
                 <td data-label="Parol">${passStateCellHtml(s)}</td>
                 <td data-label="Amallar" class="boss-actions-cell">
                     <div class="boss-actions-group" role="group"
                         aria-label="${escapeHTML(s.name || 'Xodim')} amallari">
-                    ${(!isBossRow || me) ? `<button type="button" class="boss-action-btn"
+                    ${canEdit ? `<button type="button" class="boss-action-btn"
                         data-boss-edit="${escapeHTML(String(s.id))}"
                         title="Tahrirlash" aria-label="Tahrirlash: ${escapeHTML(s.name || '')}">
                         <i class="fas fa-pen-to-square" aria-hidden="true"></i></button>` : ''}
-                    <button type="button" class="boss-action-btn" data-boss-sale="${escapeHTML(String(s.id))}"
+                    ${canViewStaffSales(s)
+                    ? `<button type="button" class="boss-action-btn" data-boss-sale="${escapeHTML(String(s.id))}"
                         title="Savdo statistikasi" aria-label="Savdo statistikasi: ${escapeHTML(s.name || '')}">
-                        <i class="fas fa-chart-line" aria-hidden="true"></i></button>
-                    ${!isBossRow ? (me ? `<button type="button" class="boss-action-btn" data-boss-ownpass=""
+                        <i class="fas fa-chart-line" aria-hidden="true"></i></button>` : ''}
+                    ${!isBossRow ? (me && !isAdminStaffView() && !isManagerStaffView() ? `<button type="button" class="boss-action-btn" data-boss-ownpass=""
                         title="O'z parolimni o'zgartirish" aria-label="O'z parolimni o'zgartirish">
                         <i class="fas fa-key" aria-hidden="true"></i></button>`
-                        : `<button type="button" class="boss-action-btn" data-boss-pass="${escapeHTML(String(s.id))}"
+                        : canManage ? `<button type="button" class="boss-action-btn" data-boss-pass="${escapeHTML(String(s.id))}"
                         title="${s.hasPassword ? "Parolni almashtirish (parol o'rnatilgan)"
                             : "Parol o'rnatish (parol hali o'rnatilmagan)"}"
                         aria-label="Parolni boshqarish: ${escapeHTML(s.name || '')}">
-                        <i class="fas fa-key" aria-hidden="true"></i></button>`) : ''}
+                        <i class="fas fa-key" aria-hidden="true"></i></button>` : '') : ''}
                     ${canManage ? `<button type="button" class="boss-action-btn ${blocked ? 'ok' : inactive ? 'ok' : 'warn'}"
                         data-boss-block="${escapeHTML(String(s.id))}"
                         title="${blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash'}"
@@ -626,7 +682,9 @@ function setPeriod(value) {
             const role = String(s.role || '').trim().toLowerCase();
             const me = !!(currentUser && (String(s.id) === String(currentUser.id)
                 || s.login === currentUser.login));
-            const canEdit = !(role === 'boss' && !me);
+            const canEdit = isBoss()
+                ? !(role === 'boss' && !me)
+                : canManageStaffRow(s);
             const initial = escapeHTML(((s.name || '?').trim())[0] || '?');
             return `<article class="bsc" data-id="${escapeHTML(String(s.id))}">
                 <div class="bsc-top">
@@ -640,14 +698,14 @@ function setPeriod(value) {
                     </div>
                     ${canEdit ? `<button type="button" class="bsc-edit-btn" data-boss-edit="${escapeHTML(String(s.id))}"
                         aria-label="Tahrirlash: ${escapeHTML(s.name || '')}" title="Tahrirlash"><i class="fas fa-pen" aria-hidden="true"></i></button>` : ''}
-                    <button type="button" class="bsc-menu-btn" data-boss-menu="${escapeHTML(String(s.id))}"
+                    ${isManagerStaffView() ? '' : `<button type="button" class="bsc-menu-btn" data-boss-menu="${escapeHTML(String(s.id))}"
                         aria-haspopup="menu" aria-expanded="false" aria-label="Boshqaruv menyusi">
-                        <i class="fas fa-ellipsis-vertical"></i></button>
+                        <i class="fas fa-ellipsis-vertical"></i></button>`}
                 </div>
                 <div class="bsc-rows">
                     <div class="bsc-row"><i class="fas fa-phone"></i><span>${escapeHTML(s.phone || '—')}</span></div>
                     <div class="bsc-row"><i class="fas fa-store"></i><span>${escapeHTML(s.branchName || '—')}</span></div>
-                    <div class="bsc-row"><i class="fas fa-money-bill-wave"></i><span>${escapeHTML(salaryLabel(s.salary))}</span></div>
+                    ${isAdminStaffView() || isManagerStaffView() ? '' : `<div class="bsc-row"><i class="fas fa-money-bill-wave"></i><span>${escapeHTML(salaryLabel(s.salary))}</span></div>`}
                     <div class="bsc-row bsc-row-pass ${s.hasPassword ? 'set' : 'unset'}">
                         <i class="fas ${s.hasPassword ? 'fa-lock' : 'fa-lock-open'}"></i>
                         <span>Parol ${s.hasPassword ? "o'rnatilgan" : "o'rnatilmagan"}</span></div>
@@ -659,7 +717,8 @@ function setPeriod(value) {
                 </div>
                 <div class="bsc-foot">
                     <span class="bsc-status ${blocked ? 'blocked' : inactive ? 'inactive' : 'active'}"><i class="fas fa-circle"></i>${blocked ? 'Bloklangan' : inactive ? 'Nofaol' : 'Faol'}</span>
-                    <button type="button" class="bsc-detail" data-boss-sale="${escapeHTML(String(s.id))}">Batafsil <i class="fas fa-chevron-right"></i></button>
+                    ${canViewStaffSales(s)
+                    ? `<button type="button" class="bsc-detail" data-boss-sale="${escapeHTML(String(s.id))}">Batafsil <i class="fas fa-chevron-right"></i></button>` : ''}
                 </div>
             </article>`;
         }).join('');
@@ -688,7 +747,7 @@ function setPeriod(value) {
                 ${field('Telefon', p.phone)}
                 ${showLogin ? field('Login identifikatori', p.login) : ''}
                 ${field('Filial', p.branchName)}
-                ${field('Oylik maosh', salaryLabel(p.salary))}
+                ${isAdminStaffView() ? '' : field('Oylik maosh', salaryLabel(p.salary))}
                 ${field('Ro\'yxatdan o\'tgan', p.createdAt)}
                 ${field('Oxirgi faollik', p.lastSeen || p.updatedAt)}
             </div>
@@ -972,7 +1031,7 @@ function setPeriod(value) {
      * Filtr: chip'dagi davr, sanalar, filial, ism qidiruvi.
      */
     async function loadStaffSalesOverview() {
-        if (!isBoss()) return;
+        if (!canManageStaff()) return;
         const box = document.getElementById('boss-sales-overview');
         if (!box) return;
         box.innerHTML = '<div class="boss-loading"><i class="fas fa-spinner fa-spin"></i>'
@@ -1003,14 +1062,22 @@ function setPeriod(value) {
                 <td data-label="Summa"><strong>${fmt(s.total || 0)}</strong> so'm</td>
                 <td data-label="O'rtacha">${fmt(s.avgCheck || 0)} so'm</td>
                 <td data-label="Amallar" class="boss-actions">
-                    <button class="btn btn-outline btn-sm"
-                        data-boss-sale="${escapeHTML(String(s.id))}">Cheklari</button>
+                    ${canViewStaffSales(s)
+                    ? `<button class="btn btn-outline btn-sm"
+                        data-boss-sale="${escapeHTML(String(s.id))}">Cheklari</button>` : ''}
                 </td></tr>`).join('')
                 : `<tr><td colspan="9">${emptyState('Xodim topilmadi')}</td></tr>`}
             </tbody></table></div></div>`;
     }
 
     async function loadStaffSales(staffId) {
+        const target = findStaffAnywhere(staffId);
+        if (!canViewStaffSales(target)) {
+            showNotif('error', 'Ruxsat yo\'q', isManagerStaffView()
+                ? 'Menejer xodimlar savdosi tafsilotlarini ko\'ra olmaydi'
+                : 'Bu xodimning savdo tafsilotlarini ko\'rish mumkin emas');
+            return;
+        }
         state.activeStaffId = staffId;
         const box = document.getElementById('boss-sales-box');
         if (!box) return;
@@ -1455,7 +1522,12 @@ function setPeriod(value) {
     /** Yangi xodim qo'shish oynasini ochadi. Maosh modulidan ham
         chaqiriladi — xodim qo'shish FAQAT shu yagona forma orqali. */
     function openAddStaff() {
-        if (!isBoss()) return;
+        if (!canManageStaff()) return;
+        if (isManagerStaffView() && !String(currentUser.branchId || '').trim()) {
+            showNotif('error', 'Filial biriktirilmagan',
+                'Xodim qo\'shishdan oldin rahbariyat menejerga filial biriktirishi kerak');
+            return;
+        }
         resetNewStaffForm();
         openModal('bossStaffModal');
     }
@@ -1463,7 +1535,8 @@ function setPeriod(value) {
     /** Xodim ma'lumotlari (jumladan oylik maosh) o'zgargach, maosh rejasini
         ham yangilaydi — ikkala ko'rinish bir xil manbadan bo'lib qolsin. */
     function refreshSalaryPlan() {
-        if (typeof SalaryModule !== 'undefined' && typeof SalaryModule.render === 'function') {
+        if (isBoss() && typeof SalaryModule !== 'undefined'
+            && typeof SalaryModule.render === 'function') {
             SalaryModule.render();
         }
     }
@@ -1505,11 +1578,28 @@ function setPeriod(value) {
         const pw = document.getElementById('boss-new-password');
         if (pw) pw.setAttribute('placeholder', 'Kamida 6 belgi');
         const roleSel = document.getElementById('boss-new-role');
-        if (roleSel) { roleSel.disabled = false; roleSel.value = 'cashier'; }
+        if (roleSel) {
+            roleSel.disabled = false;
+            roleSel.value = 'cashier';
+            roleSel.querySelectorAll('option').forEach(option => {
+                option.hidden = isAdminStaffView() && option.value === 'admin'
+                    || isManagerStaffView() && option.value !== 'cashier';
+            });
+            roleSel.disabled = isManagerStaffView();
+        }
+        const salaryGroup = document.querySelector('#boss-new-salary')?.closest('.boss-salary-group');
+        if (salaryGroup) salaryGroup.hidden = isAdminStaffView() || isManagerStaffView();
         const statusSel = document.getElementById('boss-new-status');
-        if (statusSel) { statusSel.disabled = false; statusSel.value = 'active'; }
+        if (statusSel) {
+            statusSel.disabled = isManagerStaffView();
+            statusSel.value = 'active';
+        }
         const branchSel = document.getElementById('boss-new-branch');
-        if (branchSel) branchSel.value = '';
+        if (branchSel) {
+            branchSel.value = isManagerStaffView()
+                ? String(currentUser.branchId || '') : '';
+            branchSel.disabled = isManagerStaffView();
+        }
         const saveBtn = document.getElementById('boss-new-save');
         if (saveBtn) {
             saveBtn.hidden = false;
@@ -1611,10 +1701,14 @@ function setPeriod(value) {
      * mustaqil qabul qiladi — yangi endpoint yaratilmaydi).
      */
     async function openEditStaff(id) {
-        if (!isBoss()) return;
+        if (!canManageStaff()) return;
         const row = findStaffRow(id);
         if (!row) {
             showNotif('error', 'Xodim topilmadi', 'Ro\'yxatni yangilang va qayta urinib ko\'ring');
+            return;
+        }
+        if (!isBoss() && !canManageStaffRow(row)) {
+            showNotif('error', 'Ruxsat yo\'q', 'Admin faqat Menejer va Kassa xodimlarini tahrirlay oladi');
             return;
         }
         // Filial variantlari hali yuklanmagan bo'lsa — shu yerda to'ldiriladi.
@@ -1660,9 +1754,13 @@ function setPeriod(value) {
         if (roleSel) {
             // Boshliq roli tayinlanmaydi. Boshliq qatorida select o'chiriladi
             // va joriy rol vizual ko'rsatiladi (patch'ga yuborilmaydi).
-            roleSel.disabled = isBossRow;
+            const adminRole = roleSel.querySelector('option[value="admin"]');
+            if (adminRole) adminRole.hidden = isAdminStaffView();
+            roleSel.disabled = isBossRow || isAdminStaffView();
             roleSel.value = isBossRow ? 'boss' : state.editingStaffOrig.role;
         }
+        const salaryGroup = document.querySelector('#boss-new-salary')?.closest('.boss-salary-group');
+        if (salaryGroup) salaryGroup.hidden = isAdminStaffView();
         const statusSel = document.getElementById('boss-new-status');
         if (statusSel) {
             // O'zini bloklash va Boshliq holatini o'zgartirish serverda ham
@@ -1720,7 +1818,7 @@ function setPeriod(value) {
     }
 
     async function createStaff() {
-        if (!isBoss()) return;
+        if (!canManageStaff()) return;
         clearStaffFormError();
         const name = (document.getElementById('boss-new-name')?.value || '').trim();
         const phoneRaw = (document.getElementById('boss-new-phone')?.value || '').trim();
@@ -1743,7 +1841,10 @@ function setPeriod(value) {
                 'boss-new-phone');
             return;
         }
-        if (!['cashier', 'manager', 'admin'].includes(role)
+        const allowedRoles = isManagerStaffView() ? ['cashier']
+            : isAdminStaffView() ? ['cashier', 'manager']
+                : ['cashier', 'manager', 'admin'];
+        if (!allowedRoles.includes(role)
             && !(state.editingStaffId && role === 'boss')) {
             staffFormError('Rol noto\'g\'ri tanlangan', 'boss-new-role');
             return;
@@ -1753,10 +1854,13 @@ function setPeriod(value) {
             return;
         }
         // ── Oylik maosh: majburiy, butun son (so'm) ────────────────────
-        const salaryParsed = parseSalaryInput(salaryRaw);
+        const noSalaryAccess = isAdminStaffView() || isManagerStaffView();
+        const salaryParsed = noSalaryAccess ? { empty: true } : parseSalaryInput(salaryRaw);
         const origSalary = state.editingStaffId && state.editingStaffOrig
             ? state.editingStaffOrig.salary : null;
-        if (state.editingStaffId) {
+        if (noSalaryAccess) {
+            // Admin va Menejer uchun maosh/payroll maydonlari backendda yopiq.
+        } else if (state.editingStaffId) {
             // Tahrirda mavjud maoshni bo'sh maydon bilan o'chirib bo'lmaydi;
             // belgilanmagan bo'lsa — bo'sh qoldirish mumkin (o'zgarish yo'q).
             if (salaryParsed.empty && origSalary !== null) {
@@ -1786,7 +1890,7 @@ function setPeriod(value) {
             const statusSel = document.getElementById('boss-new-status');
             if (statusSel && !statusSel.disabled && status !== (orig.status || '')) patch.status = status;
             if (branch !== (orig.branch || '')) patch.branchId = branch;
-            if (!salaryParsed.empty && salaryParsed.value !== origSalary) {
+            if (!noSalaryAccess && !salaryParsed.empty && salaryParsed.value !== origSalary) {
                 patch.salary = salaryParsed.value;
             }
             if (password) {
@@ -2393,15 +2497,17 @@ function setPeriod(value) {
         const blocked = status === 'blocked';
         const inactive = status === 'inactive';
         const bossRole = String(row.role || '').toLowerCase() === 'boss';
-        const items = [
-            ['data-boss-sale', 'fa-chart-line', 'Savdo statistikasi', '']
-        ];
-        if (!bossRole || me) {
+        const canManage = canManageStaffRow(row);
+        const items = [];
+        if (canViewStaffSales(row)) {
+        items.push(['data-boss-sale', 'fa-chart-line', 'Savdo statistikasi', '']);
+        }
+        if (isBoss() ? (!bossRole || me) : canManage) {
             items.unshift(['data-boss-edit', 'fa-pen-to-square', 'Tahrirlash', '']);
         }
-        if (me) {
+        if (me && !isAdminStaffView() && !isManagerStaffView()) {
             items.push(['data-boss-ownpass', 'fa-key', 'O\'z parolimni o\'zgartirish', '']);
-        } else if (!bossRole) {
+        } else if (canManage) {
             items.push(['data-boss-pass', 'fa-key',
                 row.hasPassword ? 'Parolni almashtirish' : "Parol o'rnatish", '']);
             items.push(['data-boss-block', blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban',
@@ -2452,6 +2558,17 @@ function setPeriod(value) {
      */
     function openStaffSales(staffId) {
         if (!staffId) return;
+        if (isManagerStaffView()) {
+            showNotif('error', 'Ruxsat yo\'q', 'Menejer xodimlar savdosi tafsilotlarini ko\'ra olmaydi');
+            return;
+        }
+        const target = findStaffAnywhere(staffId);
+        if (!canViewStaffSales(target)) {
+            showNotif('error', 'Ruxsat yo\'q', isManagerStaffView()
+                ? 'Menejer xodimlar savdosi tafsilotlarini ko\'ra olmaydi'
+                : 'Bu xodimning savdo tafsilotlarini ko\'rish mumkin emas');
+            return;
+        }
         if (currentBossPage() !== 'bossStaffSales') {
             goTo('page-bossStaffSales', document.getElementById('nav-bossStaff'));
         }

@@ -835,10 +835,13 @@ function normalizeCustomer(c) {
         name: cleanText(c?.name, 120),
         phone: cleanText(c?.phone, 40),
         email: cleanText(c?.email, 120),
+        addr: cleanText(c?.addr, 180),
+        bdate: cleanText(c?.bdate, 10),
         orders: Math.max(0, Number(c?.orders) || 0),
         total: Math.max(0, Number(c?.total) || 0),
         bonus: Math.max(0, Number(c?.bonus) || 0),
         status: ['active', 'vip', 'inactive'].includes(c?.status) ? c.status : 'active',
+        createdAt: cleanText(c?.createdAt, 40),
     };
 }
 
@@ -2741,6 +2744,12 @@ function canAccessPage(pageId) {
     if (!currentUser) return pageId === 'page-shop';
     // Boshliq eng yuqori rol — barcha bo'limlarga kira oladi.
     if (isBoss()) return true;
+    // Admin xodimlar ro'yxatidan savdo tafsilotiga o'tadi; alohida menyu
+    // bandi yo'q, lekin shu sahifa umumiy staff modulining bir qismidir.
+    if (normalizeRole(currentUser.role) === 'admin'
+        && pageId === 'page-bossStaffSales') return true;
+    if (normalizeRole(currentUser.role) === 'manager'
+        && pageId === 'page-bossStaff') return true;
     const nav = Array.from(document.querySelectorAll('.nav-item')).find(item => {
         const handler = item.getAttribute('onclick') || '';
         return handler.includes(`'${pageId}'`) || handler.includes(`"${pageId}"`)
@@ -5770,13 +5779,25 @@ async function deleteProduct(id) {
 // CUSTOMERS
 // ============================================================
 let customerFilter = '';
+let customerSaveInFlight = false;
+let customerLastAttemptAt = 0;
+let lastCustomerError = { key: '', at: 0 };
 function filterCustomers(q) { customerFilter = q; renderCustomers(); }
 const debouncedFilterCustomers = debounce(filterCustomers, 300);
+
+function showCustomerError(title, message) {
+    const key = `${title}\0${message}`;
+    const now = Date.now();
+    if (lastCustomerError.key === key && now - lastCustomerError.at < 1200) return;
+    lastCustomerError = { key, at: now };
+    showNotif('error', title, message);
+}
 
 function renderCustomers() {
     const list = customers.filter(c =>
         !customerFilter || c.name.toLowerCase().includes(customerFilter.toLowerCase()) || c.phone.includes(customerFilter)
     );
+    const canDelete = normalizeRole(currentUser?.role) !== 'manager';
 
     // Stat kartalar — faqat haqiqiy mijozlar sonidan
     const actCustomers = customers.filter(c => c.status === 'active' || c.status === 'vip');
@@ -5837,7 +5858,7 @@ function renderCustomers() {
     <td><span class="badge ${c.status === 'vip' ? 'badge-yellow' : c.status === 'active' ? 'badge-green' : 'badge-red'}">${c.status === 'vip' ? '👑 VIP' : c.status === 'active' ? 'Faol' : 'Nofaol'}</span></td>
     <td>
       <button class="btn btn-outline btn-sm" onclick='sendSMSTo(${JSON.stringify(c.phone)}, ${JSON.stringify(c.name)})'><i class="fas fa-sms"></i></button>
-      <button class="btn btn-outline btn-sm" style="margin-left:6px" onclick="deleteCustomer(${c.id})"><i class="fas fa-trash"></i></button>
+      ${canDelete ? `<button class="btn btn-outline btn-sm" style="margin-left:6px" onclick="deleteCustomer(${c.id})"><i class="fas fa-trash"></i></button>` : ''}
     </td>
   </tr>`);
         const stTone = c.status === 'vip' ? 'tone-yellow' : c.status === 'active' ? 'tone-green' : 'tone-red';
@@ -5876,24 +5897,82 @@ function updateCustomersBadge() {
 }
 
 function openCustomerModal() {
-    if (!requireRole('admin', 'cashier')) return;
+    if (!requireRole('admin', 'manager', 'cashier')) return;
     openModal('customerModal');
 }
-function saveCustomer() {
-    if (!requireRole('admin', 'cashier')) return;
+async function saveCustomer() {
+    if (!requireRole('admin', 'manager', 'cashier') || customerSaveInFlight) return;
+    const now = Date.now();
+    if (now - customerLastAttemptAt < 400) return;
+    customerLastAttemptAt = now;
+    const saveButton = document.querySelector('#customerModal .btn-primary');
+    customerSaveInFlight = true;
+    if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.setAttribute('aria-busy', 'true');
+    }
+    const releaseSaveLock = () => {
+        customerSaveInFlight = false;
+        if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.removeAttribute('aria-busy');
+        }
+    };
+
     const name = validateSafeInput('Mijoz ismi', document.getElementById('c-name').value, 120);
     const phone = validateSafeInput('Telefon', document.getElementById('c-phone').value, 40);
     const email = validateSafeInput('Email', document.getElementById('c-email').value, 120);
     const addr = validateSafeInput('Manzil', document.getElementById('c-addr')?.value || '', 180);
-    if (name === null || phone === null || email === null || addr === null) return;
-    if (!name || !phone) { playError(); showNotif('error', 'Xato!', 'Ism va telefon majburiy'); return; }
-    customers.push({ id: Date.now(), name, phone, email, addr, orders: 0, total: 0, bonus: 0, status: 'active' });
-    saveToStorage();
-    addLog('Mijoz', `"${name}" qo'shildi`);
-    showNotif('success', 'Qo\'shildi!', name + ' mijoz qo\'shildi');
-    closeModal('customerModal');
-    renderCustomers();
-    updateCustomerDropdown();
+    const bdate = document.getElementById('c-bdate')?.value || '';
+    if (name === null || phone === null || email === null || addr === null) {
+        releaseSaveLock();
+        return;
+    }
+    if (!name || !phone) {
+        playError();
+        showCustomerError('Xato!', 'Ism va telefon majburiy');
+        releaseSaveLock();
+        return;
+    }
+
+    try {
+        const response = await fetchWithTimeout('/api/customers', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ name, phone, email, addr, bdate })
+        }, API_TIMEOUT_MS);
+        const result = await response.json().catch(() => null);
+        if (response.status === 401) {
+            handleSessionExpired();
+            return;
+        }
+        if (!response.ok || result?.status !== 'success' || !result.customer) {
+            const title = response.status === 403 ? 'Ruxsat yo\'q!'
+                : response.status === 409 ? 'Mijoz mavjud'
+                    : 'Saqlanmadi';
+            showCustomerError(title, result?.message || 'Mijozni saqlashda xatolik yuz berdi');
+            return;
+        }
+        const customer = normalizeCustomer(result.customer);
+        if (!customer.id || !customer.name || !customer.phone) {
+            showCustomerError('Saqlanmadi', 'Server mijoz ma\'lumotlarini tasdiqlamadi');
+            return;
+        }
+        customers.push(customer);
+        saveToStorage(false);
+        addLog('Mijoz', `"${customer.name}" qo'shildi`, false);
+        closeModal('customerModal');
+        renderCustomers();
+        updateCustomerDropdown();
+        showNotif('success', 'Qo\'shildi!', customer.name + ' mijoz qo\'shildi');
+    } catch (error) {
+        showCustomerError('Saqlanmadi',
+            error?.name === 'AbortError'
+                ? 'Server javob bermadi — qayta urinib ko\'ring'
+                : error?.message || 'Serverga ulanib bo\'lmadi');
+    } finally {
+        releaseSaveLock();
+    }
 }
 
 function deleteCustomer(id) {

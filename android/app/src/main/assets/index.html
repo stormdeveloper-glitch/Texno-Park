@@ -130,6 +130,11 @@
           <i class="fas fa-map-location-dot"></i><span>Filiallar</span>
           <span class="nav-badge" id="navBranchesBadge">0</span>
         </div>
+        <div class="nav-item" onclick="goTo('page-bossStaff',this)" id="nav-bossStaff"
+          data-role="admin,boss,manager">
+          <i class="fas fa-users-gear"></i><span>Xodimlar</span>
+          <span class="nav-badge" id="navBossStaffBadge">0</span>
+        </div>
         <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
           <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
@@ -173,10 +178,6 @@
         <div class="nav-section boss-only" data-role="boss"><span class="nav-section-label">Boshliq</span></div>
         <div class="nav-item boss-only" onclick="goTo('page-boss',this)" id="nav-boss" data-role="boss">
           <i class="fas fa-crown"></i><span>Boshliq Dashboard</span>
-        </div>
-        <div class="nav-item boss-only" onclick="goTo('page-bossStaff',this)" id="nav-bossStaff" data-role="boss">
-          <i class="fas fa-users-gear"></i><span>Xodimlar</span>
-          <span class="nav-badge" id="navBossStaffBadge">0</span>
         </div>
         <div class="nav-item boss-only" onclick="goTo('page-bossStaffSales',this)" id="nav-bossStaffSales"
           data-role="boss">
@@ -1329,7 +1330,7 @@
         <div class="boss-page-head">
           <div>
             <h2><i class="fas fa-users-gear"></i> Xodimlar nazorati</h2>
-            <p>Barcha xodimlar, reytingi va boshqaruvi</p>
+            <p id="boss-staff-subtitle">Barcha xodimlar, reytingi va boshqaruvi</p>
           </div>
           <div class="boss-period" id="boss-staff-period"></div>
         </div>
@@ -1439,7 +1440,7 @@
                   <th>Filial</th>
                   <th>Sotuvlar</th>
                   <th>Savdo summasi</th>
-                  <th>Oylik maosh</th>
+                  <th id="boss-staff-salary-head">Oylik maosh</th>
                   <th>Holat</th>
                   <th>Parol</th>
                   <th>Amallar</th>
@@ -1455,6 +1456,7 @@
         <!-- ===== OYLIK MAOSH MODULI =====
              Ilgari alohida «Xodimlar» sahifasida edi — endi yagona joy:
              Boshliq → Xodimlar. Maosh yozuvlari, to'lovlar va tarix shu yerda. -->
+        <div id="boss-salary-module">
         <div class="boss-page-head" style="margin-top:26px">
           <div>
             <h2><i class="fas fa-money-bill-wave"></i> Oylik maoshlar</h2>
@@ -1546,6 +1548,7 @@
               <div id="salary-recent-list" style="padding:0 16px;max-height:280px;overflow-y:auto"></div>
             </div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -3887,7 +3890,7 @@
             <select class="form-control" id="boss-new-branch">
               <option value="">Filialsiz</option>
             </select></label>
-          <label class="form-group"><span>Oylik maosh (so'm) <b>*</b></span>
+          <label class="form-group boss-salary-group"><span>Oylik maosh (so'm) <b>*</b></span>
             <div class="boss-money-field">
               <input type="text" class="form-control" id="boss-new-salary" name="salary"
                 inputmode="numeric" autocomplete="off" placeholder="Masalan: 4 000 000" maxlength="17">
