@@ -758,16 +758,25 @@ db_manager.init_db()
 STAFF_ROLES = ('boss', 'admin', 'manager', 'cashier')
 ROLE_RANK = {'boss': 40, 'admin': 30, 'manager': 20, 'cashier': 10}
 # Eski kodda `customer` roli ham bor (ommaviy do'kon uchun) — u ichki tizimga kirmaydi.
-_RANK_ALIASES = {'rahbariyat': 40, 'boss': 40, 'admin': 30, 'administrator': 30,
-                 'manager': 20, 'menejer': 20, 'cashier': 10, 'kassa': 10}
+# Eski/alternativ rol nomlari yagona manbadan kanonik kalitga keltiriladi:
+# bazada `Administrator`, `rahbariyat`, `menejer` kabi qiymatlar qolgan bo'lsa
+# ham RBAC, sidebar va /api/data bir xil ishlaydi.
+ROLE_ALIASES = {'rahbariyat': 'boss', 'boshliq': 'boss', 'boshlq': 'boss',
+                'administrator': 'admin', 'menejer': 'manager', 'kassa': 'cashier'}
+
+
+def canonical_role(role):
+    """Rolni kanonik kalitga keltiradi (noma'lum rol → '')."""
+    key = str(role or '').strip().lower()
+    key = ROLE_ALIASES.get(key, key)
+    # `customer` — ommaviy do'kon roli; ichki RBAC'dan o'tmaydi (rank 0),
+    # lekin tokenda saqlanadi — aks holda mijoz rejimi noto'g'ri ko'rinadi.
+    return key if (key in ROLE_RANK or key == 'customer') else ''
 
 
 def role_rank(role):
     """Rolning iyerarxiya darajasini qaytaradi (noma'lum rol → 0)."""
-    key = str(role or '').strip().lower()
-    if key in ROLE_RANK:
-        return ROLE_RANK[key]
-    return _RANK_ALIASES.get(key, 0)
+    return ROLE_RANK.get(canonical_role(role), 0)
 
 
 def role_contains(allowed, role):
@@ -1278,6 +1287,13 @@ def _ensure_staff_fields(staff):
         if not item.get('status'):
             item['status'] = 'active'
             changed = True
+        # Eski bazalarda rol `Administrator`, `rahbariyat`, `menejer` yoki
+        # bo'sh joy bilan yozilgan bo'lishi mumkin. Bir marta kanoniklashtiramiz
+        # — aks holda server ruxsat beradi, lekin /api/data va sidebar bo'sh qoladi.
+        canon_role = canonical_role(item.get('role'))
+        if canon_role and canon_role != str(item.get('role') or ''):
+            item['role'] = canon_role
+            changed = True
         login_key = str(item.get('login', '')).strip().lower()
         default_phone = _PHONE_BY_LOGIN.get(login_key)
         if default_phone and not normalize_phone(item.get('phone')) and default_phone not in used_phones:
@@ -1389,7 +1405,7 @@ def _ensure_boss_account_locked():
     except Exception as e:
         print(f'[SECURITY] Boshliq akountini saqlab bo\'lmadi: {e}')
         return None
-    print(f'[SECURITY] Boshliq akounti yaratildi (telefon: {BOSS_PHONE}, rol: boshlq).')
+    print(f'[SECURITY] Boshliq akounti yaratildi (telefon: {BOSS_PHONE}, rol: boss).')
     return account
 
 
@@ -1558,7 +1574,7 @@ def create_token(user):
     payload = {
         'sub': user.get('login'),
         'name': user.get('name'),
-        'role': user.get('role'),
+        'role': canonical_role(user.get('role')),
         'mustChange': bool(user.get('mustChange')),
         'jti': secrets.token_hex(8),
         'exp': int(time.time()) + TOKEN_TTL_HOURS * 3600,
@@ -1752,20 +1768,11 @@ def current_staff():
     # Rol/ism/ID ni bazadagi joriy qiymatlar bilan yangilaymiz. Shu tufayli
     # rol pasaytirilganda eski token bilan yuqori huquq saqlanib qolmaydi.
     payload['sub'] = str(user.get('login') or login)
-    payload['role'] = str(user.get('role') or payload.get('role') or '')
+    payload['role'] = canonical_role(user.get('role') or payload.get('role'))
     payload['name'] = str(user.get('name') or payload.get('name') or '')
     payload['id'] = user.get('id')
     payload['mustChange'] = bool(user.get('mustChange'))
     return payload
-
-
-# Majburiy parol almashtirish rejimida ham ruxsat etiladigan yo'llar.
-PASSWORD_CHANGE_ALLOWED_PATHS = {
-    '/api/auth/change-password',
-    '/api/auth/session',
-    '/api/auth/logout',
-    '/api/boss/password',
-}
 
 
 def require_staff(*roles):
@@ -1788,12 +1795,6 @@ def require_staff(*roles):
                                     payload.get('name', '—'))
                 return jsonify({'status': 'error', 'code': 'forbidden',
                                 'message': 'Bu amal uchun huquq yetarli emas'}), 403
-            # Standart/zaif parol aniqlansa, boshqa API'lar yopiladi: foydalanuvchi
-            # avval parolni almashtirishi shart (aks holda default parol bilan
-            # butun tizimdan foydalanish mumkin bo'lib qoladi).
-            if payload.get('mustChange') and request.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
-                return jsonify({'status': 'error', 'code': 'password_change_required',
-                                'message': 'Xavfsizlik uchun avval parolni almashtiring'}), 403
             request.staff = payload  # type: ignore[attr-defined]
             return fn(*args, **kwargs)
         return wrapper
@@ -1883,7 +1884,7 @@ def auth_login():
         'expiresIn': TOKEN_TTL_HOURS * 3600,
         'mustChangePassword': bool(user.get('mustChange')),
         'user': {'login': user.get('login'), 'name': user.get('name'),
-                 'role': user.get('role'), 'phone': user.get('phone'),
+                 'role': canonical_role(user.get('role')), 'phone': user.get('phone'),
                  'branchId': str(user.get('branchId') or '')[:40]},
     })
 
@@ -1895,7 +1896,8 @@ def auth_session():
         return jsonify({'status': 'error', 'code': 'unauthorized'}), 401
     me = find_staff(str(payload.get('sub') or '')) or find_staff_by_phone(payload.get('sub'))
     return jsonify({'status': 'success', 'user': {
-        'login': payload.get('sub'), 'name': payload.get('name'), 'role': payload.get('role'),
+        'login': payload.get('sub'), 'name': payload.get('name'),
+        'role': canonical_role(payload.get('role')),
         'phone': (me or {}).get('phone', ''),
         'branchId': str((me or {}).get('branchId') or '')[:40],
     }, 'exp': payload.get('exp')})
@@ -4169,7 +4171,7 @@ def client_data_snapshot(role=''):
     Kassir/menejer — faqat o'z ishiga kerakli operatsion kalitlar.
     """
     data = db_manager.get_all() or {}
-    role_key = str(role or '').strip().lower()
+    role_key = canonical_role(role)
     if role_key in ('boss', 'admin'):
         return {k: v for k, v in data.items() if k not in PRIVATE_DATA_KEYS}
     allowed = DATA_SCOPE_BY_ROLE.get(role_key, set())
