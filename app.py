@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover
 import traceback
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from flask import Flask, request, jsonify, send_from_directory, redirect, abort
 from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
@@ -793,6 +793,12 @@ _AUTH_SECRET = ''
 _login_attempts = {}
 _login_lock = threading.Lock()
 
+# Butun holat (products/sales va h.k.) JSON blob sifatida saqlanadi, ya'ni
+# har bir yozuv — bu read-modify-write. Ikki parallel so'rov (masalan, ikki
+# kassir) bir-birining qoldiq o'zgarishini bosib ketishi (lost update) yoki
+# bir savdo ikki marta kamayishi mumkin. Shu qulf yozuvlarni ketma-ketlashtiradi.
+_store_write_lock = threading.RLock()
+
 
 def _first_env(*names):
     """Bir nechta muhit o'zgaruvchilaridagi birinchi to'ldirilgan qiymatni qaytaradi."""
@@ -1278,6 +1284,12 @@ def _ensure_staff_fields(staff):
         if not item.get('status'):
             item['status'] = 'active'
             changed = True
+        # Mavjud maosh qiymati bo'lsa — butun songa keltiramiz (xavfsiz migratsiya).
+        if 'salary' in item and item.get('salary') is not None:
+            amount, salary_error = parse_staff_salary(item.get('salary'))
+            if not salary_error and amount != item.get('salary'):
+                item['salary'] = amount
+                changed = True
         login_key = str(item.get('login', '')).strip().lower()
         default_phone = _PHONE_BY_LOGIN.get(login_key)
         if default_phone and not normalize_phone(item.get('phone')) and default_phone not in used_phones:
@@ -1518,6 +1530,21 @@ def find_staff_by_phone(phone):
                 and not is_legacy_alias(user, staff)):
             return user
     return None
+
+
+def _staff_phone_in_use(staff, phone, exclude_id=None):
+    """Faol telefonni eski xodim yozuvlari va login aliaslari bilan solishtiradi."""
+    key = normalize_phone(phone)
+    if not key:
+        return False
+    for user in staff:
+        if not isinstance(user, dict):
+            continue
+        if exclude_id is not None and str(user.get('id')) == str(exclude_id):
+            continue
+        if phones_match(user.get('phone'), key) or phones_match(user.get('login'), key):
+            return True
+    return False
 
 
 def server_security_log(event, level, message, user='—'):
@@ -2203,6 +2230,35 @@ def audit_log(action, target='', detail='', actor=''):
         print(f'[AUDIT-LOG-ERROR] {e}')
 
 
+def record_staff_salary_change(staff_id, staff_name, old_salary, new_salary,
+                               actor='', note=''):
+    """Oylik maosh o'zgarishini tarixga yozadi (staffSalaryHistory).
+
+    `old_salary` / `new_salary` — butun so'm yoki None ("Belgilanmagan").
+    Yozuv yangidan eskiga tartibda saqlanadi; tarix chegarasi 20000 ta.
+    """
+    try:
+        store = db_manager.get_all() or {}
+        history = store.get('staffSalaryHistory')
+        if not isinstance(history, list):
+            history = []
+        now = datetime.now()
+        history.insert(0, {
+            'id': uuid.uuid4().hex[:12],
+            'staffId': staff_id,
+            'staffName': str(staff_name or '')[:120],
+            'oldSalary': old_salary,
+            'newSalary': new_salary,
+            'effectiveDate': now.strftime('%Y-%m-%d'),
+            'changedAt': now.strftime('%d.%m.%Y %H:%M:%S'),
+            'changedBy': str(actor or '')[:120],
+            'note': str(note or '')[:200],
+        })
+        db_manager.save_keys({'staffSalaryHistory': history[:20000]})
+    except Exception as e:
+        print(f'[BOSS] Maosh tarixini saqlab bo\'lmadi: {e}')
+
+
 def _num(value, default=0.0):
     """Xavfsiz raqamga aylantirish (None/NaN/noto'g'ri satr → default)."""
     try:
@@ -2504,6 +2560,105 @@ def unique_staff(staff):
     return result
 
 
+# ── OYLIK MAOSH (BELGILANGAN ISH HAQI) ────────────────────────────
+# Bu qiymat xodimga BELGILANGAN oylik maosh (butun so'm). Haqiqiy
+# to'lovlar bilan aralashtirilmaydi: to'lovlar `salaryRecords` /
+# `salaryHistory` kalitlarida alohida yuritiladi.
+STAFF_SALARY_MAX = 999_999_999_999
+
+
+def parse_staff_salary(value, required=False):
+    """Oylik maoshni butun so'mga aylantiradi va tekshiradi.
+
+    Qabul qilinadi: 4000000, "4 000 000", "4,000,000", "4.000.000",
+    "4 000 000 so'm". Manfiy, kasr va noaniq format rad etiladi.
+    Qaytaradi: (amount|None, error|None). `required=True` va qiymat bo'sh
+    bo'lsa xato qaytaradi.
+    """
+    if isinstance(value, bool):
+        return None, 'Oylik maosh noto\'g\'ri formatda'
+    if value is None:
+        if required:
+            return None, 'Oylik maosh kiritilishi shart'
+        return None, None
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and not value.is_integer():
+            return None, 'Oylik maosh butun so\'mda bo\'lishi kerak'
+        amount = int(value)
+    else:
+        text = str(value).strip()
+        if not text:
+            if required:
+                return None, 'Oylik maosh kiritilishi shart'
+            return None, None
+        # Valyuta birligi va bo'shliqlarni olib tashlaymiz.
+        text = re.sub(r'(?i)\s*(so[\'`ʻ‘’]?m|sum|сўм)\s*$', '', text).strip()
+        text = re.sub(r'[\s\u00a0\u202f\'’‘]', '', text)
+        # 4.000.000 / 4,000,000 ko'rinishidagi minglik ajratgichlar.
+        if re.fullmatch(r'\d{1,3}(?:[.,]\d{3})+', text):
+            text = re.sub(r'[.,]', '', text)
+        if not re.fullmatch(r'\d+', text):
+            return None, 'Oylik maosh faqat raqamlardan iborat bo\'lishi kerak'
+        amount = int(text)
+    if amount < 0:
+        return None, 'Oylik maosh manfiy bo\'lishi mumkin emas'
+    if amount > STAFF_SALARY_MAX:
+        return None, 'Oylik maosh juda katta'
+    return amount, None
+
+
+def _staff_salary_value(user):
+    """Xodim yozuvidagi maoshni int (so'm) sifatida qaytaradi.
+
+    Maydon umuman yo'q yoki `null` bo'lsa — None ("Belgilanmagan").
+    0 esa haqiqiy qiymat sifatida qaytariladi.
+    """
+    if not isinstance(user, dict) or 'salary' not in user:
+        return None
+    amount, error = parse_staff_salary(user.get('salary'))
+    if error or amount is None:
+        return None
+    return amount
+
+
+def _staff_salary_for_period(user, salary_history, month):
+    """Tanlangan oy uchun ID bo'yicha maosh tarixidan tegishli qiymatni oladi.
+
+    Oylik o'zgarishlari oy ichida kunma-kun taqsimlanmaydi: davr ichida amal
+    qilgan oxirgi qiymat qo'llanadi. Tarix bo'lmagan eski yozuvlarda joriy
+    `salary` qiymati saqlanadi.
+    """
+    staff_id = int(_num(user.get('id'), 0))
+    if staff_id <= 0:
+        return _staff_salary_value(user)
+    year, month_number = int(month[:4]), int(month[5:7])
+    next_month = date(year + (month_number == 12), month_number % 12 + 1, 1)
+    events = []
+    for record in salary_history:
+        if not isinstance(record, dict) or int(_num(record.get('staffId'), 0)) != staff_id:
+            continue
+        effective_raw = str(record.get('effectiveDate') or '').strip()
+        try:
+            effective = date.fromisoformat(effective_raw)
+        except ValueError:
+            continue
+        try:
+            changed = datetime.strptime(
+                str(record.get('changedAt') or ''), '%d.%m.%Y %H:%M:%S')
+        except ValueError:
+            changed = datetime.min
+        events.append((effective, changed, record))
+    events.sort(key=lambda event: (event[0], event[1]))
+
+    period_events = [event for event in events if event[0] < next_month]
+    if period_events:
+        return parse_staff_salary(period_events[-1][2].get('newSalary'))[0]
+    future_events = [event for event in events if event[0] >= next_month]
+    if future_events:
+        return parse_staff_salary(future_events[0][2].get('oldSalary'))[0]
+    return _staff_salary_value(user)
+
+
 def staff_public_view(user, stats=None):
     """Xodim yozuvini ochiq maydonlarga aylantiradi (parol/xash YO'Q)."""
     stats = stats or {}
@@ -2516,6 +2671,13 @@ def staff_public_view(user, stats=None):
         'roleRank': role_rank(user.get('role')),
         'status': str(user.get('status') or 'active')[:30],
         'branchId': str(user.get('branchId') or '')[:40],
+        # Belgilangan oylik maosh (so'm). None = "Belgilanmagan".
+        'salary': _staff_salary_value(user),
+        # Oylik to'lov kuni (1..28) va to'lov usuli — maosh rejasi uchun.
+        'salaryPayDay': _salary_pay_day(user),
+        'salaryMethod': _salary_method(user),
+        'salaryChangedAt': str(user.get('salaryChangedAt') or '')[:30],
+        'salaryChangedBy': str(user.get('salaryChangedBy') or '')[:120],
         'mustChange': bool(user.get('mustChange')),
         # Parolning O'ZI hech qachon qaytarilmaydi — faqat mavjudligi.
         'hasPassword': bool(str(user.get('passHash') or '')),
@@ -2950,16 +3112,9 @@ def boss_staff_list():
             status = 'inactive'
         status_counts[status] += 1
 
-    # Oylik maosh: frontend'dagi SalaryModule yozuvlari (salaryRecords)
-    # ism bo'yicha moslashtiriladi — xodimlar jadvalida ko'rinadi.
-    salary_by_name = {}
-    for rec in (store.get('salaryRecords') or []):
-        if not isinstance(rec, dict):
-            continue
-        name_key = str(rec.get('name') or '').strip().lower()
-        amount = _num(rec.get('salary'))
-        if name_key and amount:
-            salary_by_name[name_key] = amount
+    # Oylik maosh endi xodim yozuvining o'zida (`salary`) saqlanadi.
+    # Ilgari ism bo'yicha `salaryRecords` dan olinardi — bu bir xil ismli
+    # xodimlarda maoshni noto'g'ri bog'lash xavfini tug'dirardi.
 
     rows = []
     for user in all_staff:
@@ -2985,7 +3140,6 @@ def boss_staff_list():
         view['branchName'] = str((branches.get(str(user.get('branchId') or '')) or {})
                                  .get('name', '') or '')[:80]
         view['lastSeen'] = last_seen_by_login(user.get('login')) or view['lastSeen']
-        view['salary'] = salary_by_name.get(str(user.get('name') or '').strip().lower(), 0)
         rows.append(view)
 
     sort_key = str(request.args.get('sort') or 'total').strip()
@@ -3032,6 +3186,420 @@ def boss_staff_list():
         'limit': limit,
         'staff': rows[offset:offset + limit],
     })
+
+
+# ============================================================
+# OYLIK MAOSH REJASI VA TO'LOVLARI — YAGONA MANBA
+# ============================================================
+# Xodim va uning BELGILANGAN oyligi — `staff_users` (bitta manba).
+# Haqiqiy to'lovlar `salaryHistory` kalitida saqlanadi va har bir yozuv
+# `staffId` orqali xodimga QAT'IY bog'lanadi (ism/telefon bo'yicha emas).
+# Bu bo'lim ilgari frontend'dagi `tp_salary_records` kalitidan o'qirdi —
+# natijada xodimlar ro'yxati va maosh jadvali ikki xil manbadan olinardi.
+SALARY_MONTHS_UZ = ('Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+                    'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr')
+SALARY_PERIOD_RE = re.compile(r'^\d{4}-(?:0[1-9]|1[0-2])$')
+SALARY_METHODS = ('cash', 'card', 'click', 'transfer')
+SALARY_HISTORY_LIMIT = 20000
+SALARY_FLOW_LIMIT = 20000
+
+
+def salary_period_label(period):
+    """'2026-10' → 'Oktabr 2026'. Noto'g'ri qiymat uchun '—'."""
+    match = re.fullmatch(r'(\d{4})-(0[1-9]|1[0-2])', str(period or ''))
+    if not match:
+        return '—'
+    return f'{SALARY_MONTHS_UZ[int(match.group(2)) - 1]} {match.group(1)}'
+
+
+def salary_period_from_label(text):
+    """'Noyabr 2026' → '2026-11' (faqat eski yozuvlarni o'qish uchun)."""
+    parts = str(text or '').strip().split()
+    if len(parts) != 2 or parts[0] not in SALARY_MONTHS_UZ:
+        return ''
+    if not re.fullmatch(r'\d{4}', parts[1]):
+        return ''
+    return f'{parts[1]}-{SALARY_MONTHS_UZ.index(parts[0]) + 1:02d}'
+
+
+def _salary_payment_view(record):
+    """`salaryHistory` yozuvini yagona (xavfsiz) ko'rinishga keltiradi."""
+    if not isinstance(record, dict):
+        return None
+    amount = _num(record.get('amount'))
+    staff_id = int(_num(record.get('staffId', record.get('empId')), 0))
+    period = str(record.get('period') or '').strip()
+    if not SALARY_PERIOD_RE.fullmatch(period):
+        period = salary_period_from_label(record.get('month'))
+    paid_at = str(record.get('paidAt') or record.get('date') or '').strip()[:10]
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', paid_at):
+        paid_at = ''
+    else:
+        try:
+            paid_at = date.fromisoformat(paid_at).isoformat()
+        except ValueError:
+            paid_at = ''
+    valid_paid_at = bool(paid_at)
+    return {
+        'id': str(record.get('id') or '')[:60],
+        'staffId': staff_id if staff_id > 0 else None,
+        'staffName': str(record.get('staffName') or record.get('empName') or '')[:120],
+        'amount': round(amount, 2),
+        'period': period,
+        'periodLabel': (salary_period_label(period) if period
+                        else str(record.get('month') or '')[:40]),
+        'paidAt': paid_at,
+        'validPaidAt': valid_paid_at,
+        'method': str(record.get('method') or 'cash')[:20],
+        'note': str(record.get('note') or '')[:180],
+        'branchId': str(record.get('branchId') or '')[:40],
+        'branchKnown': 'branchId' in record,
+        'createdAt': str(record.get('createdAt') or '')[:30],
+        'createdBy': str(record.get('createdBy') or '')[:120],
+        'linked': staff_id > 0,
+    }
+
+
+def _salary_pay_day(user):
+    """Xodim uchun oylik to'lov kuni (1..28). Berilmasa 1."""
+    value = int(_num(user.get('salaryPayDay'), 1))
+    if value < 1:
+        return 1
+    return min(28, value)
+
+
+def _salary_method(user):
+    method = str(user.get('salaryMethod') or 'cash').strip().lower()
+    return method if method in SALARY_METHODS else 'cash'
+
+
+def _salary_next_pay_date(day, today):
+    """Bugundan boshlab `day`-kun keladigan eng yaqin to'lov sanasi."""
+    year, month = today.year, today.month
+    if day < today.day:
+        month += 1
+        if month > 12:
+            month, year = 1, year + 1
+    return date(year, month, day)
+
+
+def _salary_plan_data(store, month, branch_filter='', query=''):
+    """Tanlangan oy bo'yicha maosh rejasi qatorlari va to'lovlar ro'yxati.
+
+    Qaytaradi: (rows, payments). Har bir qatorda faqat HAQIQIY ma'lumot:
+    oyligi belgilanmagan xodim ham qatorda qoladi (holat: 'unset').
+    """
+    staff = [u for u in unique_staff(load_staff())
+             if isinstance(u, dict) and role_rank(u.get('role')) > 0]
+    branches = branches_index(store)
+    salary_history = store.get('staffSalaryHistory')
+    if not isinstance(salary_history, list):
+        salary_history = []
+    payments = []
+    for record in (store.get('salaryHistory') or []):
+        view = _salary_payment_view(record)
+        if view:
+            payments.append(view)
+    staff_ids = {int(_num(user.get('id'), 0)) for user in staff}
+    for payment in payments:
+        payment['linked'] = payment['staffId'] in staff_ids
+    payments.sort(key=lambda p: (p['paidAt'], p['id']), reverse=True)
+    by_staff = {}
+    for pay in payments:
+        if pay['linked'] and pay['validPaidAt']:
+            by_staff.setdefault(pay['staffId'], []).append(pay)
+
+    today = datetime.now().date()
+    period_year, period_month = int(month[:4]), int(month[5:7])
+    rows = []
+    for user in staff:
+        staff_id = int(_num(user.get('id'), 0))
+        if staff_id <= 0:
+            continue
+        name = str(user.get('name') or '')
+        role = str(user.get('role') or '')
+        branch_id = str(user.get('branchId') or '')
+        if branch_filter == '__unassigned__' and branch_id:
+            continue
+        if branch_filter and branch_filter != '__unassigned__' and branch_id != branch_filter:
+            continue
+        if query:
+            haystack = ' '.join([name, role, str(user.get('login') or '')]).lower()
+            if query not in haystack:
+                continue
+        salary = _staff_salary_for_period(user, salary_history, month)
+        pay_day = _salary_pay_day(user)
+        method = _salary_method(user)
+        staff_payments = by_staff.get(staff_id, [])
+        attached = [p for p in staff_payments if p['period'] == month]
+        paid = round(sum(p['amount'] for p in attached), 2)
+        active = str(user.get('status') or 'active').strip().lower() == 'active'
+        due = salary if salary is not None and active else None
+        remaining = round(max(0.0, due - paid), 2) if due is not None else None
+        due_date = date(period_year, period_month, pay_day)
+        if not active:
+            status = 'inactive'
+        elif salary is None:
+            status = 'unset'
+        elif due and paid >= due:
+            status = 'paid'
+        elif paid > 0:
+            status = 'partial'
+        elif due_date < today:
+            status = 'overdue'
+        elif due_date == today:
+            status = 'today'
+        else:
+            status = 'pending'
+        rows.append({
+            'staffId': staff_id,
+            'name': name[:120],
+            'login': str(user.get('login') or '')[:120],
+            'phone': str(user.get('phone') or '')[:40],
+            'role': role[:30],
+            'branchId': branch_id[:40],
+            'branchName': str((branches.get(branch_id) or {}).get('name', '') or '')[:80],
+            'staffStatus': str(user.get('status') or 'active')[:30],
+            'salary': salary,
+            'hasSalary': salary is not None,
+            'active': active,
+            'payDay': pay_day,
+            'method': method,
+            'period': month,
+            'periodLabel': salary_period_label(month),
+            'dueDate': due_date.isoformat(),
+            'due': due,
+            'paid': paid,
+            'remaining': remaining,
+            'nextPayDate': _salary_next_pay_date(pay_day, today).isoformat(),
+            'status': status,
+            'periodPayments': attached[:8],
+            'history': staff_payments[:8],
+        })
+    rows.sort(key=lambda r: r['staffId'])
+    return rows, payments
+
+
+def _salary_stats(rows, payments, month):
+    """Umumiy ko'rsatkichlar — bir-biridan ALOHIDA hisoblanadi."""
+    planned = 0.0
+    paid_for_period = 0.0
+    remaining_total = 0.0
+    unset_count = 0
+    paid_count = 0
+    partial_count = 0
+    today_count = 0
+    today_amount = 0.0
+    overdue_count = 0
+    overdue_amount = 0.0
+    for row in rows:
+        paid_for_period += row['paid']
+        if not row['active']:
+            continue
+        if row['salary'] is None:
+            unset_count += 1
+            continue
+        planned += row['salary']
+        remaining_total += row['remaining'] or 0
+        if row['status'] == 'paid':
+            paid_count += 1
+        elif row['status'] == 'partial':
+            partial_count += 1
+        elif row['status'] == 'today':
+            today_count += 1
+            today_amount += row['remaining'] or 0
+        elif row['status'] == 'overdue':
+            overdue_count += 1
+            overdue_amount += row['remaining'] or 0
+    # "Haqiqiy to'langan" — to'lov SANASI (paidAt) tanlangan oyga to'g'ri
+    # keladigan pul. Bu hisoblash davri (period) yig'indisidan farq qiladi.
+    paid_in_month = sum(
+        p['amount'] for p in payments
+        if p['paidAt'][:7] == month)
+    active_count = sum(1 for row in rows if row['active'])
+    inactive_count = len(rows) - active_count
+    return {
+        'plannedFund': round(planned, 2),
+        'paidForPeriod': round(paid_for_period, 2),
+        'paidInMonth': round(paid_in_month, 2),
+        'remaining': round(remaining_total, 2),
+        'todayCount': today_count,
+        'todayAmount': round(today_amount, 2),
+        'overdueCount': overdue_count,
+        'overdueAmount': round(overdue_amount, 2),
+        'paidCount': paid_count,
+        'partialCount': partial_count,
+        'unsetCount': unset_count,
+        'staffCount': len(rows),
+        'activeStaffCount': active_count,
+        'inactiveStaffCount': inactive_count,
+    }
+
+
+@app.route('/api/boss/salary/plan', methods=['GET'])
+@require_staff('boss')
+def boss_salary_plan():
+    """Oylik maosh rejasi, statistikasi va to'lovlar tarixi (yagona manba).
+
+    Query: month (YYYY-MM, standart — joriy oy), branchId, q.
+    """
+    store = db_manager.get_all() or {}
+    month = str(request.args.get('month') or '').strip()
+    if not SALARY_PERIOD_RE.fullmatch(month):
+        month = datetime.now().strftime('%Y-%m')
+    branch_filter = str(request.args.get('branchId') or '').strip()[:40]
+    query = str(request.args.get('q') or '').strip().lower()[:80]
+    rows, payments = _salary_plan_data(store, month, branch_filter, query)
+    visible_payments = [
+        payment for payment in payments
+        if (not branch_filter
+            or (not payment['branchId'] and payment['branchKnown']
+                if branch_filter == '__unassigned__'
+                else payment['branchId'] == branch_filter))
+    ]
+    payment_totals_by_month = {}
+    for payment in visible_payments:
+        paid_month = payment['paidAt'][:7]
+        if SALARY_PERIOD_RE.fullmatch(paid_month):
+            payment_totals_by_month[paid_month] = (
+                payment_totals_by_month.get(paid_month, 0) + payment['amount'])
+    branch_options = [
+        {'id': str(branch.get('id') or '')[:40],
+         'name': str(branch.get('name') or branch.get('id') or '')[:80]}
+        for branch in (store.get('branches') or [])
+        if isinstance(branch, dict) and str(branch.get('id') or '').strip()
+    ]
+    branch_options.append({'id': '__unassigned__', 'name': 'Filialsiz'})
+    branch_options.sort(key=lambda branch: branch['name'].lower())
+    return jsonify({
+        'status': 'success',
+        'month': month,
+        'monthLabel': salary_period_label(month),
+        'rows': rows,
+        'stats': _salary_stats(rows, visible_payments, month),
+        'payments': visible_payments[:50],
+        'totalPayments': len(visible_payments),
+        'paymentTotalsByMonth': payment_totals_by_month,
+        'branches': branch_options,
+        'total': len(rows),
+    })
+
+
+@app.route('/api/boss/salary/pay', methods=['POST'])
+@require_staff('boss')
+def boss_salary_pay():
+    """Haqiqiy maosh to'lovini qayd etadi (xodim ID si orqali).
+
+    To'lov `salaryHistory`ga yoziladi va `Kirim-chiqim` (cashFlow) ga
+    bog'langan `chiqim` yozuvi qo'shiladi — natijada bir xil to'lov ikki
+    modulda ikki marta hisoblanmaydi. Belgilangan, lekin to'lanmagan
+    maosh moliyaviy chiqim hisoblanmaydi.
+    """
+    body = request.get_json(silent=True) or {}
+    staff_id = int(_num(body.get('staffId'), 0))
+    if staff_id <= 0:
+        return json_error('Xodim tanlanmagan')
+    amount, error = parse_staff_salary(body.get('amount'), required=True)
+    if error:
+        return json_error(error)
+    if not amount:
+        return json_error('To\'lov summasi noldan katta bo\'lishi kerak')
+    period = str(body.get('period') or '').strip()
+    if not SALARY_PERIOD_RE.fullmatch(period):
+        return json_error('Hisoblash davri noto\'g\'ri (YYYY-MM)')
+    paid_at = str(body.get('paidAt') or '').strip()
+    if not paid_at:
+        paid_at = datetime.now().strftime('%Y-%m-%d')
+    else:
+        try:
+            paid_at = date.fromisoformat(paid_at).isoformat()
+        except ValueError:
+            return json_error('To\'lov sanasi haqiqiy YYYY-MM-DD formatda bo\'lishi kerak')
+    method = str(body.get('method') or '').strip().lower()
+    if method not in SALARY_METHODS:
+        method = 'cash'
+    note = _clean_boss_text(body.get('note'), 180)
+
+    actor = _actor_name()
+    now = datetime.now()
+    with _store_write_lock:
+        store = db_manager.get_all() or {}
+        staff = load_staff()
+        target = next((u for u in staff
+                       if isinstance(u, dict)
+                       and int(_num(u.get('id'), 0)) == staff_id), None)
+        if not target or role_rank(target.get('role')) <= 0:
+            return json_error('Xodim topilmadi', 404)
+        if str(target.get('status') or 'active').strip().lower() != 'active':
+            return json_error('Nofaol xodim uchun yangi maosh to\'lovi qayd etilmaydi', 409)
+        name = str(target.get('name') or '')
+        branch_id = str(target.get('branchId') or '')
+        history = [p for p in (store.get('salaryHistory') or [])
+                   if isinstance(p, dict)]
+        # Dublikat to'lovdan himoya: aynan bir xil yozuv ikki marta kirmasin.
+        for existing in history:
+            if (int(_num(existing.get('staffId', existing.get('empId')), 0)) == staff_id
+                    and str(existing.get('period') or '') == period
+                    and str(existing.get('paidAt') or '')[:10] == paid_at
+                    and _num(existing.get('amount')) == amount):
+                return json_error('Bu to\'lov allaqachon qayd etilgan', 409)
+        payment_id = 'sp-' + uuid.uuid4().hex[:12]
+        payment = {
+            'id': payment_id,
+            'staffId': staff_id,
+            'staffName': name[:120],
+            'amount': amount,
+            'period': period,
+            'paidAt': paid_at,
+            'method': method,
+            'note': note,
+            'branchId': branch_id[:40],
+            'createdAt': now.strftime('%d.%m.%Y %H:%M:%S'),
+            'createdBy': actor[:120],
+        }
+        history.append(payment)
+        flow_id = 'cf-' + str(int(now.timestamp() * 1000)) + '-' + uuid.uuid4().hex[:6]
+        flow = {
+            'id': flow_id,
+            'type': 'chiqim',
+            'amount': amount,
+            'category': 'Oylik maosh',
+            'note': f'{name} — {salary_period_label(period)}',
+            'branchId': branch_id[:40],
+            'date': paid_at,
+            'createdAt': now.strftime('%Y-%m-%d %H:%M:%S'),
+            'user': actor[:120],
+            'salaryPaymentId': payment_id,
+        }
+        flows = [c for c in (store.get('cashFlow') or []) if isinstance(c, dict)]
+        flows.append(flow)
+        try:
+            db_manager.save_keys({
+                'salaryHistory': history[-SALARY_HISTORY_LIMIT:],
+                'cashFlow': flows[-SALARY_FLOW_LIMIT:],
+            })
+        except Exception as exc:
+            print(f'[SALARY] To\'lovni saqlab bo\'lmadi: {exc}')
+            return json_error('Saqlab bo\'lmadi', 500)
+        refreshed = db_manager.get_all() or {}
+
+    audit_log('salary-pay', name,
+              f'{amount} so\'m — {salary_period_label(period)}', actor)
+    rows, payments = _salary_plan_data(refreshed, period, '', '')
+    return jsonify({
+        'status': 'success',
+        'message': f'{name}: {amount} so\'m to\'lov qayd etildi',
+        'payment': _salary_payment_view(payment),
+        'cashFlow': flow,
+        'month': period,
+        'monthLabel': salary_period_label(period),
+        'rows': rows,
+        'stats': _salary_stats(rows, payments, period),
+        'payments': payments[:50],
+        'totalPayments': len(payments),
+        'total': len(rows),
+    })
+
 
 @app.route('/api/boss/staff/<int:staff_id>/sales', methods=['GET'])
 @require_staff('boss')
@@ -3122,6 +3690,18 @@ def _actor_name():
 # yaratiladi, shu bilan biror xodim o'zini Boshliqga oshirib qeta olmaydi.
 BOSS_ASSIGNABLE_ROLES = ('admin', 'manager', 'cashier')
 STAFF_STATUSES = ('active', 'blocked', 'inactive')
+# Xodim yozish amallari (qo'shish/tahrirlash) uchun qulf: bir vaqtda kelgan
+# ikki so'rov bir xil telefon bilan dublikat akount yaratmasligi kafolatlanadi.
+_STAFF_WRITE_LOCK = threading.RLock()
+
+
+def _serialize_staff_write(handler):
+    """Xodim yaratish/tahrirlashda tekshiruv va saqlashni birga atomar qiladi."""
+    @functools.wraps(handler)
+    def wrapper(*args, **kwargs):
+        with _STAFF_WRITE_LOCK:
+            return handler(*args, **kwargs)
+    return wrapper
 # Kiritiladigan maydonlardagi taqiqlangan belgilar (SQL/XSS himoyasi).
 _BOSS_TEXT_FORBIDDEN = re.compile(r'[<>;\x00]|(--)|(/\*)')
 
@@ -3179,6 +3759,7 @@ def _unique_staff_login(staff, staff_id):
 
 @app.route('/api/boss/staff', methods=['POST'])
 @require_staff('boss')
+@_serialize_staff_write
 def boss_staff_create():
     """Yangi xodim qo'shish.
 
@@ -3204,41 +3785,52 @@ def boss_staff_create():
     password, error = _validate_password(body.get('password'))
     if error:
         return json_error(error)
+    # Oylik maosh MAJBURIY va faqat butun so'm qiymatida qabul qilinadi.
+    salary, salary_error = parse_staff_salary(body.get('salary'), required=True)
+    if salary_error:
+        return json_error(salary_error)
     # Telefon raqami MAJBURIY: xodim tizimga aynan shu raqam (login) bilan kiradi.
     # Raqamsiz akount yaratilsa, xodim veb-login orqali kira olmay qolardi.
     if not phone or not re.fullmatch(r'\+998\d{9}', phone):
         return json_error("Telefon raqami majburiy va +998XXXXXXXXX formatda bo'lishi "
                           "kerak — xodim tizimga shu raqam bilan kiradi")
 
-    staff = load_staff()
-    if phone and find_staff_by_phone(phone):
-        return json_error('Bu telefon raqami band', 409)
+    # Qulf: tekshiruv + yozish bir atomar amal bo'lsin (dublikat akount yo'q).
+    with _STAFF_WRITE_LOCK:
+        staff = load_staff()
+        if _staff_phone_in_use(staff, phone):
+            return json_error('Bu telefon raqami band', 409)
 
-    new_id = _next_staff_id(staff)
-    account = {
-        'id': new_id,
-        'login': _unique_staff_login(staff, new_id),
-        'phone': phone,
-        'name': name,
-        'role': role,
-        'status': status,
-        'branchId': branch_id,
-        'mustChange': False,
-        'createdBy': _actor_name()[:120],
-        'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-        'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-    }
-    # Parol: faqat xesh (qayta tiklanadigan nusxa saqlanmaydi).
-    apply_staff_password(account, password, _actor_name())
-    staff.append(account)
-    try:
-        db_manager.save_keys({'staff_users': staff})
-    except Exception as e:
-        print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
-        return jsonify({'status': 'error', 'message': 'Xodimni saqlab bo\'lmadi'}), 500
+        new_id = _next_staff_id(staff)
+        account = {
+            'id': new_id,
+            'login': _unique_staff_login(staff, new_id),
+            'phone': phone,
+            'name': name,
+            'role': role,
+            'status': status,
+            'branchId': branch_id,
+            'salary': salary,
+            'salaryChangedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+            'salaryChangedBy': _actor_name()[:120],
+            'mustChange': False,
+            'createdBy': _actor_name()[:120],
+            'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+            'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        }
+        # Parol: faqat xesh (qayta tiklanadigan nusxa saqlanmaydi).
+        apply_staff_password(account, password, _actor_name())
+        staff.append(account)
+        try:
+            db_manager.save_keys({'staff_users': staff})
+        except Exception as e:
+            print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
+            return jsonify({'status': 'error', 'message': 'Xodimni saqlab bo\'lmadi'}), 500
 
+    record_staff_salary_change(account['id'], name, None, salary, _actor_name())
     audit_log('staff-create', name,
-              f'rol={role} status={status}' + (f' filial={branch_id}' if branch_id else ''),
+              f'rol={role} status={status} maosh={salary}'
+              + (f' filial={branch_id}' if branch_id else ''),
               _actor_name())
     return jsonify({'status': 'success', 'message': 'Xodim qo\'shildi',
                     'staff': staff_public_view(account)}), 201
@@ -3269,8 +3861,13 @@ def boss_staff_password(staff_id):
 
 @app.route('/api/boss/staff/<int:staff_id>', methods=['PUT'])
 @require_staff('boss')
+@_serialize_staff_write
 def boss_staff_update(staff_id):
-    """Xodimni tahrirlash: ism, telefon, rol, filial va holat (bloklash).
+    """Xodimni tahrirlash: ism, telefon, rol, filial, oylik maosh, holat va parol.
+
+    Vaqtinchalik parol: `requirePasswordChange: true` bilan yuborilsa, parol
+    kamida 12 belgi bo'lishi shart va xodim birinchi kirishda uni albatta
+    almashtiradi (`mustChange`).
 
     Himoyalar:
       • Boshliq o'zini hech qachon bloklay olmaydi;
@@ -3296,6 +3893,8 @@ def boss_staff_update(staff_id):
     old_phone = normalize_phone(target.get('phone'))
     changes = []
     revoke_logins = set()
+    password_changed = False
+    temporary_password = body.get('requirePasswordChange') is True
 
     # ── Boshliq akountini himoyalash ───────────────────────────────
     # Boshqa Boshliq akountini tahrirlash taqiqlanadi. O'zini tahrirlashda
@@ -3315,10 +3914,9 @@ def boss_staff_update(staff_id):
     if 'phone' in body:
         phone = normalize_phone(body.get('phone'))
         if not phone:
-            return json_error("Telefon raqami o'chirilmaydi — xodim tizimga shu raqam "
-                              "bilan kiradi")
-        clash = find_staff_by_phone(phone)
-        if clash and _num(clash.get('id'), -1) != staff_id:
+            return json_error("Telefon raqami to'liq va +998XXXXXXXXX formatda "
+                              "bo'lishi kerak")
+        if _staff_phone_in_use(staff, phone, exclude_id=staff_id):
             return json_error('Bu telefon raqami band', 409)
         if phone != old_phone:
             apply_staff_phone(target, phone, _actor_name())
@@ -3333,6 +3931,45 @@ def boss_staff_update(staff_id):
         if branch_id != str(target.get('branchId') or ''):
             target['branchId'] = branch_id
             changes.append('filial')
+
+    # ── Oylik maosh ───────────────────────────────────────────────
+    # Faqat sonli qiymat; bo'sh/null bilan maoshni o'chirib bo'lmaydi.
+    old_salary = _staff_salary_value(target)
+    new_salary = None
+    salary_changed = False
+    if 'salary' in body:
+        new_salary, salary_error = parse_staff_salary(body.get('salary'),
+                                                      required=True)
+        if salary_error:
+            return json_error(salary_error)
+        if new_salary != old_salary:
+            target['salary'] = new_salary
+            target['salaryChangedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+            target['salaryChangedBy'] = _actor_name()[:120]
+            salary_changed = True
+            changes.append('maosh')
+
+    # To'lov kuni (1..28) — belgilangan oylik qaysi kuni to'lanishi kerak.
+    if 'salaryPayDay' in body:
+        raw_pay_day = body.get('salaryPayDay')
+        if raw_pay_day in (None, ''):
+            return json_error('To\'lov kuni bo\'sh bo\'lmasligi kerak')
+        pay_day_value = int(_num(raw_pay_day, -1))
+        if pay_day_value < 1 or pay_day_value > 28:
+            return json_error('To\'lov kuni 1 va 28 orasida bo\'lishi kerak')
+        if pay_day_value != _salary_pay_day(target):
+            target['salaryPayDay'] = pay_day_value
+            changes.append('to\'lov kuni')
+
+    # To'lov usuli — naqd/karta/click/o'tkazma.
+    if 'salaryMethod' in body:
+        method = str(body.get('salaryMethod') or '').strip().lower()
+        if method not in SALARY_METHODS:
+            return json_error('To\'lov usuli noto\'g\'ri. Ruxsat etilgan: '
+                              + ', '.join(SALARY_METHODS))
+        if method != _salary_method(target):
+            target['salaryMethod'] = method
+            changes.append('to\'lov usuli')
 
     if 'role' in body:
         role = str(body.get('role') or '').strip().lower()
@@ -3368,17 +4005,27 @@ def boss_staff_update(staff_id):
                 target.pop('deletedAt', None)
                 target.pop('deletedBy', None)
 
+    if temporary_password and not body.get('password'):
+        return json_error('Vaqtinchalik parol uchun yangi parol talab qilinadi')
+
     if body.get('password'):
         if is_self:
             return json_error('O\'z parolingizni «Parolimni o\'zgartirish» '
                               'oynasi orqali yangilang', 403)
         if target_role == 'boss':
             return json_error('Boshliq parolini bu formadan o\'zgartirib bo\'lmaydi', 403)
-        password, error = _validate_password(body.get('password'))
+        # Vaqtinchalik parol uchun kuchliroq minimal uzunlik (12 belgi).
+        password, error = _validate_password(
+            body.get('password'), min_len=12 if temporary_password else 6)
         if error:
             return json_error(error)
         apply_staff_password(target, password, _actor_name())
+        if temporary_password:
+            # Birinchi kirishda xodim o'zi yangi doimiy parol o'rnatadi.
+            target['mustChange'] = True
+            changes.append('majburiy almashtirish')
         changes.append('parol')
+        password_changed = True
         revoke_logins.add(target_login)
 
     if not changes:
@@ -3397,16 +4044,31 @@ def boss_staff_update(staff_id):
     for login in {str(x or '').strip().lower() for x in revoke_logins if str(x or '').strip()}:
         revoke_login_sessions(login)
 
+    if salary_changed:
+        record_staff_salary_change(staff_id, target.get('name'), old_salary,
+                                   new_salary, _actor_name())
     audit_log('staff-update', str(target.get('name', '')),
               'o\'zgarishlar: ' + ', '.join(changes), _actor_name())
-    if 'status' in changes:
+    if password_changed:
+        server_security_log(
+            'staff-password-reset', 'high',
+            f'{target.get("name")} uchun yangi parol o\'rnatildi'
+            + (' (vaqtinchalik, majburiy almashtirish)' if temporary_password else ''),
+            _actor_name())
+    if 'holat' in changes:
         server_security_log('staff-status-change', 'medium',
                             f'{target.get("name")}: holat → {target.get("status")}',
                             _actor_name())
-    return jsonify({'status': 'success',
-                    'message': 'Xodim yangilandi' if 'holat' not in changes
-                    else ('Xodim bloklandi' if target.get('status') == 'blocked'
-                          else 'Xodim holati yangilandi'),
+    if 'holat' in changes:
+        message = ('Xodim bloklandi' if target.get('status') == 'blocked'
+                   else 'Xodim holati yangilandi')
+    elif temporary_password:
+        message = 'Vaqtinchalik parol o\'rnatildi'
+    elif password_changed:
+        message = 'Parol yangilandi'
+    else:
+        message = 'Xodim yangilandi'
+    return jsonify({'status': 'success', 'message': message,
                     'changed': changes, 'staff': staff_public_view(target)})
 @app.route('/robots.txt')
 def serve_robots():
@@ -4129,8 +4791,8 @@ def get_config():
 # Ommaviy (anonim) do'kon uchun ruxsat etilgan maydonlar — mijoz PII'si YO'Q
 CATALOG_FIELDS = ('id', 'name', 'cat', 'price', 'stock', 'img', 'desc')
 PUBLIC_DATA_KEYS = ('products', 'categories')
-PRIVATE_DATA_KEYS = ('auth_secret', 'staff_users', 'active_sessions',
-                     'serverSecurityLog', 'audit_log')
+PRIVATE_DATA_KEYS = ('auth_secret', 'staff_users', 'staffSalaryHistory',
+                     'active_sessions', 'serverSecurityLog', 'audit_log')
 
 # Rol bo'yicha o'qish doirasi. Admin/boss to'liq (maxfiy kalitlarsiz) oladi;
 # kassir/menejer faqat operatsion ma'lumotlarni oladi. Ish haqi, moliya,
@@ -4146,8 +4808,12 @@ DATA_SCOPE_BY_ROLE = {
 SYNC_ALLOWED_KEYS = {
     'products': 4000, 'customers': 20000, 'sales': 50000, 'logs': 500,
     'contracts': 20000, 'discounts': 500, 'smsHistory': 500,
-    'salaryRecords': 5000, 'salaryHistory': 20000, 'securityLog': 1000,
+    'securityLog': 1000,
     'branches': 500, 'employees': 2000,
+    # DIQQAT: 'salaryRecords' va 'salaryHistory' ataylab yo'q —
+    # oylik to'lovlarining YAGONA manbasi /api/boss/salary/* endpointlari
+    # (backend) hisoblanadi. Frontend endi ularni to'g'ridan-to'g'ri
+    # sinxronlay olmaydi (noma'lum kalit sifatida e'tiborsiz qoldiriladi).
     # Kirim / chiqim / harajat yozuvlari (filial bo'yicha moliyaviy nazorat)
     'cashFlow': 20000, 'expenses': 20000,
 }
@@ -4985,13 +5651,10 @@ def sync_data():
                                 actor.get('name', '—'))
 
     # Xodimlar boshqaruvi kalitlarini faqat admin/menejer (yoki BOSHLIQ)
-    # yoza oladi. Kassir ham har bir sync'da salaryRecords/salaryHistory
-    # yuboradi (mijoz tomoni toza) — bu kalitlar kirsa, eski localStorage
-    # nusxasi admin'ning maosh ma'lumotlarini bosib yuborishi mumkin.
-    # Shuning uchun past darajadagi rol uchun BU KALITLAR SETDAN
-    # chetlab o'tiladi (qolgan payload normal saqlanadi — POS ishlashida
-    # uzilma bo'lmaydi).
-    EMPLOYEE_MANAGED_KEYS = ('employees', 'salaryRecords', 'salaryHistory')
+    # yoza oladi. Oylik to'lovlari (salaryRecords/salaryHistory) endi bu
+    # ro'yxatda emas — ular butunlay backend tomonidan boshqariladi
+    # (/api/boss/salary/pay) va SYNC_ALLOWED_KEYS'ga ham kirmaydi.
+    EMPLOYEE_MANAGED_KEYS = ('employees',)
     if not role_contains(('admin', 'manager'), request.staff.get('role')):  # type: ignore[attr-defined]
         dropped = [k for k in EMPLOYEE_MANAGED_KEYS if k in clean]
         if dropped:
@@ -5030,80 +5693,340 @@ def sync_data():
         'logs': ('admin',),
         'securityLog': ('admin',),
         'smsHistory': ('admin',),
-        'salaryRecords': ('admin',),
-        'salaryHistory': ('admin',),
         'employees': ('admin',),
     }
-    old_store = db_manager.get_all() or {}
-    staff_role = request.staff.get('role')  # type: ignore[attr-defined]
-    protected = {}
-    for key, allowed_roles in SHRINK_ALLOWED_ROLES.items():
-        incoming = clean.get(key)
-        if not isinstance(incoming, list) or role_contains(allowed_roles, staff_role):
-            continue
-        existing = [row for row in (old_store.get(key) or []) if isinstance(row, dict)]
-        if not existing:
-            continue
-        have = {str(row.get('id')) for row in existing if row.get('id') is not None}
-        keep = {str(row.get('id')) for row in incoming if row.get('id') is not None}
-        missing = have - keep
-        if not missing:
-            continue
-        # Yo'qolgan yozuvlar o'chirilmaydi — ro'yxat oxiriga qaytariladi.
-        clean[key] = incoming + [row for row in existing
-                                 if str(row.get('id')) in missing]
-        protected[key] = len(missing)
-    if protected:
-        summary = ', '.join(f'{k}: {v} ta' for k, v in protected.items())
-        server_security_log(
-            'sync-delete-blocked', 'high',
-            f"Past darajali rol o'chirmoqchi bo'lgan yozuvlar saqlab qolindi ({summary})",
-            request.staff.get('name', '—'))  # type: ignore[attr-defined]
+    # Butun yozuv (o'qish → himoya → saqlash) bitta qulf ostida bajariladi.
+    # Aks holda parallel POS savdosi (/api/sell) va sinxronizatsiya bir-birini
+    # bosib ketishi mumkin.
+    with _store_write_lock:
+        old_store = db_manager.get_all() or {}
+        staff_role = request.staff.get('role')  # type: ignore[attr-defined]
+        protected = {}
+        for key, allowed_roles in SHRINK_ALLOWED_ROLES.items():
+            incoming = clean.get(key)
+            if not isinstance(incoming, list) or role_contains(allowed_roles, staff_role):
+                continue
+            existing = [row for row in (old_store.get(key) or []) if isinstance(row, dict)]
+            if not existing:
+                continue
+            have = {str(row.get('id')) for row in existing if row.get('id') is not None}
+            keep = {str(row.get('id')) for row in incoming if row.get('id') is not None}
+            missing = have - keep
+            if not missing:
+                continue
+            # Yo'qolgan yozuvlar o'chirilmaydi — ro'yxat oxiriga qaytariladi.
+            clean[key] = incoming + [row for row in existing
+                                     if str(row.get('id')) in missing]
+            protected[key] = len(missing)
+        if protected:
+            summary = ', '.join(f'{k}: {v} ta' for k, v in protected.items())
+            server_security_log(
+                'sync-delete-blocked', 'high',
+                f"Past darajali rol o'chirmoqchi bo'lgan yozuvlar saqlab qolindi ({summary})",
+                request.staff.get('name', '—'))  # type: ignore[attr-defined]
 
-    try:
-        apply_image_keep(clean.get('products') or [])
-        apply_fiscal_keep(clean.get('sales') or [])
-        # ── Filial doirasi nazorati (menejer/kassir) ──
-        # Xodim filialga biriktirilgan bo'lsa (staff_users.branchId), u faqat
-        # O'Z filialiga yangi mahsulot qo'sha oladi va mahsulotni boshqa
-        # filialga ko'chira olmaydi. Filiali bo'sh xodim yoki admin/boshliq
-        # uchun cheklov yo'q. POS qoldiq/narx oqarimiga TA'SIR QILMAYDI:
-        # mavjud mahsulotning qoldiq/narx o'zgarishlari filialga qarab
-        # tekshirilmaydi (faqat yangi ID va filial qiymati o'zgarishi nazorat).
-        staff_role = str(request.staff.get('role') or '').strip().lower()  # type: ignore[attr-defined]
-        if staff_role in ('manager', 'cashier'):
-            staff_rec = (find_staff(str(request.staff.get('sub') or ''))
-                         or find_staff_by_phone(str(request.staff.get('sub') or '')))
-            staff_branch = str((staff_rec or {}).get('branchId') or '').strip()
-            if staff_branch:
+        try:
+            apply_image_keep(clean.get('products') or [])
+            apply_fiscal_keep(clean.get('sales') or [])
+            # ── Filial doirasi nazorati (menejer/kassir) ──
+            # Xodim filialga biriktirilgan bo'lsa (staff_users.branchId), u faqat
+            # O'Z filialiga yangi mahsulot qo'sha oladi va mahsulotni boshqa
+            # filialga ko'chira olmaydi. Filiali bo'sh xodim yoki admin/boshliq
+            # uchun cheklov yo'q. POS qoldiq/narx oqarimiga TA'SIR QILMAYDI:
+            # mavjud mahsulotning qoldiq/narx o'zgarishlari filialga qarab
+            # tekshirilmaydi (faqat yangi ID va filial qiymati o'zgarishi nazorat).
+            staff_role = str(request.staff.get('role') or '').strip().lower()  # type: ignore[attr-defined]
+            if staff_role in ('manager', 'cashier'):
+                staff_rec = (find_staff(str(request.staff.get('sub') or ''))
+                             or find_staff_by_phone(str(request.staff.get('sub') or '')))
+                staff_branch = str((staff_rec or {}).get('branchId') or '').strip()
+                if staff_branch:
+                    old_by_id = {str(p.get('id')): p
+                                 for p in (old_store.get('products') or []) if isinstance(p, dict)}
+                    for product in (clean.get('products') or []):
+                        if not isinstance(product, dict):
+                            continue
+                        new_branch = str(product.get('branchId') or '').strip()
+                        if not new_branch or new_branch == staff_branch:
+                            continue
+                        old = old_by_id.get(str(product.get('id')))
+                        # Yangi mahsulot yoki filialni boshqa filialga ko'chirish
+                        if old is None or str(old.get('branchId') or '').strip() != new_branch:
+                            server_security_log('access-denied', 'high',
+                                                f'Filial doirasi: "{product.get("name")}" → {new_branch} '
+                                                f'(xodim filiali: {staff_branch})',
+                                                request.staff.get('name', '—'))  # type: ignore[attr-defined]
+                            return json_error(
+                                f'Faqat o\'z filialingizda ishlash mumkin — mahsulot '
+                                f'{new_branch} filialiga bog\'lanmadi', 403)
+
+            # ── Qoldiqni "resurrect" qilishdan himoya (kassir) ────────────
+            # POS savdosi qoldiqni /api/sell orqali serverda kamaytiradi.
+            # Kassir qurilmasi keyin butun to'plamni (eski, kattaroq qoldiq
+            # bilan) sinxronlasa — serverdagi yangi qoldiqni qayta ko'paytirib
+            # qo'yardi va boshqa kassirning savdosi "yo'qolardi". Shu sababli
+            # kassir uchun mavjud mahsulot qoldig'i faqat KAMAYADI (o'sish rad
+            # etiladi). Kassir interfeysda mavjud mahsulotni tahrirlamaydi,
+            # shuning uchun bu qonuniy o'zgarishni to'smaydi.
+            if staff_role == 'cashier' and isinstance(clean.get('products'), list):
                 old_by_id = {str(p.get('id')): p
                              for p in (old_store.get('products') or []) if isinstance(p, dict)}
-                for product in (clean.get('products') or []):
+                kept = 0
+                for product in clean['products']:
                     if not isinstance(product, dict):
                         continue
-                    new_branch = str(product.get('branchId') or '').strip()
-                    if not new_branch or new_branch == staff_branch:
-                        continue
                     old = old_by_id.get(str(product.get('id')))
-                    # Yangi mahsulot yoki filialni boshqa filialga ko'chirish
-                    if old is None or str(old.get('branchId') or '').strip() != new_branch:
-                        server_security_log('access-denied', 'high',
-                                            f'Filial doirasi: "{product.get("name")}" → {new_branch} '
-                                            f'(xodim filiali: {staff_branch})',
-                                            request.staff.get('name', '—'))  # type: ignore[attr-defined]
-                        return json_error(
-                            f'Faqat o\'z filialingizda ishlash mumkin — mahsulot '
-                            f'{new_branch} filialiga bog\'lanmadi', 403)
+                    if old is None:
+                        continue
+                    old_stock = int(_num(old.get('stock')))
+                    new_stock = int(_num(product.get('stock')))
+                    if new_stock > old_stock:
+                        product['stock'] = old_stock
+                        kept += 1
+                if kept:
+                    server_security_log('sync-stock-guard', 'medium',
+                                        f"{kept} ta mahsulot qoldig'i kassir tomonidan "
+                                        f"ko'paytirilishi oldini olindi",
+                                        request.staff.get('name', '—'))  # type: ignore[attr-defined]
 
-        audit_sync_changes(old_store, clean,
-                           str(getattr(request, 'staff', {}).get('name', '—')))
-        db_manager.save_keys(clean)
-        return jsonify({'status': 'success', 'message': 'Ma\'lumotlar muvaffaqiyatli saqlandi',
-                        'savedKeys': sorted(clean.keys())})
-    except Exception as e:
-        print(f'[ERROR] /api/sync: {e}')
-        return json_error('Ma\'lumotni saqlashda xatolik', 500)
+            audit_sync_changes(old_store, clean,
+                               str(getattr(request, 'staff', {}).get('name', '—')))
+            db_manager.save_keys(clean)
+            return jsonify({'status': 'success', 'message': 'Ma\'lumotlar muvaffaqiyatli saqlandi',
+                            'savedKeys': sorted(clean.keys())})
+        except Exception as e:
+            print(f'[ERROR] /api/sync: {e}')
+            return json_error('Ma\'lumotni saqlashda xatolik', 500)
 
+
+
+
+# POS SELL ENDPOINT
+# ─────────────────────────────────────────────────────────────────────────────
+def _sale_day_str():
+    return datetime.now().strftime('%d.%m.%Y')
+
+
+def _sale_clock_str():
+    return datetime.now().strftime('%H:%M:%S')
+
+
+def _sale_stamp_str():
+    return datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+
+
+def _next_server_sale_id(store):
+    """Bazadagi eng katta ID dan keyingi savdo raqami (brauzer ID yubormasa)."""
+    max_id = 0
+    for item in (store.get('sales') or []):
+        if not isinstance(item, dict):
+            continue
+        value = int(_num(item.get('id')))
+        if value > max_id:
+            max_id = value
+    return max(max_id + 1, int(datetime.now().timestamp() * 1000))
+
+
+def _money_str(value):
+    """Jurnal uchun pul ko'rinishi: 11 106 so'm."""
+    return f"{int(round(_num(value))):,}".replace(',', ' ')
+
+
+@app.route('/api/sell', methods=['POST'])
+@require_staff()
+def api_sell():
+    """POS savdosi: mahsulot, miqdor, narx va filialni SERVERDA tekshirib,
+    savdoni saqlaydi va ombor qoldig'ini atomar (qulf ostida) kamaytiradi.
+
+    Body:
+    {
+      "id": 1792749734000,          # savdo raqami (ixtiyoriy — bo'lmasa server beradi)
+      "items": [{"id": 1, "qty": 3, "price": 50000, "name": "Telefon"}],
+      "branchId": "b2", "cashier": "...", "customer": "...",
+      "customerId": 123, "pay": "Naqd", "provider": "cash",
+      "total": 150000, "disc": 0, "discAmt": 0, "subtotal": 150000,
+      "date": "23.10.2026", "time": "15:30:00", "isOnline": false
+    }
+
+    • Qoldiq FAQAT savdo muvaffaqiyatli yakunlanganda kamayadi (savatga
+      qo'shishning o'zi qoldiqqa ta'sir qilmaydi);
+    • Yetarli qoldiq bo'lmasa savdo rad etiladi va HECH NARSA yozilmaydi;
+    • Bir xil `id` bilan takroriy so'rov qoldiqni ikki marta kamaytirmaydi;
+    • Natija: {status:'success', sale, productStocks[], deductions[]}
+    """
+    staff = getattr(request, 'staff', {}) or {}
+    cashier_login = str(staff.get('sub') or '').strip()
+    cashier_name = str(staff.get('name') or "Noma'lum").strip()
+
+    body = request.get_json(silent=True) or {}
+    items = body.get('items')
+    if not isinstance(items, list) or len(items) == 0:
+        return json_error("Savdo itemlari bo'sh.", 400)
+    if len(items) > 500:
+        return json_error('Savdo itemlari maksimal: 500 ta.', 400)
+
+    branch_id = str(body.get('branchId') or '').strip()
+    if not branch_id:
+        return json_error("Filial tanlanmagan. POS da filial aniqlanishi shart.", 400)
+
+    # Filialga biriktirilgan menejer/kassir faqat O'Z filialida savdo qiladi
+    # (staff_users.branchId). Filiali bo'sh xodim yoki admin/boshliq uchun
+    # cheklov yo'q — aks holda kassir boshqa filial qoldig'ini o'zgartira
+    # olardi (filial doirasidan tashqari ta'sir).
+    staff_role = str(staff.get('role') or '').strip().lower()
+    if staff_role in ('manager', 'cashier'):
+        staff_rec = (find_staff(str(staff.get('sub') or ''))
+                     or find_staff_by_phone(str(staff.get('sub') or '')))
+        staff_branch = str((staff_rec or {}).get('branchId') or '').strip()
+        if staff_branch and staff_branch != branch_id:
+            server_security_log('access-denied', 'high',
+                                f"Filial doirasidan tashqari savdo: {branch_id} "
+                                f"(xodim filiali: {staff_branch})", cashier_name)
+            return json_error("Faqat o'z filialingizda savdo qilishingiz mumkin.", 403)
+
+    is_online = bool(body.get('isOnline'))
+    sale_id = body.get('id')
+
+    # Barcha o'zgarishlar BITTA qulf ostida: o'qish → tekshirish → yozish
+    # (ikki kassir bir vaqtda sotsa ham qoldiq ikki marta kamaymaydi).
+    with _store_write_lock:
+        store = db_manager.get_all() or {}
+        store_products = store.get('products') or []
+        products = [p for p in store_products if isinstance(p, dict)]
+
+        # ── Idempotentlik ────────────────────────────────────────────────
+        # Bu savdo allaqachon saqlangan bo'lsa (qayta urinish, ikki marta
+        # bosish, tarmoq takrori) — qoldiq QAYTA kamaytirilmaydi.
+        if sale_id not in (None, ''):
+            existing = next((s for s in (store.get('sales') or [])
+                             if isinstance(s, dict) and str(s.get('id')) == str(sale_id)), None)
+            if existing is not None:
+                return jsonify({
+                    'status': 'success', 'sale': existing, 'duplicate': True,
+                    'productStocks': [{'id': str(p.get('id')), 'name': str(p.get('name')),
+                                       'stock': int(_num(p.get('stock')) or 0)}
+                                      for p in products
+                                      if any(str(i.get('id')) == str(p.get('id'))
+                                             for i in items if isinstance(i, dict))],
+                    'message': 'Bu savdo allaqachon saqlangan',
+                })
+
+        # ── Tekshiruv va qoldiq kamaytirish ──────────────────────────────
+        stored_items = []
+        deductions = []
+        errors = []
+        for item in items:
+            if not isinstance(item, dict):
+                return json_error("Savdo elementi formati noto'g'ri.", 400)
+            pid = str(item.get('id'))
+            product = next((x for x in products if str(x.get('id')) == pid), None)
+            if product is None:
+                errors.append(f"Mahsulot #{pid} ro'yxatdan o'chirilgan.")
+                continue
+            # Filialga bog'langan mahsulot faqat o'z filialida sotiladi.
+            # "Umumiy ombor" (branchId bo'sh) mahsulot HAR QANDAY filialda
+            # sotilishi mumkin — bu frontend `visibleProducts()` qoidasi bilan
+            # bir xil (filial tanlanganda umumiy mahsulotlar ham ko'rinadi).
+            product_branch = str(product.get('branchId') or '').strip()
+            if product_branch and product_branch != branch_id:
+                errors.append(f"Mahsulot #{pid} ({product.get('name')}) bu filialga tegishli emas.")
+                continue
+            qty = int(_num(item.get('qty')))
+            if qty <= 0:
+                errors.append(f"Mahsulot #{pid} uchun miqdor 0 dan katta bo'lishi kerak.")
+                continue
+            price = _num(item.get('price'))
+            if price < 0:
+                errors.append(f"Mahsulot #{pid} narxi manfiy bo'lmasligi kerak.")
+                continue
+
+            stored_items.append({
+                'id': product.get('id'),
+                'name': str(item.get('name') or product.get('name') or '')[:120],
+                'price': price,
+                'cost': _num(item.get('cost', product.get('cost'))),
+                'qty': qty,
+                'img': str(item.get('img') or '')[:2048],
+                'barcode': str(item.get('barcode') or '')[:64],
+                'branchId': branch_id,
+                'ikpu': str(item.get('ikpu') or '')[:17],
+                'packageCode': str(item.get('packageCode') or '')[:20],
+                'vatPercent': _num(item.get('vatPercent'), 12.0),
+            })
+
+            # Qoldiq faqat darhol to'lanadigan savdoda kamayadi. Onlayn
+            # to'lovlarda qoldiq to'lov tasdiqlanganda kamayadi.
+            if not is_online:
+                old_stock = int(_num(product.get('stock')) or 0)
+                if old_stock < qty:
+                    errors.append(f"{product.get('name')} — yetarli qoldiq yo'q. "
+                                  f"Mavjud: {old_stock}, so'ralgan: {qty}.")
+                    continue
+                product['stock'] = old_stock - qty
+                deductions.append({'id': pid, 'qty': qty,
+                                   'oldStock': old_stock, 'stock': old_stock - qty})
+
+        if errors:
+            # Xatolik bo'lsa hech narsa yozilmaydi — qoldiq o'zgarmaydi.
+            return json_error('Savdo rad etildi: ' + '; '.join(errors), 400)
+
+        sale = {
+            'id': sale_id if sale_id not in (None, '') else _next_server_sale_id(store),
+            'items': stored_items,
+            'cashier': cashier_name,
+            'cashierLogin': cashier_login,
+            'customer': str(body.get('customer') or "Noma'lum")[:120],
+            'customerId': body.get('customerId') or None,
+            'customerPhone': str(body.get('customerPhone') or '')[:40],
+            'branchId': branch_id,
+            'pay': str(body.get('pay') or 'cash')[:40],
+            'provider': str(body.get('provider') or 'cash')[:30],
+            'subtotal': _num(body.get('subtotal') or 0),
+            'disc': _num(body.get('disc') or 0),
+            'discAmt': _num(body.get('discAmt') or 0),
+            'total': _num(body.get('total') or 0),
+            'status': 'pending' if is_online else 'paid',
+            'date': str(body.get('date') or _sale_day_str())[:20],
+            'time': str(body.get('time') or _sale_clock_str())[:20],
+            'createdAt': _sale_stamp_str(),
+        }
+
+        store.setdefault('sales', [])
+        store['sales'].append(sale)
+        audit_rows = store.get('audit_log')
+        if not isinstance(audit_rows, list):
+            audit_rows = []
+        audit_rows.append({
+            'action': 'sale-create', 'message': f"Chek #{sale['id']}",
+            'detail': (f"{cashier_name} — {branch_id} filiali, "
+                       f"{len(stored_items)} ta mahsulot, {_money_str(sale['total'])} so'm"),
+            'username': cashier_name, 'date': sale['date'], 'time': sale['time'],
+        })
+        store['audit_log'] = audit_rows
+
+        # Atomar saqlash: faqat tegishli kalitlar yoziladi (boshqa kalitlarni
+        # eski nusxa bilan bosib ketmaymiz). save_keys — bitta tranzaksiya.
+        try:
+            db_manager.save_keys({
+                'products': store_products,
+                'sales': store['sales'],
+                'audit_log': store['audit_log'],
+            })
+        except Exception as e:
+            print(f'[ERROR] /api/sell db save: {e}')
+            return json_error("Ma'lumotni saqlashda xatolik", 500)
+
+        productStocks = [{'id': str(p.get('id')), 'name': str(p.get('name')),
+                          'stock': int(_num(p.get('stock')) or 0)}
+                         for p in products
+                         if any(str(i.get('id')) == str(p.get('id'))
+                                for i in stored_items)]
+
+        return jsonify({
+            'status': 'success', 'sale': sale,
+            'productStocks': productStocks, 'deductions': deductions,
+            'message': 'Savdo muvaffaqiyatli yakunlandi',
+        })
 
 def audit_sync_changes(old_store, clean, actor):
     """Sinxronizatsiyadagi muhim o'zgarishlarni amallar jurnaliga yozadi.

@@ -1548,29 +1548,11 @@ body {
 }
 
 /* ------------------------------------------------------------
-   9. XODIMLAR VA MAOSH (#page-employees)
+   9. XODIMLAR VA OYLIK MAOSH (Boshliq → Xodimlar = #page-bossStaff)
    ------------------------------------------------------------ */
-#page-employees {
-    width: 100%;
-    max-width: 100%;
-    padding: 24px 28px 60px;
-}
-
-#page-employees .panel {
-    width: 100%;
-    margin-bottom: 24px;
-}
-
-#page-employees .table-wrap {
-    width: 100%;
-    overflow-x: auto;
-}
-
-#page-employees table {
-    width: 100%;
-}
-
-#page-employees .salary-stats {
+/* Oylik maosh moduli ilgari alohida «Xodimlar» (#page-employees)
+   sahifasida edi — endi yagona joy: Boshliq → Xodimlar bo'limi. */
+#page-bossStaff .salary-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
     gap: 18px;
@@ -1578,7 +1560,11 @@ body {
     width: 100%;
 }
 
-#page-employees .grid-2 {
+#page-bossStaff .salary-toolbar {
+    width: 100%;
+}
+
+#page-bossStaff .grid-2 {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
@@ -4567,6 +4553,13 @@ canvas {
     font-weight: 500;
 }
 
+.salary-stat-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
 /* Status badges for salary */
 .salary-badge {
     display: inline-flex;
@@ -4614,6 +4607,20 @@ canvas {
     background: rgba(34, 197, 94, 0.12);
     color: #4ade80;
     border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+/* Qisman to'langan — ko'k indikator */
+.salary-badge-partial {
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.28);
+}
+
+/* Maosh belgilanmagan — neytral kulrang */
+.salary-badge-unset {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-muted);
+    border: 1px dashed rgba(148, 163, 184, 0.35);
 }
 
 /* Salary table row highlight */
@@ -11920,6 +11927,23 @@ body.drawer-open {
     flex: 0 0 auto;
 }
 
+/* Yangilash + Yangi Mahsulot tugmalari guruhi */
+#page-products .products-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+#page-products .products-refresh-btn i {
+    margin-right: 2px;
+}
+
+#page-products .products-refresh-btn:disabled {
+    opacity: .7;
+    cursor: progress;
+}
+
 #page-products .products-panel-header {
     display: flex;
     align-items: center;
@@ -11956,7 +11980,7 @@ body.drawer-open {
 
 #page-products .products-table {
     width: 100%;
-    min-width: 1191px;
+    min-width: 1361px;
     table-layout: fixed;
     border-collapse: collapse;
 }
@@ -11982,9 +12006,9 @@ body.drawer-open {
 }
 
 #page-products .products-table .product-col-branch { width: 130px; }
-#page-products .products-table .product-col-price { width: 125px; }
-#page-products .products-table .product-col-cost { width: 115px; }
-#page-products .products-table .product-col-profit { width: 110px; }
+#page-products .products-table .product-col-price { width: 175px; }
+#page-products .products-table .product-col-cost { width: 165px; }
+#page-products .products-table .product-col-profit { width: 180px; }
 #page-products .products-table .product-col-stock { width: 90px; }
 #page-products .products-table .product-col-status { width: 85px; }
 #page-products .products-table .product-col-actions { width: 150px; }
@@ -12006,7 +12030,6 @@ body.drawer-open {
 
 #page-products .products-table td[data-label="Narxi"],
 #page-products .products-table td[data-label="Tannarx"],
-#page-products .products-table td[data-label="Foyda"],
 #page-products .products-table td[data-label="Qoldiq"],
 #page-products .products-table td[data-label="Holati"] {
     white-space: nowrap;
@@ -12014,6 +12037,28 @@ body.drawer-open {
        katakka kirib ketmaydi (ustma-ust tushish oldini oladi). */
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Foyda katagi: summa bir qatorda, ustama/marja foizlari ostida.
+   Kesilib qolmasligi uchun matn o'raladi (ellipsis qo'llanmaydi). */
+#page-products .products-table td[data-label="Foyda"] {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+#page-products .products-table td[data-label="Foyda"] .foyda-val {
+    display: block;
+    white-space: nowrap;
+    font-weight: 700;
+}
+
+#page-products .products-table td[data-label="Foyda"] .foyda-meta {
+    display: block;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
 }
 
 /* Filial nomi uzun bo'lsa katak ichida bir nechta qatorda to'liq ko'rinadi
@@ -12080,8 +12125,8 @@ body.drawer-open {
 
     #page-products table.products-table {
       display: table !important;
-      width: 1191px !important;
-      min-width: 1191px !important;
+      width: 1361px !important;
+      min-width: 1361px !important;
       border-collapse: collapse !important;
       border-spacing: 0 !important;
     }
@@ -12127,6 +12172,12 @@ body.drawer-open {
 @media (max-width: 600px) {
     #page-products .products-page-header {
       flex-direction: column;
+    }
+
+    #page-products .products-header-actions {
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
     }
 
     #page-products .products-page-header .btn {
@@ -12625,7 +12676,7 @@ body {
   #page-reports .grid-2,
   #page-cashflow .grid-2,
   #page-contracts .grid-2,
-  #page-employees .grid-2 {
+  #page-bossStaff .grid-2 {
     grid-template-columns: 1fr !important;
     gap: 12px;
     width: 100% !important;
@@ -12872,7 +12923,7 @@ body {
   #page-customers .table-wrap, #page-customers table,
   #page-branches .table-wrap, #page-branches table,
   #page-cashflow .table-wrap, #page-cashflow table,
-  #page-employees .table-wrap, #page-employees table,
+  #page-bossStaff .table-wrap, #page-bossStaff table,
   #page-contracts .table-wrap, #page-contracts table,
   #page-categories .table-wrap, #page-categories table,
   #page-discounts .table-wrap, #page-discounts table,
@@ -14501,7 +14552,7 @@ body {
   }
 
   /* ============== LIST + DATA PAGES ============== */
-  #page-products, #page-categories, #page-warehouse, #page-customers, #page-employees,
+  #page-products, #page-categories, #page-warehouse, #page-customers,
   #page-branches, #page-cashflow, #page-reports, #page-contracts, #page-discounts,
   #page-sms, #page-logs, #page-assistant, #page-settings,
   #page-salary, #page-shop {
@@ -14995,8 +15046,8 @@ body {
 
   #page-products .products-table-scroll table.products-table {
     display: table !important;
-    width: 1191px !important;
-    min-width: 1191px !important;
+    width: 1361px !important;
+    min-width: 1361px !important;
     table-layout: fixed !important;
     border-collapse: collapse !important;
     border-spacing: 0 !important;
@@ -16132,7 +16183,6 @@ body {
     [data-tp-deskonly] { display: none !important; }
     .products-page-header .btn-primary,
     #page-customers > div > .btn-primary,
-    #page-employees > div > .btn-primary,
     #page-categories .panel-header #addCategoryBtn {
         display: none !important;
     }

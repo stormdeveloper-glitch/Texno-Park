@@ -3,7 +3,8 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="color-scheme" content="light dark">
   <title>Texno Park N1 POS — Premium</title>
@@ -14,8 +15,8 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.12.0">
-  <link rel="stylesheet" href="boss.css?v=2.1.2">
+  <link rel="stylesheet" href="style.css?v=5.14.0">
+  <link rel="stylesheet" href="boss.css?v=2.3.1">
 </head>
 
 <body>
@@ -23,7 +24,7 @@
   <!-- PRINT AREA (hidden, shown only during print) -->
   <div id="printArea" style="display:none;"></div>
 
-  <!-- ============================================================
+  <!-- ==========================================vjh==================
      LOGIN PAGE
      ============================================================ -->
   <div id="loginPage" class="active">
@@ -45,11 +46,10 @@
         <p>Xodimlar uchun kirish</p>
       </div>
       <div class="form-group">
-        <label for="loginPhone">Foydalanuvchi</label>
+        <label for="loginPhone">Telefon yoki login</label>
         <div class="phone-field">
-          <input type="tel" id="loginPhone" inputmode="numeric" placeholder="90 123 45 67"
-            autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"
-            aria-describedby="loginPhoneError">
+          <input type="text" id="loginPhone" inputmode="text" placeholder="90 123 45 67 yoki admin" autocomplete="username"
+            autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="loginPhoneError">
           <span class="phone-prefix" aria-hidden="true">+998</span>
           <i class="fas fa-mobile-screen input-icon"></i>
         </div>
@@ -106,7 +106,7 @@
         <div class="nav-item" onclick="goTo('page-dashboard',this)" data-role="admin,cashier,manager">
           <i class="fas fa-th-large"></i><span>Dashboard</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="manager,cashier">
+        <div class="nav-item" onclick="goTo('page-pos',this)" id="navPos" data-role="admin,manager,cashier">
           <i class="fas fa-cash-register"></i><span>Kassa (POS)</span>
         </div>
 
@@ -121,7 +121,8 @@
         <div class="nav-item" onclick="goTo('page-warehouse',this)" id="nav-warehouse" data-role="admin,manager">
           <i class="fas fa-warehouse"></i><span>Ombor</span>
         </div>
-        <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers" data-role="admin,manager,cashier">
+        <div class="nav-item" onclick="goTo('page-customers',this)" id="nav-customers"
+          data-role="admin,manager,cashier">
           <i class="fas fa-users"></i><span>Mijozlar</span>
           <span class="nav-badge" id="navCustomersBadge">0</span>
         </div>
@@ -132,29 +133,10 @@
         <div class="nav-item" onclick="goTo('page-cashflow',this)" id="nav-cashflow" data-role="admin,manager">
           <i class="fas fa-money-bill-trend-up"></i><span>Kirim / Chiqim</span>
         </div>
-        <!-- XODIMLAR bo'limi faqat MENEDJER menyusida (wrapper data-role="manager"):
-             ADMIN menyusidan butunlay olib tashlandi — bo'sh dropdown ham qolmaydi.
-             nav-employees `data-page="page-employees"` bilan saqlanadi — bu
-             canAccessPage() uchun ruxsat manbai (admin/menejer topbar'dagi
-             «Xodim qo'shish» orqali sahifaga kira oladi), ko'rinishi esa
-             wrapper data-role orqali boshqariladi. -->
-        <div class="nav-item-wrapper" id="nav-employees-wrapper" data-role="manager" style="width:100%">
-          <div class="nav-item" onclick="toggleEmployeesDropdown(this)" id="nav-employees"
-            data-role="admin,manager" data-page="page-employees">
-            <i class="fas fa-id-badge"></i><span>Xodimlar</span>
-            <i class="fas fa-chevron-down submenu-arrow" style="margin-left:auto;transition:transform 0.2s"></i>
-          </div>
-          <!-- 4 ta band (Ro'yxatdan o'tish, Kirish, Sozlama, Profil) olib tashlandi —
-               ularning funksiyalari o'z joylarida ishlaydi: Sozlamalar → alohida
-               "Sozlamalar" bo'limi, Profil → "Profilim", xodim qo'shish → topbar,
-               chiqish → "Tizimdan chiqish". -->
-          <div class="nav-submenu" id="employees-submenu"></div>
-        </div>
         <!-- Shartnomalar: ADMIN va BOSHLIQ uchun bitta umumiy sahifa/baza
              (backend'da require_staff iyerarxiyasi boss'ni admin darajasidan
              o'tkazadi — alohida API/jadval yaratilmagan). -->
-        <div class="nav-item" onclick="goTo('page-contracts',this)" id="nav-contracts"
-          data-role="admin,boss">
+        <div class="nav-item" onclick="goTo('page-contracts',this)" id="nav-contracts" data-role="admin,boss">
           <i class="fas fa-file-signature"></i><span>Shartnomalar</span>
           <span class="nav-badge" id="navContractsBadge">0</span>
         </div>
@@ -181,8 +163,7 @@
           <i class="fas fa-user-gear"></i><span>Profilim</span>
         </div>
 
-        <div class="nav-section" id="sec-settings" data-role="admin"><span
-            class="nav-section-label">Sozlamalar</span>
+        <div class="nav-section" id="sec-settings" data-role="admin"><span class="nav-section-label">Sozlamalar</span>
         </div>
         <div class="nav-item" onclick="goTo('page-settings',this)" id="nav-settings" data-role="admin">
           <i class="fas fa-cog"></i><span>Sozlamalar</span>
@@ -197,7 +178,8 @@
           <i class="fas fa-users-gear"></i><span>Xodimlar</span>
           <span class="nav-badge" id="navBossStaffBadge">0</span>
         </div>
-        <div class="nav-item boss-only" onclick="goTo('page-bossStaffSales',this)" id="nav-bossStaffSales" data-role="boss">
+        <div class="nav-item boss-only" onclick="goTo('page-bossStaffSales',this)" id="nav-bossStaffSales"
+          data-role="boss">
           <i class="fas fa-receipt"></i><span>Xodim savdosi</span>
         </div>
         <div class="nav-item boss-only" onclick="goTo('page-bossProducts',this)" id="nav-bossProducts" data-role="boss">
@@ -239,7 +221,8 @@
       </div>
       <div class="topbar-search">
         <i class="fas fa-search"></i>
-        <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="debouncedGlobalSearch(this.value)" id="globalSearchInput">
+        <input type="text" placeholder="Qidirish... (Ctrl+F)" oninput="debouncedGlobalSearch(this.value)"
+          id="globalSearchInput">
       </div>
       <!-- FAOL FILIAL TANLAGICH -->
       <div class="branch-switcher" id="branchSwitcherWrap"
@@ -370,7 +353,7 @@
             <div class="panel">
               <div class="panel-header">
                 <h3><i class="fas fa-clock" style="color:var(--accent)"></i> Oxirgi Sotuvlar</h3>
-                <button class="btn btn-outline btn-sm" onclick="if(requireRole('boss','manager','cashier'))goTo('page-pos',document.getElementById('navPos'))">+
+                <button class="btn btn-outline btn-sm" onclick="if(requireRole('boss','admin','manager','cashier'))goTo('page-pos',document.getElementById('navPos'))">+
                   Yangi</button>
               </div>
               <div class="panel-body" style="padding:0">
@@ -525,7 +508,8 @@
                 <span class="cd-link-ico cd-ico-green"><i class="fas fa-cash-register"></i></span>
                 <span class="cd-link-label">Kassa holati</span>
               </button>
-              <button type="button" class="cd-link" onclick="goTo('page-products',document.getElementById('nav-products'))">
+              <button type="button" class="cd-link"
+                onclick="goTo('page-products',document.getElementById('nav-products'))">
                 <span class="cd-link-ico cd-ico-blue"><i class="fas fa-tv"></i></span>
                 <span class="cd-link-label">Mahsulotlar</span>
               </button>
@@ -534,8 +518,8 @@
             <div class="cd-recent" id="cd-recent">
               <div class="cd-recent-head">
                 <h3><i class="fas fa-clock-rotate-left"></i> So'nggi savdolar</h3>
-                <button type="button" class="cd-recent-all" id="cd-recent-all"
-                  onclick="toggleCashierRecent()" hidden>Barchasi</button>
+                <button type="button" class="cd-recent-all" id="cd-recent-all" onclick="toggleCashierRecent()"
+                  hidden>Barchasi</button>
               </div>
               <div class="cd-recent-list" id="cd-recent-list"></div>
             </div>
@@ -666,11 +650,14 @@
                       <span class="mhp-notch"></span>
                       <span class="mhp-highlight"></span>
                       <div class="mhp-screen">
-                        <div class="mhp-statusbar"><span>9:41</span><span class="mhp-status-icons"><i class="fas fa-signal"></i><i class="fas fa-wifi"></i><i class="fas fa-battery-three-quarters"></i></span></div>
+                        <div class="mhp-statusbar"><span>9:41</span><span class="mhp-status-icons"><i
+                              class="fas fa-signal"></i><i class="fas fa-wifi"></i><i
+                              class="fas fa-battery-three-quarters"></i></span></div>
                         <div class="mhp-header">
                           <span class="mhp-logo"><i class="fas fa-bolt"></i></span>
                           <span class="mhp-brand">Texno Park <b>N1</b></span>
-                          <span class="mhp-header-icons"><i class="far fa-heart"></i><i class="fas fa-shopping-cart"></i></span>
+                          <span class="mhp-header-icons"><i class="far fa-heart"></i><i
+                              class="fas fa-shopping-cart"></i></span>
                         </div>
                         <div class="mhp-search"><i class="fas fa-search"></i><span>Kategoriyada qidirish…</span></div>
                         <div class="mhp-hero">
@@ -680,12 +667,19 @@
                         </div>
                         <div class="mhp-chips"><span>Kategoriyalar</span><span>Aksiya</span><span>Yangi</span></div>
                         <div class="mhp-products">
-                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-tv"></i></span><span class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">2 490 000</b></div>
-                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-snowflake"></i></span><span class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">5 890 000</b></div>
-                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-mobile-screen"></i></span><span class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">1 190 000</b></div>
+                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-tv"></i></span><span
+                              class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">2 490
+                              000</b></div>
+                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-snowflake"></i></span><span
+                              class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">5 890
+                              000</b></div>
+                          <div class="mhp-card"><span class="mhp-thumb"><i class="fas fa-mobile-screen"></i></span><span
+                              class="mhp-line"></span><span class="mhp-line short"></span><b class="mhp-price">1 190
+                              000</b></div>
                         </div>
                         <div class="mhp-promo"><i class="fas fa-bolt"></i><span>Hafta aksiyasi · −30%</span></div>
-                        <div class="mhp-tabbar"><i class="fas fa-house"></i><i class="fas fa-grip"></i><i class="fas fa-magnifying-glass"></i><i class="fas fa-user"></i></div>
+                        <div class="mhp-tabbar"><i class="fas fa-house"></i><i class="fas fa-grip"></i><i
+                            class="fas fa-magnifying-glass"></i><i class="fas fa-user"></i></div>
                       </div>
                     </div>
                     <div class="market-hero-phone-shadow"></div>
@@ -748,7 +742,8 @@
                   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                     <div class="shop-search">
                       <i class="fas fa-search"></i>
-                      <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..." oninput="debouncedRenderShop()">
+                      <input type="text" id="shopSearch" placeholder="Mahsulot qidirish..."
+                        oninput="debouncedRenderShop()">
                     </div>
                     <div class="shop-sort">
                       <select id="shopSortSelect" onchange="renderShop()" class="form-control"
@@ -1030,10 +1025,13 @@
           </div>
 
           <!-- RIGHT: savat va to'lov -->
-          <div class="pos-right">
+          <div class="pos-right" id="posCartPanel">
             <div class="cart-header">
               <h3><i class="fas fa-shopping-cart"></i> Savat</h3>
               <p id="cartCount">0 ta mahsulot</p>
+              <!-- Mobil: drawer'ni yopish tugmasi (desktop'da yashirilgan) -->
+              <button type="button" class="pos-cart-close" onclick="posToggleSheet(false)"
+                aria-label="Savatni yopish"><i class="fas fa-times"></i></button>
             </div>
             <div class="cart-items" id="cartItems"></div>
             <div class="cart-footer">
@@ -1130,6 +1128,24 @@
             </div>
           </div>
         </div>
+
+        <!-- MOBIL (≤768px): pastki doimiy savat paneli.
+             `posMobileCount` / `posMobileTotal` ID'lari posAfterCartUpdate()
+             orqali avtomatik yangilanadi (mavjud funksiya o'zgartirilmagan). -->
+        <button type="button" class="pos-mobile-bar" id="posMobileBar" title="Savatni ochish"
+          aria-controls="posCartPanel" aria-expanded="false" onclick="posToggleSheet(true)">
+          <span class="pos-mobile-bar-badge">
+            <i class="fas fa-shopping-cart"></i>
+            <b id="posMobileCount">0</b>
+          </span>
+          <span class="pos-mobile-bar-info">
+            <small>Savatdagi mahsulot</small>
+            <strong id="posMobileTotal">0 so'm</strong>
+          </span>
+          <span class="pos-mobile-bar-cta" aria-hidden="true"><i class="fas fa-chevron-up"></i></span>
+        </button>
+        <!-- Mobil: drawer ortidagi qoramtir qatlam -->
+        <div class="pos-cart-scrim" id="posCartScrim" onclick="posToggleSheet(false)"></div>
       </div>
 
       <!-- ===== PRODUCTS ===== -->
@@ -1139,11 +1155,18 @@
             <h2 style="font-size:20px;font-weight:700">Mahsulotlar Boshqaruvi</h2>
             <p style="color:var(--muted);font-size:13px;margin-top:3px">Mahsulot qo'shish, tahrirlash va o'chirish</p>
           </div>
-          <button class="btn btn-primary" onclick="openProductModal()"><i class="fas fa-plus"></i> Yangi
-            Mahsulot</button>
+          <div class="products-header-actions">
+            <button class="btn btn-outline products-refresh-btn" id="productsRefreshBtn" type="button"
+              onclick="refreshProducts(this)" title="Ombor qoldig'ini serverdan yangilash">
+              <i class="fas fa-rotate-right"></i> <span>Yangilash</span>
+            </button>
+            <button class="btn btn-primary" onclick="openProductModal()"><i class="fas fa-plus"></i> Yangi
+              Mahsulot</button>
+          </div>
         </div>
         <div class="tpm-chips" id="productsChips" aria-label="Mahsulotlar statistikasi"></div>
-        <button type="button" class="tpm-hero-btn" onclick="openProductModal()"><i class="fas fa-plus"></i> Yangi mahsulot</button>
+        <button type="button" class="tpm-hero-btn" onclick="openProductModal()"><i class="fas fa-plus"></i> Yangi
+          mahsulot</button>
         <div class="tpm-search-row">
           <div class="tpm-search-wrap">
             <i class="fas fa-search"></i>
@@ -1158,13 +1181,11 @@
             <h3><i class="fas fa-tv" style="color:var(--primary)"></i> Mahsulotlar Ro'yxati (<span
                 id="productCount">0</span>)</h3>
             <div class="products-filters">
-              <select class="form-control" onchange="filterByCategory(this.value)"
-                id="catFilter">
+              <select class="form-control" onchange="filterByCategory(this.value)" id="catFilter">
                 <option value="">Barcha</option>
               </select>
               <input type="search" class="form-control" id="productSearch" placeholder="Mahsulot qidirish..."
-                aria-label="Mahsulot qidirish"
-                oninput="debouncedFilterProducts(this.value)">
+                aria-label="Mahsulot qidirish" oninput="debouncedFilterProducts(this.value)">
             </div>
           </div>
           <div class="panel-body" style="padding:0">
@@ -1215,7 +1236,8 @@
             Mijoz</button>
         </div>
         <div class="tpm-chips" id="customersChips" aria-label="Mijozlar statistikasi"></div>
-        <button type="button" class="tpm-hero-btn" onclick="openCustomerModal()"><i class="fas fa-user-plus"></i> Yangi mijoz</button>
+        <button type="button" class="tpm-hero-btn" onclick="openCustomerModal()"><i class="fas fa-user-plus"></i> Yangi
+          mijoz</button>
         <div class="tpm-search-row">
           <div class="tpm-search-wrap">
             <i class="fas fa-search"></i>
@@ -1305,8 +1327,10 @@
 
       <div class="page" id="page-bossStaff">
         <div class="boss-page-head">
-          <div><h2><i class="fas fa-users-gear"></i> Xodimlar nazorati</h2>
-            <p>Barcha xodimlar, reytingi va boshqaruvi</p></div>
+          <div>
+            <h2><i class="fas fa-users-gear"></i> Xodimlar nazorati</h2>
+            <p>Barcha xodimlar, reytingi va boshqaruvi</p>
+          </div>
           <div class="boss-period" id="boss-staff-period"></div>
         </div>
         <!-- MOBIL xodimlar boshqaruv paneli (faqat ≤768px; desktop'da yashirin) -->
@@ -1320,23 +1344,30 @@
               </div>
             </div>
             <div class="bsm-stats-badges">
-              <span class="bsm-mini ok"><i class="fas fa-circle-check"></i> Faol <b id="boss-staff-m-active">0</b></span>
+              <span class="bsm-mini ok"><i class="fas fa-circle-check"></i> Faol <b
+                  id="boss-staff-m-active">0</b></span>
               <span class="bsm-mini bad"><i class="fas fa-ban"></i> Bloklangan <b id="boss-staff-m-blocked">0</b></span>
+              <span class="bsm-mini off"><i class="fas fa-box-archive"></i> Nofaol <b id="boss-staff-m-inactive">0</b></span>
             </div>
           </div>
           <div class="bsm-searchrow">
             <input type="search" class="form-control" id="boss-staff-search-m"
               placeholder="🔍 Ism, telefon yoki rol bo'yicha..." autocomplete="off">
-            <button type="button" class="bsm-icon" id="boss-staff-m-toggle"
-              data-boss-staff-adv aria-label="Qo'shimcha filtrlar" aria-expanded="false"
-              aria-controls="boss-staff-m-adv"><i class="fas fa-sliders"></i></button>
-            <button type="button" class="bsm-icon" data-boss-refresh
-              aria-label="Ro'yxatni yangilash"><i class="fas fa-rotate"></i></button>
+            <button type="button" class="bsm-icon" id="boss-staff-m-toggle" data-boss-staff-adv
+              aria-label="Qo'shimcha filtrlar" aria-expanded="false" aria-controls="boss-staff-m-adv"><i
+                class="fas fa-sliders"></i></button>
+            <button type="button" class="bsm-icon" data-boss-refresh aria-label="Ro'yxatni yangilash"><i
+                class="fas fa-rotate"></i></button>
           </div>
           <div class="bsm-pills" id="boss-staff-status-pills">
-            <button type="button" class="bsm-pill active" data-staff-status="">Barchasi <b id="boss-pill-all">0</b></button>
-            <button type="button" class="bsm-pill" data-staff-status="active"><i class="dot ok"></i> Faol <b id="boss-pill-active">0</b></button>
-            <button type="button" class="bsm-pill" data-staff-status="blocked"><i class="dot bad"></i> Bloklangan <b id="boss-pill-blocked">0</b></button>
+            <button type="button" class="bsm-pill active" data-staff-status="">Barchasi <b
+                id="boss-pill-all">0</b></button>
+            <button type="button" class="bsm-pill" data-staff-status="active"><i class="dot ok"></i> Faol <b
+                id="boss-pill-active">0</b></button>
+            <button type="button" class="bsm-pill" data-staff-status="blocked"><i class="dot bad"></i> Bloklangan <b
+                id="boss-pill-blocked">0</b></button>
+            <button type="button" class="bsm-pill" data-staff-status="inactive"><i class="dot off"></i> Nofaol <b
+                id="boss-pill-inactive">0</b></button>
           </div>
           <div class="bsm-adv" id="boss-staff-m-adv" hidden>
             <select class="form-control" id="boss-staff-role-m" aria-label="Rol filtri">
@@ -1354,7 +1385,8 @@
               <option value="avgCheck">O'rtacha chek</option>
               <option value="name">Ism</option>
             </select>
-            <button type="button" class="bsm-link" data-boss-ownpass><i class="fas fa-key"></i> Parolimni o'zgartirish</button>
+            <button type="button" class="bsm-link" data-boss-ownpass><i class="fas fa-key"></i> Parolimni
+              o'zgartirish</button>
           </div>
           <select class="form-control bsm-branch" id="boss-staff-branch-m" aria-label="Filial filtri">
             <option value="">Barcha filiallar</option>
@@ -1372,6 +1404,15 @@
             <option value="manager">Menejer</option>
             <option value="cashier">Kassa</option>
           </select>
+          <select class="form-control" id="boss-staff-branch" aria-label="Filial filtri">
+            <option value="">Barcha filiallar</option>
+          </select>
+          <select class="form-control" id="boss-staff-status" aria-label="Holat filtri">
+            <option value="">Barcha holatlar</option>
+            <option value="active">Faol</option>
+            <option value="blocked">Bloklangan</option>
+            <option value="inactive">Nofaol (arxiv)</option>
+          </select>
           <select class="form-control" id="boss-staff-sort" aria-label="Saralash">
             <option value="total">Savdo summasi</option>
             <option value="sales">Savdo soni</option>
@@ -1379,6 +1420,7 @@
             <option value="profit">Foyda</option>
             <option value="avgCheck">O'rtacha chek</option>
             <option value="name">Ism</option>
+            <option value="id">ID</option>
           </select>
           <span class="boss-count" id="boss-staff-count"></span>
           <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i></button>
@@ -1388,207 +1430,50 @@
         <div class="boss-panel boss-staff-tablepanel">
           <div class="table-wrap">
             <table class="boss-table">
-              <thead><tr>
-                <th>#</th><th>Xodim</th><th>Login (telefon)</th><th>Parol (joriy)</th><th>Rol</th><th>Filial</th>
-                <th>Sotuvlar</th><th>Savdo summasi</th><th>Holat</th><th>Amallar</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Xodim</th>
+                  <th>Login (telefon)</th>
+                  <th>Rol</th>
+                  <th>Filial</th>
+                  <th>Sotuvlar</th>
+                  <th>Savdo summasi</th>
+                  <th>Oylik maosh</th>
+                  <th>Holat</th>
+                  <th>Parol</th>
+                  <th>Amallar</th>
+                </tr>
+              </thead>
               <tbody id="boss-staff-table"></tbody>
             </table>
           </div>
         </div>
         <!-- MOBIL kartochkalar ro'yxati (faqat ≤768px ko'rinadi) -->
         <div class="boss-staff-cards" id="boss-staff-cards"></div>
-      </div>
 
-      <div class="page" id="page-bossStaffSales">
-        <div class="boss-page-head">
-          <div><h2><i class="fas fa-receipt"></i> Xodim savdosi</h2>
-            <p>Qaysi xodim qancha va nima sotgani — haqiqiy savdo yozuvlari</p></div>
-          <div class="boss-period" id="boss-sales-period"></div>
-        </div>
-        <div class="boss-filterbar" id="boss-sales-filters">
-          <input type="date" class="form-control boss-date" id="boss-sales-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-sales-to" aria-label="Sanagacha">
-          <select class="form-control" id="boss-sales-branch" aria-label="Filial">
-            <option value="">Barcha filiallar</option>
-          </select>
-          <input type="search" class="form-control boss-search" id="boss-sales-search"
-            placeholder="🔍 Xodim ismi..." autocomplete="off">
-          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i></button>
-        </div>
-        <div id="boss-sales-overview"></div>
-        <div id="boss-sales-detail" style="display:none">
-          <div class="boss-page-head">
-            <div><h2><i class="fas fa-receipt"></i> <span id="boss-sales-title">Xodim savdosi</span></h2>
-              <p>Cheklar va mahsulotlar</p></div>
-            <button class="btn btn-outline" id="boss-sales-back"><i class="fas fa-arrow-left"></i> Umumiy ko'rinish</button>
-          </div>
-          <div id="boss-sales-box"></div>
-        </div>
-      </div>
-
-      <div class="page" id="page-bossProducts">
-        <div class="boss-page-head">
-          <div><h2><i class="fas fa-boxes-stacked"></i> Mahsulotlar nazorati</h2>
-            <p>Mahsulotlar, top sotuvchilar va kam qoldiqlar</p></div>
-          <div class="boss-period" id="boss-products-period"></div>
-        </div>
-        <div class="boss-toolbar">
-          <input type="search" class="form-control boss-search" id="boss-product-search"
-            placeholder="🔍 Mahsulot nomi, brend yoki barkod..." autocomplete="off">
-          <select class="form-control" id="boss-product-cat" aria-label="Kategoriya"></select>
-          <div class="boss-view-chips">
-            <button class="boss-chip active" data-boss-view="all">Barchasi</button>
-            <button class="boss-chip" data-boss-view="top">Top mahsulotlar</button>
-            <button class="boss-chip" data-boss-view="low">Kam qolganlar</button>
-          </div>
-          <span class="boss-count" id="boss-products-count"></span>
-        </div>
-        <div id="boss-products-box"></div>
-      </div>
-
-      <div class="page" id="page-bossBranches">
-        <div class="boss-page-head">
-          <div><h2><i class="fas fa-chart-column"></i> Filiallar solishtirish</h2>
-            <p>Qaysi filial yaxshi ishlayapti?</p></div>
-          <div class="boss-period" id="boss-branches-period"></div>
-        </div>
-        <div id="boss-branches-box"></div>
-      </div>
-
-      <div class="page" id="page-bossFinance">
-        <div class="boss-page-head">
-          <div><h2><i class="fas fa-sack-dollar"></i> Moliyaviy nazorat</h2>
-            <p>Savdo, kirim, chiqim, xarajat va sof natija</p></div>
-          <div class="boss-period" id="boss-finance-period"></div>
-        </div>
-        <div class="boss-filterbar" id="boss-finance-filters">
-          <input type="date" class="form-control boss-date" id="boss-finance-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-finance-to" aria-label="Sanagacha">
-          <select class="form-control" id="boss-finance-branch" aria-label="Filial">
-            <option value="">Barcha filiallar</option>
-          </select>
-        </div>
-        <div id="boss-finance-box"></div>
-        <div class="boss-charts-grid">
-          <div class="boss-panel">
-            <div class="boss-panel-head"><h3><i class="fas fa-money-bill-transfer"></i> Kirim / chiqim (6 oy)</h3></div>
-            <div class="boss-panel-body boss-chart-body"><canvas id="bossFlowChart"></canvas></div>
-          </div>
-          <div class="boss-panel">
-            <div class="boss-panel-head"><h3><i class="fas fa-chart-line"></i> Oylik savdo va foyda</h3></div>
-            <div class="boss-panel-body boss-chart-body"><canvas id="bossMonthlyChart"></canvas></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="page" id="page-bossReports">
-        <div class="boss-page-head">
-          <div><h2><i class="fas fa-file-invoice-dollar"></i> Boshliq hisobotlari</h2>
-            <p>Sana, filial, xodim, mahsulot va kategoriya filtrlari</p></div>
-          <div class="boss-period" id="boss-reports-period"></div>
-        </div>
-        <div class="boss-toolbar">
-          <input type="date" class="form-control boss-date" id="boss-report-from" aria-label="Sanadan">
-          <input type="date" class="form-control boss-date" id="boss-report-to" aria-label="Sanagacha">
-          <input type="search" class="form-control boss-search" id="boss-report-staff"
-            placeholder="Xodim ismi..." autocomplete="off">
-          <input type="search" class="form-control boss-search" id="boss-report-product"
-            placeholder="Mahsulot nomi..." autocomplete="off">
-          <select class="form-control" id="boss-report-branch"><option value="">Barcha filiallar</option></select>
-          <select class="form-control" id="boss-report-cat"><option value="">Barcha kategoriyalar</option></select>
-          <button class="btn btn-outline" data-boss-export><i class="fas fa-file-csv"></i> CSV eksport</button>
-        </div>
-        <div id="boss-reports-box"></div>
-      </div>
-
-      <div class="page" id="page-bossAudit">
-        <div class="boss-page-head">
-          <div><h2><i class="fas fa-clipboard-list"></i> Amallar jurnali</h2>
-            <p>Tizimdagi real amallar — xodimlar, savdo, xavfsizlik (parol yozilmaydi)</p></div>
-          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i> Yangilash</button>
-        </div>
-        <div class="boss-filterbar">
-          <input type="search" class="form-control boss-search" id="boss-audit-search"
-            placeholder="🔍 Amal, xodim yoki modul bo'yicha qidirish..." autocomplete="off">
-          <div class="boss-view-chips">
-            <button class="boss-chip active" data-boss-audit-src="">Barchasi</button>
-            <button class="boss-chip" data-boss-audit-src="audit">Boshliq amallari</button>
-            <button class="boss-chip" data-boss-audit-src="security">Xavfsizlik hodisalari</button>
-          </div>
-        </div>
-        <div id="boss-audit-box"></div>
-      </div>
-
-      <!-- ===== EMPLOYEES ===== -->
-      <div class="page" id="page-employees">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <!-- ===== OYLIK MAOSH MODULI =====
+             Ilgari alohida «Xodimlar» sahifasida edi — endi yagona joy:
+             Boshliq → Xodimlar. Maosh yozuvlari, to'lovlar va tarix shu yerda. -->
+        <div class="boss-page-head" style="margin-top:26px">
           <div>
-            <h2 style="font-size:20px;font-weight:700">Xodimlar</h2>
-            <p style="color:var(--muted);font-size:13px;margin-top:3px">Xodimlar boshqaruvi va reytingi</p>
-          </div>
-          <button class="btn btn-primary" onclick="openEmployeeModal()"><i class="fas fa-user-plus"></i> Yangi
-            Xodim</button>
-        </div>
-        <div class="tpm-chips" id="employeesChips" aria-label="Xodimlar statistikasi"></div>
-        <button type="button" class="tpm-hero-btn" onclick="openEmployeeModal()"><i class="fas fa-user-plus"></i> Yangi xodim qo'shish</button>
-        <div class="tpm-search-row">
-          <div class="tpm-search-wrap">
-            <i class="fas fa-search"></i>
-            <input type="search" class="form-control" id="employeeSearchMobile" placeholder="Xodim qidirish..."
-              aria-label="Xodim qidirish" oninput="debouncedFilterEmployees(this.value)">
-          </div>
-          <button type="button" class="tpm-tune-btn" aria-label="Filtr"><i class="fas fa-sliders"></i></button>
-        </div>
-        <div class="tpm-pills" id="employeesPills" role="tablist" aria-label="Rol bo'yicha filtrlar"></div>
-        <div class="panel">
-          <div class="panel-header">
-            <h3><i class="fas fa-id-badge" style="color:var(--primary)"></i> Xodimlar Ro'yxati</h3>
-            <input type="search" class="form-control tpm-search" placeholder="Xodim qidirish..."
-              aria-label="Xodim qidirish" oninput="debouncedFilterEmployees(this.value)">
-          </div>
-          <div class="panel-body" style="padding:0">
-            <div class="table-wrap" data-tp-deskonly>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Ism</th>
-                    <th>Rol</th>
-                    <th>Sotuvlar</th>
-                    <th>Daromad</th>
-                    <th>Login</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="employeesTable"></tbody>
-              </table>
-            </div>
-            <div class="tpm-list" id="employeesMobileList" aria-label="Xodimlar kartalari"></div>
-          </div>
-        </div>
-
-        <!-- ===== SALARY SECTION (moved to Xodimlar sahifasi) ===== -->
-        <div
-          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-          <div>
-            <h2 style="font-size:20px;font-weight:700;display:flex;align-items:center;gap:10px">
-              <span
-                style="background:linear-gradient(135deg,#10b981,#059669);width:38px;height:38px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">💸</span>
-              Oylik Maoshlarni Rejalashtirish
-            </h2>
-            <p style="color:var(--text-secondary);font-size:13px;margin-top:4px;margin-left:48px" id="salary-subtitle">
-              Xodimlarning maosh holati va to'lov jadvali</p>
+            <h2><i class="fas fa-money-bill-wave"></i> Oylik maoshlar</h2>
+            <p id="salary-subtitle">Xodimlarning maosh holati va to'lov jadvali</p>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <select class="form-control" id="salary-month-filter" onchange="SalaryModule.applyFilter()"
               style="padding:8px 14px;font-size:13px;width:auto">
               <option value="">Barcha oylar</option>
             </select>
+            <select class="form-control" id="salary-branch-filter" onchange="SalaryModule.applyBranchFilter()"
+              aria-label="Filial bo'yicha filtrlash" style="padding:8px 14px;font-size:13px;width:auto">
+              <option value="">Barcha filiallar</option>
+            </select>
             <button class="btn btn-outline" onclick="SalaryModule.exportCSV()">
               <i class="fas fa-file-export"></i> Eksport
             </button>
             <button class="btn btn-primary" onclick="SalaryModule.openAddModal()">
-              <i class="fas fa-plus"></i> Xodim Qo'shish
+              <i class="fas fa-user-plus"></i> Yangi xodim qo'shish
             </button>
           </div>
         </div>
@@ -1630,9 +1515,9 @@
                     <th>Xodim</th>
                     <th>Rol</th>
                     <th>Oylik Maosh</th>
-                    <th>Navbatdagi To'lov</th>
+                    <th>To'lov muddati</th>
                     <th>Holat</th>
-                    <th>Oy Davomiyligi</th>
+                    <th>Qoldiq</th>
                     <th>Amallar</th>
                   </tr>
                 </thead>
@@ -1662,6 +1547,149 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="page" id="page-bossStaffSales">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-receipt"></i> Xodim savdosi</h2>
+            <p>Qaysi xodim qancha va nima sotgani — haqiqiy savdo yozuvlari</p>
+          </div>
+          <div class="boss-period" id="boss-sales-period"></div>
+        </div>
+        <div class="boss-filterbar" id="boss-sales-filters">
+          <input type="date" class="form-control boss-date" id="boss-sales-from" aria-label="Sanadan">
+          <input type="date" class="form-control boss-date" id="boss-sales-to" aria-label="Sanagacha">
+          <select class="form-control" id="boss-sales-branch" aria-label="Filial">
+            <option value="">Barcha filiallar</option>
+          </select>
+          <input type="search" class="form-control boss-search" id="boss-sales-search" placeholder="🔍 Xodim ismi..."
+            autocomplete="off">
+          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i></button>
+        </div>
+        <div id="boss-sales-overview"></div>
+        <div id="boss-sales-detail" style="display:none">
+          <div class="boss-page-head">
+            <div>
+              <h2><i class="fas fa-receipt"></i> <span id="boss-sales-title">Xodim savdosi</span></h2>
+              <p>Cheklar va mahsulotlar</p>
+            </div>
+            <button class="btn btn-outline" id="boss-sales-back"><i class="fas fa-arrow-left"></i> Umumiy
+              ko'rinish</button>
+          </div>
+          <div id="boss-sales-box"></div>
+        </div>
+      </div>
+
+      <div class="page" id="page-bossProducts">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-boxes-stacked"></i> Mahsulotlar nazorati</h2>
+            <p>Mahsulotlar, top sotuvchilar va kam qoldiqlar</p>
+          </div>
+          <div class="boss-period" id="boss-products-period"></div>
+        </div>
+        <div class="boss-toolbar">
+          <input type="search" class="form-control boss-search" id="boss-product-search"
+            placeholder="🔍 Mahsulot nomi, brend yoki barkod..." autocomplete="off">
+          <select class="form-control" id="boss-product-cat" aria-label="Kategoriya"></select>
+          <div class="boss-view-chips">
+            <button class="boss-chip active" data-boss-view="all">Barchasi</button>
+            <button class="boss-chip" data-boss-view="top">Top mahsulotlar</button>
+            <button class="boss-chip" data-boss-view="low">Kam qolganlar</button>
+          </div>
+          <span class="boss-count" id="boss-products-count"></span>
+        </div>
+        <div id="boss-products-box"></div>
+      </div>
+
+      <div class="page" id="page-bossBranches">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-chart-column"></i> Filiallar solishtirish</h2>
+            <p>Qaysi filial yaxshi ishlayapti?</p>
+          </div>
+          <div class="boss-period" id="boss-branches-period"></div>
+        </div>
+        <div id="boss-branches-box"></div>
+      </div>
+
+      <div class="page" id="page-bossFinance">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-sack-dollar"></i> Moliyaviy nazorat</h2>
+            <p>Savdo, kirim, chiqim, xarajat va sof natija</p>
+          </div>
+          <div class="boss-period" id="boss-finance-period"></div>
+        </div>
+        <div class="boss-filterbar" id="boss-finance-filters">
+          <input type="date" class="form-control boss-date" id="boss-finance-from" aria-label="Sanadan">
+          <input type="date" class="form-control boss-date" id="boss-finance-to" aria-label="Sanagacha">
+          <select class="form-control" id="boss-finance-branch" aria-label="Filial">
+            <option value="">Barcha filiallar</option>
+          </select>
+        </div>
+        <div id="boss-finance-box"></div>
+        <div class="boss-charts-grid">
+          <div class="boss-panel">
+            <div class="boss-panel-head">
+              <h3><i class="fas fa-money-bill-transfer"></i> Kirim / chiqim (6 oy)</h3>
+            </div>
+            <div class="boss-panel-body boss-chart-body"><canvas id="bossFlowChart"></canvas></div>
+          </div>
+          <div class="boss-panel">
+            <div class="boss-panel-head">
+              <h3><i class="fas fa-chart-line"></i> Oylik savdo va foyda</h3>
+            </div>
+            <div class="boss-panel-body boss-chart-body"><canvas id="bossMonthlyChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-bossReports">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-file-invoice-dollar"></i> Boshliq hisobotlari</h2>
+            <p>Sana, filial, xodim, mahsulot va kategoriya filtrlari</p>
+          </div>
+          <div class="boss-period" id="boss-reports-period"></div>
+        </div>
+        <div class="boss-toolbar">
+          <input type="date" class="form-control boss-date" id="boss-report-from" aria-label="Sanadan">
+          <input type="date" class="form-control boss-date" id="boss-report-to" aria-label="Sanagacha">
+          <input type="search" class="form-control boss-search" id="boss-report-staff" placeholder="Xodim ismi..."
+            autocomplete="off">
+          <input type="search" class="form-control boss-search" id="boss-report-product" placeholder="Mahsulot nomi..."
+            autocomplete="off">
+          <select class="form-control" id="boss-report-branch">
+            <option value="">Barcha filiallar</option>
+          </select>
+          <select class="form-control" id="boss-report-cat">
+            <option value="">Barcha kategoriyalar</option>
+          </select>
+          <button class="btn btn-outline" data-boss-export><i class="fas fa-file-csv"></i> CSV eksport</button>
+        </div>
+        <div id="boss-reports-box"></div>
+      </div>
+
+      <div class="page" id="page-bossAudit">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-clipboard-list"></i> Amallar jurnali</h2>
+            <p>Tizimdagi real amallar — xodimlar, savdo, xavfsizlik (parol yozilmaydi)</p>
+          </div>
+          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i> Yangilash</button>
+        </div>
+        <div class="boss-filterbar">
+          <input type="search" class="form-control boss-search" id="boss-audit-search"
+            placeholder="🔍 Amal, xodim yoki modul bo'yicha qidirish..." autocomplete="off">
+          <div class="boss-view-chips">
+            <button class="boss-chip active" data-boss-audit-src="">Barchasi</button>
+            <button class="boss-chip" data-boss-audit-src="audit">Boshliq amallari</button>
+            <button class="boss-chip" data-boss-audit-src="security">Xavfsizlik hodisalari</button>
+          </div>
+        </div>
+        <div id="boss-audit-box"></div>
       </div>
 
       <!-- ===== SHARTNOMALAR ===== -->
@@ -1817,7 +1845,8 @@
         <div class="panel">
           <div class="panel-header" style="flex-wrap:wrap;gap:10px">
             <h3><i class="fas fa-list-check" style="color:var(--primary)"></i> Filiallar ro'yxati va KPI
-              <small id="branchKpiMeta" style="display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:2px"></small>
+              <small id="branchKpiMeta"
+                style="display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:2px"></small>
             </h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <input class="form-control" id="branchSearch" placeholder="Nomi / shahar / manzil..."
@@ -1870,178 +1899,255 @@
 
       <!-- ===== KIRIM / CHIQIM / HARAJAT ===== -->
       <div class="page" id="page-cashflow">
-        <div
-          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-          <div>
-            <h2 style="font-size:20px;font-weight:700">💵 Kirim / Chiqim / Harajat</h2>
-            <p style="color:var(--muted);font-size:13px;margin-top:3px">
-              Filiallar bo'yicha pul harakati nazorati — admin barcha filialni bir joyda kuzatadi
-            </p>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline btn-sm" onclick="CashFlow.render()"><i class="fas fa-rotate"></i>
-              Yangilash</button>
-            <button class="btn btn-outline btn-sm" onclick="CashFlow.exportCSV()"><i class="fas fa-file-csv"></i>
-              CSV</button>
-          </div>
-        </div>
+        <div class="cf-layout" id="cfLayout">
 
-        <div class="stat-grid" style="gap:14px;margin-bottom:20px">
-          <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
-            <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
-                class="fas fa-cash-register"></i></div>
-            <div class="stat-num" id="cfSaleRevenue">0 so'm</div>
-            <div class="stat-label">Savdo tushumi</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
-            <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i
-                class="fas fa-arrow-down-long"></i></div>
-            <div class="stat-num" id="cfKirim">0 so'm</div>
-            <div class="stat-label">Kirim</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(239,68,68,.12)">
-            <div class="stat-icon" style="background:rgba(239,68,68,.15);color:#FCA5A5"><i
-                class="fas fa-arrow-up-long"></i></div>
-            <div class="stat-num" id="cfChiqim">0 so'm</div>
-            <div class="stat-label">Chiqim</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(245,158,11,.12)">
-            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i class="fas fa-receipt"></i>
-            </div>
-            <div class="stat-num" id="cfHarajat">0 so'm</div>
-            <div class="stat-label">Harajat</div>
-          </div>
-          <div class="stat-card" style="--card-accent:rgba(168,85,247,.12)">
-            <div class="stat-icon" style="background:rgba(168,85,247,.15);color:#d8b4fe"><i
-                class="fas fa-scale-balanced"></i></div>
-            <div class="stat-num" id="cfNet">0 so'm</div>
-            <div class="stat-label">Sof natija</div>
-          </div>
-        </div>
+          <div class="cf-main">
 
-        <div class="panel" style="margin-bottom:18px">
-          <div class="panel-header">
-            <h3><i class="fas fa-plus-circle" style="color:var(--primary)"></i> Yangi yozuv qo'shish</h3>
-          </div>
-          <div class="panel-body">
-            <div class="cf-type-group" id="cfTypeGroup">
-              <button type="button" class="cf-type-btn active" data-cf-type="kirim" onclick="CashFlow.setType('kirim')">
-                <i class="fas fa-arrow-down-long"></i> Kirim (pul kirdi)</button>
-              <button type="button" class="cf-type-btn" data-cf-type="chiqim" onclick="CashFlow.setType('chiqim')">
-                <i class="fas fa-arrow-up-long"></i> Chiqim (pul chiqdi)</button>
-              <button type="button" class="cf-type-btn" data-cf-type="harajat" onclick="CashFlow.setType('harajat')">
-                <i class="fas fa-receipt"></i> Harajat (xarajat)</button>
-            </div>
-            <div class="form-row">
-              <div class="form-col"><label>Summa (so'm) *</label>
-                <input class="form-control" id="cf-amount" type="number" min="0" placeholder="0">
+            <!-- ========== SARLAVHA ========== -->
+            <div class="cf-head">
+              <div class="cf-head-left">
+                <div class="cf-head-icon"><i class="fas fa-wallet"></i></div>
+                <div class="cf-head-txt">
+                  <h2>Kirim-chiqim</h2>
+                  <p>Pul harakatlarini boshqaring</p>
+                </div>
               </div>
-              <div class="form-col"><label>Kategoriya</label>
-                <select class="form-control" id="cf-category">
-                  <option>Savdo tushumi</option>
-                  <option>Ta'minotchi to'lovi</option>
-                  <option>Ijara</option>
-                  <option>Oylik maosh</option>
-                  <option>Kommunal</option>
-                  <option>Soliq</option>
-                  <option>Transport</option>
-                  <option>Reklama</option>
-                  <option>Ta'mirlash</option>
-                  <option>Kanselyariya</option>
-                  <option>Boshqa</option>
-                </select>
+              <div class="cf-head-right">
+                <div class="cf-daterange">
+                  <i class="fas fa-calendar-days"></i>
+                  <input type="date" id="cfFrom" onchange="CashFlow.onFilter()" title="Boshlanish sanasi">
+                  <span class="cf-dash">—</span>
+                  <input type="date" id="cfTo" onchange="CashFlow.onFilter()" title="Tugash sanasi">
+                </div>
+                <button class="btn btn-primary cf-new-btn" onclick="CashFlow.openPanel()">
+                  <i class="fas fa-plus"></i> Yangi operatsiya</button>
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-col"><label>Filial</label>
-                <select class="form-control" id="cf-branch">
-                  <option value="">Umumiy (filialga bog'lanmagan)</option>
-                </select>
-              </div>
-              <div class="form-col"><label>Sana</label>
-                <input class="form-control" id="cf-date" type="date">
-              </div>
-            </div>
-            <div class="form-col" style="margin-bottom:14px">
-              <label>Izoh</label>
-              <input class="form-control" id="cf-note" maxlength="240" placeholder="Masalan: sentabr oyi ijarasi">
-            </div>
-            <button class="btn btn-primary" onclick="CashFlow.save()"><i class="fas fa-save"></i> Yozuvni
-              saqlash</button>
-          </div>
-        </div>
 
-        <div class="panel" style="margin-bottom:18px">
-          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
-            <h3><i class="fas fa-building-columns" style="color:var(--accent)"></i> Filiallar bo'yicha moliyaviy nazorat
-            </h3>
-            <small style="color:var(--muted);font-size:12px">Barcha filial bir jadvalda — savdo, kirim, chiqim, harajat
-              va sof natija</small>
-          </div>
-          <div class="panel-body" style="padding:0">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Filial</th>
-                    <th>Savdo tushumi</th>
-                    <th>Kirim</th>
-                    <th>Chiqim</th>
-                    <th>Harajat</th>
-                    <th>Sof natija</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="branchMonitorTable"></tbody>
-              </table>
+            <!-- ========== UCHTA OPERATSIYA KARTASI ========== -->
+            <div class="cf-ops">
+              <button type="button" class="cf-op cf-op-kirim" data-op="kirim"
+                onclick="CashFlow.openPanel('kirim')">
+                <span class="cf-op-ico"><i class="fas fa-arrow-down"></i></span>
+                <span class="cf-op-txt"><b>Kirim</b><small>Pul kirdi</small></span>
+                <i class="fas fa-chevron-right cf-op-chev"></i>
+              </button>
+              <button type="button" class="cf-op cf-op-chiqim" data-op="chiqim"
+                onclick="CashFlow.openPanel('chiqim')">
+                <span class="cf-op-ico"><i class="fas fa-arrow-up"></i></span>
+                <span class="cf-op-txt"><b>Chiqim</b><small>Pul chiqdi</small></span>
+                <i class="fas fa-chevron-right cf-op-chev"></i>
+              </button>
+              <button type="button" class="cf-op cf-op-harajat" data-op="harajat"
+                onclick="CashFlow.openPanel('harajat')">
+                <span class="cf-op-ico"><i class="fas fa-receipt"></i></span>
+                <span class="cf-op-txt"><b>Xarajat</b><small>Do'kon xarajati</small></span>
+                <i class="fas fa-chevron-right cf-op-chev"></i>
+              </button>
             </div>
-          </div>
-        </div>
 
-        <div class="panel">
-          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
-            <h3><i class="fas fa-list-ul" style="color:var(--primary)"></i> Yozuvlar tarixi
-              <small id="cfRecordCount" style="color:var(--muted);font-size:12px;font-weight:400"></small>
-            </h3>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <select class="form-control" id="cfFilterBranch" style="height:38px;width:auto"
-                onchange="CashFlow.render()">
-                <option value="">Barcha filiallar</option>
-              </select>
-              <select class="form-control" id="cfFilterType" style="height:38px;width:auto"
-                onchange="CashFlow.render()">
+            <!-- ========== TORTTA MOLIYAVIY KO'RSATKICH ========== -->
+            <div class="cf-metrics">
+              <div class="cf-metric cf-metric-kirim">
+                <span class="cf-metric-ico"><i class="fas fa-arrow-down"></i></span>
+                <div class="cf-metric-body">
+                  <small>Jami kirim</small>
+                  <strong id="cfKirim">0 so'm</strong>
+                  <em id="cfKirimCount">0 ta operatsiya</em>
+                </div>
+              </div>
+              <div class="cf-metric cf-metric-chiqim">
+                <span class="cf-metric-ico"><i class="fas fa-arrow-up"></i></span>
+                <div class="cf-metric-body">
+                  <small>Jami chiqim</small>
+                  <strong id="cfChiqim">0 so'm</strong>
+                  <em id="cfChiqimCount">0 ta operatsiya</em>
+                </div>
+              </div>
+              <div class="cf-metric cf-metric-harajat">
+                <span class="cf-metric-ico"><i class="fas fa-receipt"></i></span>
+                <div class="cf-metric-body">
+                  <small>Jami xarajat</small>
+                  <strong id="cfHarajat">0 so'm</strong>
+                  <em id="cfHarajatCount">0 ta operatsiya</em>
+                </div>
+              </div>
+              <div class="cf-metric cf-metric-net">
+                <span class="cf-metric-ico"><i class="fas fa-scale-balanced"></i></span>
+                <div class="cf-metric-body">
+                  <small>Sof pul oqimi</small>
+                  <strong id="cfNet">0 so'm</strong>
+                  <em>Kirim − Chiqim − Xarajat</em>
+                </div>
+              </div>
+            </div>
+
+            <!-- ========== FILTRLAR ========== -->
+            <div class="cf-filters">
+              <div class="cf-search">
+                <i class="fas fa-magnifying-glass"></i>
+                <input id="cfSearch" type="text" oninput="CashFlow.onSearch()"
+                  placeholder="Izoh, kategoriya yoki summa bo'yicha qidirish...">
+              </div>
+              <select class="form-control cf-fsel" id="cfFilterType" onchange="CashFlow.onFilter()">
                 <option value="">Barcha turlar</option>
                 <option value="kirim">Kirim</option>
                 <option value="chiqim">Chiqim</option>
-                <option value="harajat">Harajat</option>
+                <option value="harajat">Xarajat</option>
               </select>
-              <input class="form-control" id="cfFrom" type="date" style="height:38px;width:auto"
-                onchange="CashFlow.render()" title="Boshlanish sanasi">
-              <input class="form-control" id="cfTo" type="date" style="height:38px;width:auto"
-                onchange="CashFlow.render()" title="Tugash sanasi">
-              <button class="btn btn-outline btn-sm" onclick="CashFlow.clearFilters()"><i
-                  class="fas fa-filter-circle-xmark"></i> Tozalash</button>
+              <select class="form-control cf-fsel" id="cfFilterCat" onchange="CashFlow.onFilter()">
+                <option value="">Barcha kategoriyalar</option>
+              </select>
+              <select class="form-control cf-fsel" id="cfFilterBranch" onchange="CashFlow.onFilter()">
+                <option value="">Barcha filiallar</option>
+              </select>
+              <select class="form-control cf-fsel" id="cfPeriod" onchange="CashFlow.setPeriod(this.value)">
+                <option value="all">Barcha davr</option>
+                <option value="today">Bugun</option>
+                <option value="month">Bu oy</option>
+                <option value="prev">O'tgan oy</option>
+                <option value="year">Bu yil</option>
+              </select>
+              <button class="btn btn-outline btn-sm cf-fclr" onclick="CashFlow.clearFilters()">
+                <i class="fas fa-filter-circle-xmark"></i> Tozalash</button>
             </div>
-          </div>
-          <div class="panel-body" style="padding:0">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sana</th>
-                    <th>Turi</th>
-                    <th>Kategoriya</th>
-                    <th>Filial</th>
-                    <th>Summa</th>
-                    <th>Izoh</th>
-                    <th>Amal</th>
-                  </tr>
-                </thead>
-                <tbody id="cashFlowTableBody"></tbody>
-              </table>
+
+            <!-- ========== OPERATSIYALAR TARIXI ========== -->
+            <div class="panel cf-table-panel">
+              <div class="panel-header cf-thd">
+                <h3><i class="fas fa-list-ul cf-thd-ico"></i> Operatsiyalar tarixi
+                  <span class="cf-count" id="cfRecordCount">0 ta yozuv</span></h3>
+                <div class="cf-thd-tools">
+                  <button class="btn btn-outline btn-sm" onclick="CashFlow.render()">
+                    <i class="fas fa-rotate"></i> Yangilash</button>
+                  <button class="btn btn-outline btn-sm" onclick="CashFlow.exportCSV()">
+                    <i class="fas fa-file-csv"></i> CSV</button>
+                </div>
+              </div>
+              <div class="panel-body" style="padding:0">
+                <div class="table-wrap">
+                  <table class="cf-table">
+                    <thead>
+                      <tr>
+                        <th class="cf-c-num">#</th>
+                        <th>Sana va vaqt</th>
+                        <th>Turi</th>
+                        <th>Kategoriya</th>
+                        <th class="cf-c-note">Izoh</th>
+                        <th>Filial</th>
+                        <th class="cf-c-amt">Summa</th>
+                        <th class="cf-c-user">Bajaruvchi</th>
+                        <th class="cf-c-act">Amallar</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cashFlowTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="cf-pager" id="cfPager"></div>
             </div>
-          </div>
-        </div>
+
+            <!-- ========== FILIAL NAZORATI (mavjud funksiya saqlanadi) ========== -->
+            <div class="panel cf-branch-panel">
+              <div class="panel-header cf-thd">
+                <h3><i class="fas fa-building-columns cf-thd-ico"></i> Filiallar bo'yicha moliyaviy nazorat</h3>
+                <small class="cf-thd-sub">Savdo tushumi, kirim, chiqim, xarajat va sof natija</small>
+              </div>
+              <div class="panel-body" style="padding:0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Filial</th>
+                        <th>Savdo tushumi</th>
+                        <th>Kirim</th>
+                        <th>Chiqim</th>
+                        <th>Xarajat</th>
+                        <th>Sof natija</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="branchMonitorTable"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /.cf-main -->
+
+          <!-- ========== O'NG PANEL: YANGI OPERATSIYA ========== -->
+          <aside class="cf-panel" id="cfPanel" data-type="kirim" aria-hidden="true">
+            <div class="cf-panel-head">
+              <span class="cf-panel-ico" id="cfPanelIco"><i class="fas fa-arrow-down"></i></span>
+              <div class="cf-panel-title">
+                <h3>Yangi operatsiya</h3>
+                <p id="cfPanelSub">Kirim yozuvini qo'shish</p>
+              </div>
+              <button class="cf-panel-x" onclick="CashFlow.closePanel()" title="Yopish" aria-label="Yopish">
+                <i class="fas fa-xmark"></i>
+              </button>
+            </div>
+
+            <div class="cf-panel-body">
+              <div class="cf-type-group" id="cfTypeGroup">
+                <button type="button" class="cf-type-btn active" data-cf-type="kirim"
+                  onclick="CashFlow.setType('kirim')">
+                  <i class="fas fa-arrow-down"></i> Kirim</button>
+                <button type="button" class="cf-type-btn" data-cf-type="chiqim"
+                  onclick="CashFlow.setType('chiqim')">
+                  <i class="fas fa-arrow-up"></i> Chiqim</button>
+                <button type="button" class="cf-type-btn" data-cf-type="harajat"
+                  onclick="CashFlow.setType('harajat')">
+                  <i class="fas fa-receipt"></i> Xarajat</button>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-amount">Summa (so'm) <b>*</b></label>
+                <div class="cf-input-ico">
+                  <input class="form-control" id="cf-amount" type="number" min="0" placeholder="0">
+                  <i class="fas fa-coins"></i>
+                </div>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-category">Kategoriya <b>*</b></label>
+                <select class="form-control" id="cf-category"></select>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-branch">Filial <b>*</b></label>
+                <select class="form-control" id="cf-branch"></select>
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-date">Sana <b>*</b></label>
+                <input class="form-control" id="cf-date" type="date">
+              </div>
+
+              <div class="cf-fld">
+                <label for="cf-note">Izoh</label>
+                <textarea class="form-control" id="cf-note" maxlength="240" rows="3"
+                  placeholder="Masalan: kassa tushumi, bankdan o'tkazma va h.k."></textarea>
+                <div class="cf-note-count"><span id="cfNoteCount">0</span>/240</div>
+              </div>
+
+              <div class="cf-hint">
+                <i class="fas fa-circle-info"></i>
+                <p id="cfHintText"></p>
+              </div>
+            </div>
+
+            <div class="cf-panel-foot">
+              <button class="btn btn-outline cf-btn-cancel" onclick="CashFlow.closePanel()">
+                <i class="fas fa-xmark"></i> Bekor qilish</button>
+              <button class="btn btn-primary cf-btn-save" onclick="CashFlow.save()">
+                <i class="fas fa-floppy-disk"></i> Yozuvni saqlash</button>
+            </div>
+          </aside>
+
+        </div><!-- /.cf-layout -->
+
+        <div class="cf-scrim" id="cfScrim" onclick="CashFlow.closePanel()"></div>
       </div>
 
       <!-- ===== REPORTS ===== -->
@@ -2082,7 +2188,8 @@
         </div>
         <div class="panel">
           <div class="panel-header">
-            <h3><i class="fas fa-receipt" style="color:var(--success)"></i> Sotuvlar tafsiloti — sana / mijoz / tovar / summa / sotuvchi / foyda / KPI</h3>
+            <h3><i class="fas fa-receipt" style="color:var(--success)"></i> Sotuvlar tafsiloti — sana / mijoz / tovar /
+              summa / sotuvchi / foyda / KPI</h3>
           </div>
           <div class="panel-body" style="padding:0">
             <div class="table-wrap">
@@ -2291,12 +2398,13 @@
           <p style="color:var(--text-secondary);font-size:13px;margin-top:3px">Mahsulotlar kategoriyalari ro'yxati</p>
         </div>
         <div class="tpm-chips" id="categoriesChips" aria-label="Kategoriyalar statistikasi"></div>
-        <button type="button" class="tpm-hero-btn" onclick="openCategoryModal()" id="addCategoryBtnMobile"><i class="fas fa-plus"></i> Kategoriya qo'shish</button>
+        <button type="button" class="tpm-hero-btn" onclick="openCategoryModal()" id="addCategoryBtnMobile"><i
+            class="fas fa-plus"></i> Kategoriya qo'shish</button>
         <div class="panel">
           <div class="panel-header">
             <h3>Tizimda mavjud kategoriyalar <span class="badge badge-blue" id="categoriesCountChip">0</span></h3>
-            <button type="button" class="btn btn-primary" onclick="openCategoryModal()"
-              id="addCategoryBtn"><i class="fas fa-plus"></i> Kategoriya qo'shish</button>
+            <button type="button" class="btn btn-primary" onclick="openCategoryModal()" id="addCategoryBtn"><i
+                class="fas fa-plus"></i> Kategoriya qo'shish</button>
           </div>
           <div class="panel-body" style="padding:0">
             <div class="table-wrap" data-tp-deskonly>
@@ -2395,8 +2503,8 @@
         <div class="panel">
           <div class="panel-header">
             <h3>Chegirma kampaniyalari</h3>
-            <button type="button" class="btn btn-primary btn-sm" onclick="openDiscountModal()"
-              id="addDiscountBtn"><i class="fas fa-plus"></i> Yangi chegirma</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openDiscountModal()" id="addDiscountBtn"><i
+                class="fas fa-plus"></i> Yangi chegirma</button>
           </div>
           <div class="panel-body" style="padding:0">
             <div class="table-wrap">
@@ -3018,7 +3126,8 @@
             <div class="contact-side">
               <h4>Bog'lanish</h4>
               <div class="market-footer-contact">
-                <span><i class="fas fa-location-dot"></i> <span id="storeAddrText">Quva, Farg'ona Viloyati, Uzbekistan</span></span>
+                <span><i class="fas fa-location-dot"></i> <span id="storeAddrText">Quva, Farg'ona Viloyati,
+                    Uzbekistan</span></span>
                 <span><i class="fas fa-phone"></i> +998 71 200 30 40</span>
                 <span><i class="fas fa-envelope"></i> info@texnopark.uz</span>
                 <span><i class="fas fa-clock"></i> Har kuni 09:00 – 22:00</span>
@@ -3032,7 +3141,8 @@
                 <span id="storeMapAddress">G3F9+Q38, Quva, Farg'ona Viloyati, Uzbekistan</span>
               </div>
               <div class="store-map-frame">
-                <iframe title="Texno Park N1 — Google Maps" src="https://maps.google.com/maps?q=G3F9%2BQ38%2C%20Quva%2C%20Farg%27ona%20Viloyati%2C%20Uzbekistan&z=15&output=embed"
+                <iframe title="Texno Park N1 — Google Maps"
+                  src="https://maps.google.com/maps?q=G3F9%2BQ38%2C%20Quva%2C%20Farg%27ona%20Viloyati%2C%20Uzbekistan&z=15&output=embed"
                   loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
               </div>
               <a class="store-map-btn" id="storeMapBtn"
@@ -3103,11 +3213,11 @@
       <div
         style="margin-bottom:20px;background:var(--bg);border-radius:var(--radius-md);padding:14px 16px;border:1px solid var(--border)">
         <div class="salary-summary-row">
-          <span class="label">Joriy oy:</span>
+          <span class="label">Hisoblash davri:</span>
           <span class="value" id="salary-modal-cur-month">—</span>
         </div>
         <div class="salary-summary-row">
-          <span class="label">To'lov sana:</span>
+          <span class="label">To'lov muddati:</span>
           <span class="value" id="salary-modal-cur-date">—</span>
         </div>
         <div class="salary-summary-row">
@@ -3120,10 +3230,17 @@
         </div>
       </div>
 
+      <div id="salary-modal-unset-hint" style="display:none;margin-bottom:16px;padding:12px 14px;
+        background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius-md);
+        font-size:12px;color:#fbbf24">
+        <i class="fas fa-circle-question"></i> Bu xodimga oylik maosh belgilanmagan.
+        «Sozlash» orqali maosh kiriting — shundan keyingina to'lov qayd etiladi.
+      </div>
+
       <!-- Actions -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
         <div class="form-col">
-          <label>Keyingi to'lov sanasi</label>
+          <label>To'lov sanasi</label>
           <input type="date" class="form-control" id="salary-modal-next-date">
         </div>
         <div class="form-col">
@@ -3155,58 +3272,41 @@
     </div>
   </div>
 
-  <!-- Add/Edit Employee Salary Modal -->
+  <!-- Oylik maosh sozlamasi (mavjud xodim uchun) -->
   <div class="modal-overlay" id="salaryAddModal">
     <div class="modal" style="max-width:480px">
       <div class="modal-header">
-        <h3 id="salaryAddModalTitle"><i class="fas fa-user-plus" style="color:var(--primary);margin-right:8px"></i>Yangi
-          Xodim</h3>
+        <h3 id="salaryAddModalTitle"><i class="fas fa-money-bill-wave"
+            style="color:var(--primary);margin-right:8px"></i>Oylik maoshni sozlash</h3>
         <button class="modal-close" onclick="closeModal('salaryAddModal')">✕</button>
       </div>
-      <div class="form-row">
-        <div class="form-col">
-          <label>Xodim Ismi *</label>
-          <input class="form-control" id="sal-emp-name" placeholder="F.I.Sh...">
-        </div>
-        <div class="form-col">
-          <label>Rol</label>
-          <select class="form-control" id="sal-emp-role">
-            <option value="cashier">Kassa Xodimi</option>
-            <option value="manager">Menejer</option>
-            <option value="admin">Administrator</option>
-            <option value="storekeeper">Omborchi</option>
-            <option value="security">Xavfsizlik</option>
-          </select>
+      <!-- Xodim (faqat o'qish uchun — xodim ma'lumotlari yagona joyda boshqariladi) -->
+      <div class="salary-modal-emp-info" style="margin-bottom:16px">
+        <div class="salary-modal-emp-avatar" id="sal-emp-avatar">A</div>
+        <div>
+          <div class="salary-modal-emp-name" id="sal-emp-name">—</div>
+          <div class="salary-modal-emp-role" id="sal-emp-meta">—</div>
         </div>
       </div>
       <div class="form-row">
         <div class="form-col">
-          <label>Oylik Maosh (so'm) *</label>
-          <input type="number" class="form-control" id="sal-amount" placeholder="3000000">
+          <label>Oylik Maosh (so'm)</label>
+          <input type="number" class="form-control" id="sal-amount" min="0" placeholder="3000000">
+          <small id="sal-amount-hint" style="color:var(--text-muted);font-size:11px"></small>
         </div>
         <div class="form-col">
           <label>To'lov kuni (har oyning)</label>
           <input type="number" class="form-control" id="sal-pay-day" min="1" max="28" placeholder="1" value="1">
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-col">
-          <label>Birinchi to'lov sanasi *</label>
-          <input type="date" class="form-control" id="sal-first-date">
-        </div>
-        <div class="form-col">
-          <label>Bank / To'lov usuli</label>
-          <select class="form-control" id="sal-pay-method">
-            <option value="cash">Naqd</option>
-            <option value="card">Plastik karta</option>
-            <option value="click">Click</option>
-            <option value="transfer">Bank o'tkazma</option>
-          </select>
-        </div>
-      </div>
       <div class="form-col" style="margin-bottom:16px">
-        <label>Karta raqami / Hisob</label>
-        <input class="form-control" id="sal-card" placeholder="8600 0000 0000 0000">
+        <label>To'lov usuli</label>
+        <select class="form-control" id="sal-pay-method">
+          <option value="cash">Naqd</option>
+          <option value="card">Plastik karta</option>
+          <option value="click">Click</option>
+          <option value="transfer">Bank o'tkazma</option>
+        </select>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="closeModal('salaryAddModal')">Bekor</button>
@@ -3244,8 +3344,8 @@
       <div class="form-row">
         <div class="form-col"><label>Narxi (sotuv, so'm) *</label><input class="form-control" id="p-price" type="number"
             min="1" step="1" placeholder="0" required oninput="calcProfit(true)"></div>
-        <div class="form-col"><label>Tan narxi (sotib olish, so'm)</label><input class="form-control" id="p-cost" type="number"
-            min="0" step="1" placeholder="0" oninput="calcProfit(true)"></div>
+        <div class="form-col"><label>Tan narxi (sotib olish, so'm)</label><input class="form-control" id="p-cost"
+            type="number" min="0" step="1" placeholder="0" oninput="calcProfit(true)"></div>
         <div class="form-col"><label>Qoldiq (dona) *</label><input class="form-control" id="p-stock" type="number"
             min="0" step="1" placeholder="0" required oninput="calcProfit()"></div>
       </div>
@@ -3320,7 +3420,8 @@
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="closeModal('productModal')">Bekor</button>
-        <button class="btn btn-primary" id="productSaveBtn" onclick="saveProduct()"><i class="fas fa-save"></i> Saqlash</button>
+        <button class="btn btn-primary" id="productSaveBtn" onclick="saveProduct()"><i class="fas fa-save"></i>
+          Saqlash</button>
       </div>
     </div>
   </div>
@@ -3363,15 +3464,15 @@
       </div>
       <div class="form-col" style="margin-bottom:14px">
         <label>Kampaniya nomi *</label>
-        <input class="form-control" id="dc-name" maxlength="80" autocomplete="off"
-          placeholder="Masalan: Yozgi aksiya"
+        <input class="form-control" id="dc-name" maxlength="80" autocomplete="off" placeholder="Masalan: Yozgi aksiya"
           onkeydown="if(event.key==='Enter'){event.preventDefault();saveDiscountCampaign();}">
       </div>
       <div class="form-row">
         <div class="form-col">
           <label>Promo kod *</label>
           <input class="form-control" id="dc-code" maxlength="24" autocomplete="off" placeholder="SALE10"
-            style="text-transform:uppercase" onkeydown="if(event.key==='Enter'){event.preventDefault();saveDiscountCampaign();}">
+            style="text-transform:uppercase"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();saveDiscountCampaign();}">
         </div>
         <div class="form-col">
           <label>Chegirma foizi (%) *</label>
@@ -3409,9 +3510,8 @@
       </div>
       <div class="form-col" style="margin-bottom:16px">
         <label>Icon / emoji <span style="font-weight:400;color:var(--muted)">(ixtiyoriy)</span></label>
-        <input class="form-control" id="categoryEmojiInput" maxlength="8" autocomplete="off"
-          placeholder="Masalan: 🍕" style="font-size:18px"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();saveCategoryFromModal();}">
+        <input class="form-control" id="categoryEmojiInput" maxlength="8" autocomplete="off" placeholder="Masalan: 🍕"
+          style="font-size:18px" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCategoryFromModal();}">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="closeModal('categoryModal')">Bekor</button>
@@ -3730,18 +3830,18 @@
           <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
           <div style="text-align:left">
             <h4 style="font-size:14px;font-weight:800;margin-bottom:6px">
-              <i class="fas fa-phone"></i> Login (telefon)ni almashtirish</h4>
+              <i class="fas fa-phone"></i> Login (telefon)ni almashtirish
+            </h4>
             <p style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px">
               Tizimga kirish uchun telefon raqamingiz ishlatiladi. O'zgartirilgach,
               yangi raqam bilan kirasiz — Boshliq buni panelida ko'radi.</p>
             <label class="form-group"><span>Yangi telefon raqami <b>*</b></span>
-              <input type="tel" class="form-control" id="profileNewPhone"
-                autocomplete="tel" placeholder="+998 90 123 45 67"></label>
+              <input type="tel" class="form-control" id="profileNewPhone" autocomplete="tel"
+                placeholder="+998 90 123 45 67"></label>
             <label class="form-group"><span>Joriy parol (tasdiqlash uchun) <b>*</b></span>
-              <input type="password" class="form-control" id="profilePhonePass"
-                autocomplete="current-password"></label>
-            <button type="button" class="btn btn-primary" id="profilePhoneSave"
-              onclick="changeMyPhone()"><i class="fas fa-floppy-disk"></i> Raqamni yangilash</button>
+              <input type="password" class="form-control" id="profilePhonePass" autocomplete="current-password"></label>
+            <button type="button" class="btn btn-primary" id="profilePhoneSave" onclick="changeMyPhone()"><i
+                class="fas fa-floppy-disk"></i> Raqamni yangilash</button>
           </div>
         </div>
       </div>
@@ -3754,33 +3854,52 @@
     <div class="modal-box">
       <div class="modal-head">
         <h3 id="boss-staff-modal-title"><i class="fas fa-user-plus"></i> Xodim qo'shish</h3>
-        <button class="modal-close" onclick="closeModal('bossStaffModal')">&times;</button>
+        <button class="modal-close" onclick="closeModal('bossStaffModal'); Boss.resetNewStaffForm()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="boss-hint"><i class="fas fa-circle-info"></i>
           <span>Xodim tizimga <b>telefon raqami (login)</b> va <b>parol</b> bilan kiradi.
-            Boshliq panelida yaratilgan login darhol ishlaydi — xodim o'sha bilan kiradi.</span></div>
+            Parol serverda faqat bir tomonlama xesh ko'rinishida saqlanadi — uni keyin
+            ko'rish yoki tiklash mumkin emas.</span>
+        </div>
+        <div class="boss-form-error" id="boss-form-error" role="alert" hidden></div>
         <div class="boss-form" id="boss-new-form">
           <label class="form-group"><span>Ism <b>*</b></span>
-            <input type="text" class="form-control" id="boss-new-name" maxlength="120"
-              autocomplete="off" placeholder="Masalan: Karimov Aziz"></label>
+            <input type="text" class="form-control" id="boss-new-name" maxlength="120" autocomplete="off"
+              placeholder="Masalan: Karimov Aziz"></label>
           <label class="form-group"><span>Telefon raqami — login <b>*</b></span>
-            <input type="tel" class="form-control" id="boss-new-phone" placeholder="+998 90 123 45 67"
-              autocomplete="off">
+            <div class="boss-phone-field">
+              <span class="boss-phone-prefix" aria-hidden="true">+998</span>
+              <input type="tel" class="form-control" id="boss-new-phone" inputmode="numeric"
+                placeholder="90 123 45 67" autocomplete="off" aria-describedby="boss-new-phone-hint">
+            </div>
+            <small id="boss-new-phone-hint">Faqat operator kodi va 9 ta raqamni kiriting.</small>
             <small>Xodim AYNAN shu raqam bilan kiradi (majburiy, yagona bo'lishi kerak).</small></label>
           <label class="form-group"><span>Rol <b>*</b></span>
             <select class="form-control" id="boss-new-role">
               <option value="cashier">KASSA — sotuv va kassa amallari</option>
               <option value="manager">MENEJER — sotuv, mahsulot, hisobotlar</option>
               <option value="admin">ADMIN — barcha sozlamalar (xodimlar va Boshliqdan tashqari)</option>
+              <option value="boss" disabled>BOSHLIQ — bu formada tayinlanmaydi</option>
             </select>
             <small>Boshliq roli bu yo'l bilan tayinlanmaydi.</small></label>
           <label class="form-group"><span>Filial</span>
-            <select class="form-control" id="boss-new-branch"><option value="">Filialsiz</option></select></label>
+            <select class="form-control" id="boss-new-branch">
+              <option value="">Filialsiz</option>
+            </select></label>
+          <label class="form-group"><span>Oylik maosh (so'm) <b>*</b></span>
+            <div class="boss-money-field">
+              <input type="text" class="form-control" id="boss-new-salary" name="salary"
+                inputmode="numeric" autocomplete="off" placeholder="Masalan: 4 000 000" maxlength="17">
+              <span class="boss-money-suffix">so'm</span>
+            </div>
+            <small id="boss-new-salary-hint">Faqat raqam kiriting — minglik ajratgich avtomatik
+              qo'shiladi. Manfiy va bo'sh qiymat qabul qilinmaydi.</small></label>
           <label class="form-group"><span>Status</span>
             <select class="form-control" id="boss-new-status">
               <option value="active">Faol — kirishi mumkin</option>
               <option value="blocked">Bloklangan — kirishi mumkin emas</option>
+              <option value="inactive">Nofaol (arxiv) — kirishi mumkin emas</option>
             </select></label>
           <label class="form-group"><span id="boss-new-pass-label">Parol <b>*</b></span>
             <div class="boss-pass-row">
@@ -3791,7 +3910,12 @@
               <button type="button" class="btn btn-outline btn-sm" title="Kuchli parol yaratish"
                 onclick="Boss.generatePassword()"><i class="fas fa-wand-magic-sparkles"></i></button>
             </div>
-            <small id="boss-new-pass-hint">Kamida 6 belgi. Parol tizimda faqat xesh ko'rinishida saqlanadi.</small></label>
+            <small id="boss-new-pass-hint">Kamida 6 belgi. Parol tizimda faqat xesh ko'rinishida saqlanadi.</small>
+          </label>
+          <label class="form-group"><span>Parolni tasdiqlash <b>*</b></span>
+            <input type="password" class="form-control" id="boss-new-password-confirm" minlength="6"
+              autocomplete="new-password" placeholder="Parolni qayta kiriting">
+            <small>Xato terilgan parolni oldini olish uchun qayta kiriting.</small></label>
         </div>
         <div class="boss-credentials" id="boss-new-credentials" hidden>
           <div class="boss-cred-head"><i class="fas fa-circle-check"></i>
@@ -3802,8 +3926,8 @@
             <div><span>Rol</span><strong id="boss-cred-role">—</strong></div>
           </div>
           <p class="boss-cred-note"><i class="fas fa-shield-halved"></i> Xodim saytga shu telefon va parol bilan
-            kiradi. Bu oynani yopgach parolni qayta ko'rish mumkin emas (kerak bo'lsa «Parol» tugmasi orqali
-            yangisini qo'yasiz).</p>
+            kiradi. Parolning nusxasi serverda saqlanmaydi — bu oynani yopgach uni qayta ko'rsatib bo'lmaydi.
+            Kerak bo'lsa, keyin yangi parol o'rnatasiz.</p>
           <div class="boss-cred-actions">
             <button type="button" class="btn btn-outline btn-sm" onclick="Boss.copyCredentials()">
               <i class="fas fa-copy"></i> Nusxalash</button>
@@ -3813,8 +3937,9 @@
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn btn-outline" onclick="closeModal('bossStaffModal')">Yopish</button>
-        <button class="btn btn-primary" id="boss-new-save" onclick="Boss.createStaff()">Saqlash</button>
+        <button class="btn btn-outline" onclick="closeModal('bossStaffModal'); Boss.resetNewStaffForm()">Yopish</button>
+        <button class="btn btn-primary" id="boss-new-save" onclick="Boss.createStaff()">
+          <i class="fas fa-floppy-disk"></i> Saqlash</button>
       </div>
     </div>
   </div>
@@ -3822,39 +3947,136 @@
   <!-- Xodim kartochkasidagi uch nuqtali boshqaruv menyusi (mobil) -->
   <div class="boss-staff-menu" id="boss-staff-menu" role="menu" hidden></div>
 
-  <div class="modal" id="bossPassModal">
-    <div class="modal-box">
+  <div class="modal" id="bossPassModal" aria-labelledby="boss-pass-title">
+    <div class="modal-box boss-pass-box">
       <div class="modal-head">
-        <h3><i class="fas fa-key"></i> Joriy parol va o'zgartirish</h3>
-        <button class="modal-close" onclick="closeModal('bossPassModal')">&times;</button>
+        <h3 id="boss-pass-title"><i class="fas fa-key"></i> Xodim parolini boshqarish</h3>
+        <button type="button" class="modal-close" aria-label="Oynani yopish"
+          onclick="Boss.closeStaffPassModal()">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="boss-modal-note">Xodim: <strong id="boss-pass-name"></strong></p>
-
-        <div class="boss-current-pass">
-          <div class="boss-current-head">
-            <span><i class="fas fa-unlock"></i> Joriy (amaldagi) parol</span>
-            <button type="button" class="btn btn-outline btn-sm" onclick="Boss.toggleCurrentPassword()">
-              <i class="fas fa-eye" id="boss-pass-current-eye"></i> Ko'rish</button>
+        <div class="boss-pass-employee">
+          <div class="boss-avatar" id="boss-pass-avatar" aria-hidden="true">?</div>
+          <div class="boss-pass-employee-main">
+            <div class="boss-pass-employee-name">
+              <strong id="boss-pass-name"></strong>
+              <span class="boss-pass-status" id="boss-pass-status"></span>
+            </div>
+            <div class="boss-pass-employee-meta">
+              <span><i class="fas fa-phone" aria-hidden="true"></i>
+                <span id="boss-pass-phone">—</span></span>
+              <span><i class="fas fa-user-shield" aria-hidden="true"></i>
+                <span id="boss-pass-role">—</span></span>
+            </div>
+            <small id="boss-pass-login-extra" hidden></small>
+            <div class="boss-pass-passstate" id="boss-pass-passstate">
+              <i class="fas fa-key" aria-hidden="true"></i>
+              <span id="boss-pass-passstate-text">Parol holati aniqlanmoqda…</span>
+              <small id="boss-pass-passstate-meta"></small>
+            </div>
           </div>
-          <div class="boss-login-cell">
-            <code class="boss-pass-code masked" id="boss-pass-current">••••••••</code>
-            <button type="button" class="boss-icon-btn" id="boss-pass-current-copy" hidden
-              data-boss-copy="" title="Parolni nusxalash"><i class="fas fa-copy"></i></button>
-          </div>
-          <p class="boss-modal-note" id="boss-pass-current-meta">Ko'rish uchun «Ko'rish» tugmasini bosing</p>
         </div>
 
-        <hr class="boss-modal-sep">
-        <p class="boss-modal-note"><strong>Yangi parol o'rnatish</strong> (ixtiyoriy)</p>
-        <label class="form-group"><span>Yangi parol</span>
-          <input type="password" class="form-control" id="boss-pass-new" minlength="6"
-            autocomplete="new-password" placeholder="Kamida 6 belgi"></label>
-        <p class="boss-modal-note">Parol serverda xeshlanib saqlanadi. Xodimning sessiyalari yopiladi.</p>
+        <div class="boss-hint"><i class="fas fa-shield-halved"></i>
+          <span>Joriy parol <b>ko'rsatilmaydi</b> va qayta tiklanmaydi. Yangi parol serverda
+            faqat bir tomonlama xesh ko'rinishida saqlanadi; o'rnatilgach xodimning barcha
+            sessiyalari yopiladi.</span>
+        </div>
+
+        <div id="boss-pass-form-view">
+          <div class="boss-form-error" id="boss-pass-error" role="alert" hidden></div>
+
+          <div class="form-group">
+            <label for="boss-pass-new">Yangi parol <b>*</b></label>
+            <div class="boss-pass-inline">
+              <input type="password" class="form-control" id="boss-pass-new" minlength="6"
+                maxlength="200" autocomplete="new-password" placeholder="Kamida 6 belgi"
+                aria-describedby="boss-pass-policy">
+              <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-pass-new')"
+                aria-label="Yangi parolni ko'rsatish" aria-pressed="false"
+                data-eye-label="Yangi parolni" title="Parolni ko'rsatish">
+                <i class="fas fa-eye" id="boss-pass-new-eye" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="boss-pass-confirm">Yangi parolni tasdiqlash <b>*</b></label>
+            <div class="boss-pass-inline">
+              <input type="password" class="form-control" id="boss-pass-confirm" minlength="6"
+                maxlength="200" autocomplete="new-password" placeholder="Parolni qayta kiriting">
+              <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-pass-confirm')"
+                aria-label="Tasdiqlovchi parolni ko'rsatish" aria-pressed="false"
+                data-eye-label="Tasdiqlovchi parolni" title="Parolni ko'rsatish">
+                <i class="fas fa-eye" id="boss-pass-confirm-eye" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="boss-pass-tools">
+            <button type="button" class="btn btn-outline btn-sm" id="boss-pass-generate"
+              onclick="Boss.generateStaffPassword()"
+              title="16 belgili kuchli vaqtinchalik parol yaratish">
+              <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>
+              Vaqtinchalik kuchli parol
+            </button>
+            <span class="boss-pass-policy" id="boss-pass-policy">
+              <i class="fas fa-circle-info" aria-hidden="true"></i> Kamida 6 belgi
+            </span>
+          </div>
+
+          <p class="boss-modal-note boss-pass-note">
+            <i class="fas fa-lock" aria-hidden="true"></i>
+            Yangi parolni xodimga xavfsiz kanal orqali bering.
+          </p>
+        </div>
+
+        <div class="boss-pass-result" id="boss-pass-result" role="status"
+          aria-live="polite" hidden>
+          <div class="boss-pass-result-head">
+            <span class="boss-pass-result-icon"><i class="fas fa-check" aria-hidden="true"></i></span>
+            <div>
+              <strong>Parol muvaffaqiyatli o'rnatildi</strong>
+              <small>Xodimning eski sessiyalari yopildi.</small>
+            </div>
+          </div>
+          <div class="boss-pass-secret">
+            <span>Vaqtinchalik parol</span>
+            <div class="boss-pass-secret-row">
+              <code id="boss-pass-result-value"></code>
+              <button type="button" class="pass-toggle boss-pass-result-toggle"
+                onclick="Boss.toggleResultPassword()"
+                aria-label="Vaqtinchalik parolni yashirish" aria-pressed="true"
+                data-eye-label="Vaqtinchalik parolni" title="Parolni yashirish">
+                <i class="fas fa-eye-slash" id="boss-pass-result-eye" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="Boss.copyGeneratedStaffPassword()"
+                aria-label="Vaqtinchalik parolni nusxalash">
+                <i class="fas fa-copy" aria-hidden="true"></i> Nusxalash
+              </button>
+            </div>
+          </div>
+          <p class="boss-pass-result-note"><i class="fas fa-triangle-exclamation"
+            aria-hidden="true"></i>
+            Bu parol faqat shu oynada bir marta ko'rsatiladi. Oyna yopilgach u DOM, log yoki
+            brauzer xotirasida saqlanmaydi.</p>
+          <p class="boss-pass-result-force" id="boss-pass-result-force">
+            <i class="fas fa-key" aria-hidden="true"></i>
+            Xodim birinchi kirishda yangi parol o'rnatishga majbur bo'ladi.
+          </p>
+          <button type="button" class="btn btn-primary boss-pass-result-close"
+            onclick="Boss.closeStaffPassModal()">
+            <i class="fas fa-check" aria-hidden="true"></i> Tushundim, yopish
+          </button>
+        </div>
       </div>
-      <div class="modal-foot">
-        <button class="btn btn-outline" onclick="closeModal('bossPassModal')">Bekor qilish</button>
-        <button class="btn btn-primary" onclick="Boss.submitStaffPassword()">Saqlash</button>
+      <div class="modal-foot" id="boss-pass-form-foot">
+        <button type="button" class="btn btn-outline" onclick="Boss.closeStaffPassModal()">
+          Bekor qilish</button>
+        <button type="button" class="btn btn-primary" id="boss-pass-submit"
+          onclick="Boss.submitStaffPassword()">
+          <i class="fas fa-key" aria-hidden="true"></i> Parolni almashtirish</button>
       </div>
     </div>
   </div>
@@ -3875,14 +4097,16 @@
               <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-own-current')"
                 aria-label="Joriy parolni ko'rsatish/yashirish" title="Parolni ko'rsatish/yashirish"><i
                   class="fas fa-eye" id="boss-own-current-eye"></i></button>
-            </div></label>
+            </div>
+          </label>
           <label class="form-group"><span>Yangi parol <b>*</b></span>
             <div class="boss-pass-inline">
               <input type="password" class="form-control" id="boss-own-new" minlength="6" autocomplete="new-password">
               <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-own-new')"
                 aria-label="Yangi parolni ko'rsatish/yashirish" title="Parolni ko'rsatish/yashirish"><i
                   class="fas fa-eye" id="boss-own-new-eye"></i></button>
-            </div></label>
+            </div>
+          </label>
           <label class="form-group"><span>Tasdiqlash <b>*</b></span>
             <div class="boss-pass-inline">
               <input type="password" class="form-control" id="boss-own-confirm" minlength="6"
@@ -3890,7 +4114,8 @@
               <button type="button" class="pass-toggle" onclick="Boss.toggleOwnPassField('boss-own-confirm')"
                 aria-label="Tasdiqlash parolini ko'rsatish/yashirish" title="Parolni ko'rsatish/yashirish"><i
                   class="fas fa-eye" id="boss-own-confirm-eye"></i></button>
-            </div></label>
+            </div>
+          </label>
         </div>
         <p class="boss-modal-note">Parol o'zgargach barcha sessiyalar yopiladi — qayta kiring.</p>
       </div>
@@ -3977,29 +4202,29 @@
   <!-- Notifications container -->
   <div id="notifContainer"></div>
   <!-- Desktop sidebar toggle; mobil drawer pastki navigatsiyadagi Menyu orqali ochiladi -->
-  <button class="menu-toggle" id="sidebarToggleBtn" type="button" onclick="toggleSidebar()"
-    aria-controls="sidebar" aria-expanded="false" aria-label="Menyuni ochish" title="Menyuni ochish">
+  <button class="menu-toggle" id="sidebarToggleBtn" type="button" onclick="toggleSidebar()" aria-controls="sidebar"
+    aria-expanded="false" aria-label="Menyuni ochish" title="Menyuni ochish">
     <i class="fas fa-bars"></i>
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.5.2"></script>
-  <script src="boss.js?v=2.1.6"></script>
-  <script>
-    /* Header: surilganda ixchamlashadi */
-    (function () {
-      var ticking = false;
-      function upd() {
-        var app = document.getElementById('app');
-        if (app) app.classList.toggle('is-scrolled', (window.scrollY || document.documentElement.scrollTop) > 40);
-        ticking = false;
-      }
-      window.addEventListener('scroll', function () {
-        if (!ticking) { ticking = true; requestAnimationFrame(upd); }
-      }, { passive: true });
-      upd();
-    })();
-  </script>
+  <script src="scripts.js?v=1.7.0"></script>
+  <script src="boss.js?v=2.4.0"></script>
+    <script>
+      /* Header: surilganda ixchamlashadi */
+      (function () {
+        var ticking = false;
+        function upd() {
+          var app = document.getElementById('app');
+          if (app) app.classList.toggle('is-scrolled', (window.scrollY || document.documentElement.scrollTop) > 40);
+          ticking = false;
+        }
+        window.addEventListener('scroll', function () {
+          if (!ticking) { ticking = true; requestAnimationFrame(upd); }
+        }, { passive: true });
+        upd();
+      })();
+    </script>
 </body>
 
 </html>

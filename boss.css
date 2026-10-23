@@ -173,8 +173,55 @@
 .boss-toolbar .form-control { padding: 8px 12px; font-size: 13px; width: auto; min-width: 150px; }
 .boss-toolbar .boss-search { flex: 1; min-width: 200px; max-width: 340px; }
 .boss-count { font-size: 12px; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+/* Xodimlar jadvalidagi amallar: bir xil o'lchamli ikonka tugmalar.
+   Qator balandligi va ustun kengligi tugmalar soniga qarab o'zgarmaydi. */
+.boss-actions-cell {
+    width: 1%; min-width: 204px; padding-left: 8px !important;
+    white-space: nowrap; text-align: right;
+}
 .boss-actions { display: flex; gap: 5px; flex-wrap: wrap; }
-.boss-actions .btn-sm { padding: 5px 9px; font-size: 11.5px; }
+.boss-actions-group {
+    display: inline-flex; align-items: center; justify-content: flex-end;
+    gap: 6px; flex-wrap: nowrap;
+}
+.boss-action-btn {
+    width: 34px; height: 34px; min-width: 34px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-radius: 9px;
+    background: var(--card); color: var(--text-secondary);
+    font-size: 13px; line-height: 1; cursor: pointer;
+    transition: color .15s ease, border-color .15s ease,
+        background .15s ease, transform .15s ease;
+}
+.boss-action-btn i { pointer-events: none; }
+.boss-action-btn:hover {
+    color: var(--primary); border-color: var(--primary);
+    background: var(--primary-subtle); transform: translateY(-1px);
+}
+.boss-action-btn:active {
+    color: var(--primary); border-color: var(--primary);
+    background: var(--primary-subtle); transform: translateY(0);
+}
+.boss-action-btn:focus-visible {
+    outline: 2px solid var(--primary); outline-offset: 2px;
+    border-color: var(--primary);
+}
+.boss-action-btn.warn { color: var(--warning); border-color: rgba(245, 158, 11, .35); }
+.boss-action-btn.warn:hover {
+    color: var(--warning); border-color: var(--warning); background: rgba(245, 158, 11, .10);
+}
+.boss-action-btn.ok { color: var(--success); border-color: rgba(34, 197, 94, .35); }
+.boss-action-btn.ok:hover {
+    color: var(--success); border-color: var(--success); background: var(--success-bg);
+}
+.boss-action-btn.danger { color: var(--danger); border-color: rgba(239, 68, 68, .35); }
+.boss-action-btn.danger:hover {
+    color: var(--danger); border-color: var(--danger); background: var(--danger-bg);
+}
+.boss-action-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+#page-bossStaff .boss-staff-tablepanel .table-wrap { overflow-x: auto; }
+#page-bossStaff .boss-table { min-width: 1270px; }
 
 /* ── Filter bar (sana, filial, qidiruv) ────────────────────── */
 .boss-filterbar {
@@ -393,6 +440,146 @@
 }
 .boss-modal-note strong { color: var(--text); }
 
+/* ── Xodim parolini boshqarish modali ─────────────────────────────── */
+.boss-pass-box { width: 560px; }
+.boss-pass-employee {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 14px; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 14px;
+    background: linear-gradient(135deg, var(--card-hover), var(--primary-subtle));
+}
+.boss-pass-employee .boss-avatar {
+    width: 42px; height: 42px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: var(--primary-gradient);
+    color: #fff; font-size: 16px; font-weight: 800; text-transform: uppercase;
+}
+.boss-pass-employee-main { flex: 1; min-width: 0; }
+.boss-pass-employee-name {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.boss-pass-employee-name strong {
+    font-size: 14.5px; font-weight: 800; color: var(--text);
+    overflow-wrap: anywhere;
+}
+.boss-pass-status {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700; white-space: nowrap;
+    color: var(--success); background: var(--success-bg);
+}
+.boss-pass-status.blocked { color: var(--danger); background: var(--danger-bg); }
+.boss-pass-status.inactive { color: var(--text-muted); background: var(--card-hover); }
+.boss-pass-employee-meta {
+    display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap;
+    margin-top: 5px; font-size: 12px; color: var(--text-secondary);
+}
+.boss-pass-employee-meta span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.boss-pass-employee-meta i { color: var(--text-muted); font-size: 11px; }
+#boss-pass-login-extra {
+    display: block; margin-top: 4px; color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px; overflow-wrap: anywhere;
+}
+.boss-pass-tools {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; flex-wrap: wrap; margin: -2px 0 12px;
+}
+.boss-pass-tools .btn { white-space: nowrap; }
+.boss-pass-policy {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-muted); font-size: 11px; white-space: nowrap;
+}
+.boss-pass-policy i { color: var(--primary); }
+.boss-pass-note {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin: 0; line-height: 1.45;
+}
+.boss-pass-note i { color: var(--primary); margin-top: 2px; }
+.boss-pass-inline .pass-toggle { width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+.boss-pass-inline .pass-toggle:focus-visible {
+    outline: 2px solid var(--primary); outline-offset: 2px;
+}
+.boss-pass-box .form-group { margin-bottom: 14px; }
+.boss-pass-box .form-group label { margin-bottom: 6px; }
+.boss-pass-box .form-group .form-control { padding: 11px 44px 11px 13px; }
+.boss-pass-inline { position: relative; }
+.boss-pass-inline .form-control { padding-right: 44px; }
+
+/* Bir martalik natija oynasi: parol faqat shu blokda ko'rsatiladi. */
+.boss-pass-result {
+    margin-top: 4px; padding: 14px;
+    border: 1px solid rgba(34, 197, 94, .35); border-radius: 14px;
+    background: linear-gradient(135deg, var(--success-bg), var(--card));
+}
+.boss-pass-result[hidden] { display: none; }
+.boss-pass-result-head {
+    display: flex; align-items: center; gap: 11px; margin-bottom: 13px;
+}
+.boss-pass-result-icon {
+    width: 38px; height: 38px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: var(--success); color: #fff; font-size: 15px;
+}
+.boss-pass-result-head strong { display: block; font-size: 14px; color: var(--text); }
+.boss-pass-result-head small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 11.5px; }
+.boss-pass-secret {
+    padding: 11px 12px; border: 1px solid var(--border);
+    border-radius: 11px; background: var(--card);
+}
+.boss-pass-secret > span {
+    display: block; margin-bottom: 7px; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+}
+.boss-pass-secret-row { display: flex; align-items: center; gap: 9px; }
+.boss-pass-secret-row code {
+    flex: 1; min-width: 0; color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 16px; font-weight: 700; letter-spacing: .04em;
+    overflow-wrap: anywhere; user-select: all;
+}
+.boss-pass-secret-row .btn { flex-shrink: 0; white-space: nowrap; }
+/* Natija oynasidagi ko'zcha: `.pass-toggle` odatda `position: absolute`
+   (maydon ichida) — bu yerda esa flex qatorning oddiy elementi. */
+.boss-pass-secret-row .pass-toggle {
+    position: static; transform: none; flex-shrink: 0;
+    width: 34px; height: 34px; padding: 0; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); background: transparent;
+}
+.boss-pass-secret-row .pass-toggle:hover {
+    color: var(--primary); border-color: var(--primary);
+}
+.boss-pass-secret-row .pass-toggle:focus-visible {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 59, 130, 246), .2);
+}
+/* Yashirilgan holat: qiymat DOM'da yo'q, nuqtalar ko'rinadi. */
+.boss-pass-secret-row code.masked { color: var(--text-muted); letter-spacing: 2px; }
+.boss-pass-result-note {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin: 11px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45;
+}
+.boss-pass-result-note i { color: var(--warning); margin-top: 2px; }
+.boss-pass-result-force {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin: 7px 0 0; color: var(--primary); font-size: 12px; font-weight: 600;
+    line-height: 1.45;
+}
+.boss-pass-result-force[hidden] { display: none; }
+.boss-pass-result-force i { margin-top: 2px; }
+.boss-pass-result-close {
+    width: 100%; justify-content: center; margin-top: 13px;
+}
+@media (max-width: 480px) {
+    .boss-pass-tools { align-items: stretch; }
+    .boss-pass-tools .btn { width: 100%; justify-content: center; }
+    .boss-pass-policy { white-space: normal; }
+    .boss-pass-secret-row { flex-direction: column; align-items: stretch; }
+    .boss-pass-secret-row .btn { width: 100%; justify-content: center; }
+    .boss-pass-secret-row code { font-size: 14px; }
+}
+
 /* ============================================================
    RESPONSIVE — mobil Boshliq paneli
    ============================================================ */
@@ -445,7 +632,8 @@
     }
     .boss-table td[data-label="Amallar"] { display: block; text-align: left; }
     .boss-table td[data-label="Amallar"]::before { display: block; margin-bottom: 6px; }
-    .boss-actions { justify-content: flex-start; }
+    .boss-actions,
+    .boss-actions-group { justify-content: flex-start; }
     .boss-table td small { text-align: right; }
     .boss-who { justify-content: flex-end; }
 
@@ -504,6 +692,44 @@
 .boss-pass-row .form-control { flex: 1; min-width: 0; }
 .boss-pass-row .btn { white-space: nowrap; }
 
+.boss-phone-field {
+    display: flex; align-items: stretch; width: 100%;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card); overflow: hidden;
+    transition: border-color .2s, box-shadow .2s;
+}
+.boss-phone-field:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-subtle);
+}
+.boss-phone-prefix {
+    display: inline-flex; align-items: center; flex: 0 0 auto;
+    padding: 0 12px; border-right: 1px solid var(--border);
+    background: var(--primary-subtle); color: var(--primary);
+    font-size: 14px; font-weight: 800; letter-spacing: .01em;
+}
+.boss-phone-field .form-control {
+    flex: 1; min-width: 0; border: 0; border-radius: 0;
+    background: transparent; box-shadow: none;
+}
+.boss-phone-field .form-control:focus {
+    border: 0; box-shadow: none; outline: 0;
+}
+
+/* Maosh belgilanmagan holat — 0 emas, alohida holat. */
+.boss-salary-unset {
+    color: var(--text-muted); font-style: italic; font-weight: 500;
+}
+
+/* Oylik maosh maydoni: input + o'ng tomonda "so'm" birligi. */
+.boss-money-field { position: relative; display: block; }
+.boss-money-field .form-control { width: 100%; padding-right: 52px; }
+.boss-money-suffix {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 12px; font-weight: 700; color: var(--text-muted);
+    pointer-events: none; letter-spacing: .02em;
+}
+
 .boss-credentials {
     border: 1px solid var(--border); border-radius: 14px;
     background: var(--primary-subtle); padding: 14px 15px; margin-top: 4px;
@@ -557,6 +783,34 @@
 }
 .boss-pass-meta { font-size: 10.5px; color: var(--text-muted); line-height: 1.3; }
 
+/* ── Parol HOLATI (jadval katakchasi va modal indikatori) ──────────
+   Faqat "o'rnatilgan / o'rnatilmagan" holati ko'rsatiladi —
+   parol qiymati, xesh yoki salt hech qachon chiqmaydi. */
+.boss-pass-state {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.boss-pass-state i { font-size: 11px; }
+.boss-pass-state.set { color: var(--success); }
+.boss-pass-state.unset { color: var(--text-muted); font-weight: 500; }
+.boss-pass-state + .boss-pass-meta { display: block; margin-top: 2px; }
+
+/* Modal ichidagi parol holati bloki */
+.boss-pass-passstate {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+    margin-top: 10px; padding: 8px 11px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card-hover);
+    font-size: 12px; font-weight: 600; color: var(--text);
+}
+.boss-pass-passstate i { color: var(--success); font-size: 12px; }
+.boss-pass-passstate.unset i { color: var(--warning); }
+.boss-pass-passstate.unset { color: var(--text-muted); }
+.boss-pass-passstate small {
+    flex-basis: 100%; margin: 0;
+    font-size: 11px; font-weight: 400; color: var(--text-muted); line-height: 1.4;
+}
+
 /* Xodim logini (telefon)ni O'ZI almashtirganini bildiruvchi belgi */
 .boss-phone-changed { font-size: 11px; color: var(--warning); cursor: help; }
 
@@ -606,9 +860,17 @@
 }
 .boss-staff-menu button:hover { background: var(--card-hover); }
 .boss-staff-menu button:active { background: var(--primary-subtle); }
+.boss-staff-menu button:focus-visible {
+    outline: 2px solid var(--primary); outline-offset: -2px;
+    background: var(--primary-subtle);
+}
 .boss-staff-menu button i { width: 18px; text-align: center; color: var(--text-muted); font-size: 13px; }
 .boss-staff-menu button.danger { color: var(--danger); }
 .boss-staff-menu button.danger i { color: var(--danger); }
+.boss-staff-menu button.warn { color: var(--warning); }
+.boss-staff-menu button.warn i { color: var(--warning); }
+.boss-staff-menu button.ok { color: var(--success); }
+.boss-staff-menu button.ok i { color: var(--success); }
 
 @media (max-width: 768px) {
     /* Desktop komponentlari joyini mobilga topshiradi */
@@ -753,6 +1015,11 @@
         color: var(--text-muted); font-size: 12.5px;
     }
     .bsc-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Parol holati qatori (mobil kartochka) — faqat holat, qiymat emas. */
+    .bsc-row-pass { font-weight: 600; }
+    .bsc-row-pass.set { color: var(--success); }
+    .bsc-row-pass.set i { color: var(--success); }
+    .bsc-row-pass.unset { color: var(--text-muted); }
     .bsc-foot {
         display: flex; align-items: center; justify-content: space-between;
         gap: 10px; margin-top: 11px; padding-top: 10px;

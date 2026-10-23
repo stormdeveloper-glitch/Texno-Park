@@ -24,8 +24,12 @@ const Boss = (() => {
         financeBranch: '', financeFrom: '', financeTo: '',
         auditQuery: '', auditSource: '',
         activeStaffId: null,
+        passSubmitting: false,     // parol modalida takroriy so'rovdan himoya
+        passWasGenerated: false,   // parol «Vaqtinchalik parol» tugmasi bilan yaratildi
+        generatedStaffPassword: '',// faqat natija oynasi ochiq turganda xotirada
         editingStaffId: null,      // tahrir rejimi (bossStaffModal)
         editingStaffOrig: null,    // tahrir ochilgandagi asl qiymatlar
+        staffSaving: false,        // takroriy yuborishdan himoya (dublikat yo'q)
         staffMenuId: null,         // ochiq uch nuqtali menyu (mobil)
         staffMenuBtn: null,
         staffMode: null,           // oxirgi chizilgan rejim: 'card' | 'table'
@@ -130,7 +134,15 @@ function setPeriod(value) {
         // Davr filtrlari har bo'limda bir xil ishlaydi.
         paintPeriodChips();
         if (key === 'boss') load();
-        if (key === 'bossStaff') { loadStaff(); loadBranchOptions(); }
+        if (key === 'bossStaff') {
+            loadStaff();
+            loadBranchOptions();
+            // Oylik maosh moduli (ilgari alohida «Xodimlar» sahifasida edi)
+            // endi shu bo'lim ichida — sahifa har ochilganda qayta chiziladi.
+            if (typeof SalaryModule !== 'undefined' && typeof SalaryModule.render === 'function') {
+                SalaryModule.render();
+            }
+        }
         if (key === 'bossStaffSales') {
             // Sahifa har ochilganda — umumiy ko'rinish (chiplar va filtrlar bilan).
             showSalesOverview();
@@ -352,6 +364,28 @@ function setPeriod(value) {
         return p.toString();
     }
 
+    /**
+     * Yangi xodim qo'shilgach faol qidiruv/filtrlarni tozalaydi — aks holda
+     * yangi qator jadvalda ko'rinmay qolishi mumkin edi.
+     */
+    function clearStaffFilters() {
+        state.staffQuery = ''; state.staffRole = '';
+        state.staffStatus = ''; state.staffBranch = '';
+        const setVal = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.value = value;
+        };
+        setVal('boss-staff-search', '');
+        setVal('boss-staff-search-m', '');
+        setVal('boss-staff-role', '');
+        setVal('boss-staff-role-m', '');
+        setVal('boss-staff-branch', '');
+        setVal('boss-staff-branch-m', '');
+        setVal('boss-staff-status', '');
+        document.querySelectorAll('[data-staff-status]').forEach(p =>
+            p.classList.toggle('active', (p.dataset.staffStatus || '') === ''));
+    }
+
     async function loadStaff() {
         if (!isBoss()) return;
         const data = await api('/api/boss/staff?' + staffParams());
@@ -437,6 +471,71 @@ function setPeriod(value) {
         return s.lastSeen || s.updatedAt || '—';
     }
 
+    // ── OYLIK MAOSH (belgilangan ish haqi) ────────────────────────
+    // Backenddagi `parse_staff_salary` bilan bir xil qoidalar.
+    const STAFF_SALARY_MAX = 999999999999;
+
+    /** 4000000 → "4 000 000" (input uchun minglik ajratgich). */
+    function formatSalaryInput(value) {
+        const digits = String(value == null ? '' : value).replace(/\D/g, '');
+        return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
+    /**
+     * Input qiymatini butun so'mga aylantiradi.
+     * Qaytaradi: { value } | { empty: true } | { error }.
+     */
+    function parseSalaryInput(raw) {
+        let text = String(raw == null ? '' : raw)
+            .replace(/[\s\u00a0\u202f'’‘]/g, '')
+            .replace(/so['`ʻ‘’]?m$/i, '');
+        if (!text) return { empty: true };
+        if (!/^\d+$/.test(text)) {
+            return { error: 'Oylik maosh faqat raqamlardan iborat bo\'lishi kerak' };
+        }
+        const value = Number(text);
+        if (!Number.isSafeInteger(value) || value > STAFF_SALARY_MAX) {
+            return { error: 'Oylik maosh juda katta' };
+        }
+        return { value };
+    }
+
+    /** Jadval/karta uchun maosh matni. null/yo'q = "Belgilanmagan", 0 — haqiqiy 0. */
+    function salaryLabel(value) {
+        if (value === null || value === undefined || value === '') return 'Belgilanmagan';
+        const num = Number(value);
+        if (!Number.isFinite(num)) return 'Belgilanmagan';
+        // Jadvalda ham "4 000 000 so'm" ko'rinishi (input bilan bir xil).
+        const grouped = String(Math.round(num)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        return grouped + " so'm";
+    }
+
+    function salaryHtml(value) {
+        const text = salaryLabel(value);
+        return text === 'Belgilanmagan'
+            ? '<span class="boss-salary-unset">Belgilanmagan</span>'
+            : `<strong>${text}</strong>`;
+    }
+
+    /**
+     * Parol holati katakchasi — FAQAT holat ("o'rnatilgan"/"o'rnatilmagan").
+     * Xesh, salt yoki parol qiymati HECH QACHON bu yerga chiqmaydi:
+     * server `staff_public_view()` orqali faqat `hasPassword` (mavjudlik)
+     * va audit sanasini yuboradi.
+     */
+    function passStateCellHtml(s) {
+        const has = !!s.hasPassword;
+        const meta = (has && s.passChangedAt)
+            ? `<small class="boss-pass-meta">${escapeHTML(s.passChangedAt)}`
+                + `${s.passChangedBy ? ' · ' + escapeHTML(s.passChangedBy) : ''}</small>`
+            : '';
+        return `<span class="boss-pass-state ${has ? 'set' : 'unset'}"
+            title="${has ? 'Parol o\'rnatilgan (serverda xesh sifatida saqlanadi)'
+                : 'Parol hali o\'rnatilmagan'}">
+            <i class="fas ${has ? 'fa-lock' : 'fa-lock-open'}" aria-hidden="true"></i>
+            ${has ? "O'rnatilgan" : "O'rnatilmagan"}</span>${meta}`;
+    }
+
     function staffRowsHtml(rows) {
         if (!rows.length) return `<tr><td colspan="11">${emptyState('Xodim topilmadi')}</td></tr>`;
         return rows.map(s => {
@@ -473,27 +572,39 @@ function setPeriod(value) {
                 <td data-label="Savdo summasi"><strong class="boss-money"
                     title="${fmt(money)} so'm">${fmt(money)}</strong> so'm
                     <small>o'rtacha: ${fmt(s.avgCheck || 0)}</small></td>
-                <td data-label="Oylik maosh">${s.salary
-                    ? `<strong>${fmt(s.salary)}</strong> so'm`
-                    : '<span style="color:var(--muted)">—</span>'}</td>
+                <td data-label="Oylik maosh">${salaryHtml(s.salary)}</td>
                 <td data-label="Holat">${statusBadge(s.status)}
                     <small>${escapeHTML(staffStatusHint(s))}</small></td>
-                <td data-label="Amallar" class="boss-actions">
-                    ${(!isBossRow || me) ? `<button class="btn btn-outline btn-sm boss-edit-btn"
-                        data-boss-edit="${escapeHTML(String(s.id))}" title="Xodimni tahrirlash">
-                        <i class="fas fa-pen"></i> Tahrirlash</button>` : ''}
-                    <button class="boss-icon-btn" data-boss-sale="${escapeHTML(String(s.id))}"
-                        title="Savdolarini ko'rish" aria-label="Savdolarini ko'rish"><i class="fas fa-chart-line"></i></button>
-                    ${!isBossRow ? (me ? `<button class="boss-icon-btn" data-boss-ownpass=""
-                        title="O'z parolimni o'zgartirish" aria-label="O'z parolimni o'zgartirish"><i class="fas fa-key"></i></button>`
-                        : `<button class="boss-icon-btn" data-boss-pass="${escapeHTML(String(s.id))}"
-                        title="Parolni yangilash" aria-label="Parolni yangilash"><i class="fas fa-key"></i></button>`) : ''}
-                    ${canManage ? `<button class="boss-icon-btn" data-boss-block="${escapeHTML(String(s.id))}"
+                <td data-label="Parol">${passStateCellHtml(s)}</td>
+                <td data-label="Amallar" class="boss-actions-cell">
+                    <div class="boss-actions-group" role="group"
+                        aria-label="${escapeHTML(s.name || 'Xodim')} amallari">
+                    ${(!isBossRow || me) ? `<button type="button" class="boss-action-btn"
+                        data-boss-edit="${escapeHTML(String(s.id))}"
+                        title="Tahrirlash" aria-label="Tahrirlash: ${escapeHTML(s.name || '')}">
+                        <i class="fas fa-pen-to-square" aria-hidden="true"></i></button>` : ''}
+                    <button type="button" class="boss-action-btn" data-boss-sale="${escapeHTML(String(s.id))}"
+                        title="Savdo statistikasi" aria-label="Savdo statistikasi: ${escapeHTML(s.name || '')}">
+                        <i class="fas fa-chart-line" aria-hidden="true"></i></button>
+                    ${!isBossRow ? (me ? `<button type="button" class="boss-action-btn" data-boss-ownpass=""
+                        title="O'z parolimni o'zgartirish" aria-label="O'z parolimni o'zgartirish">
+                        <i class="fas fa-key" aria-hidden="true"></i></button>`
+                        : `<button type="button" class="boss-action-btn" data-boss-pass="${escapeHTML(String(s.id))}"
+                        title="${s.hasPassword ? "Parolni almashtirish (parol o'rnatilgan)"
+                            : "Parol o'rnatish (parol hali o'rnatilmagan)"}"
+                        aria-label="Parolni boshqarish: ${escapeHTML(s.name || '')}">
+                        <i class="fas fa-key" aria-hidden="true"></i></button>`) : ''}
+                    ${canManage ? `<button type="button" class="boss-action-btn ${blocked ? 'ok' : inactive ? 'ok' : 'warn'}"
+                        data-boss-block="${escapeHTML(String(s.id))}"
                         title="${blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash'}"
-                        aria-label="${blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash'}">
-                        <i class="fas ${blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban'}"></i></button>` : ''}
-                    ${canManage ? `<button class="boss-icon-btn danger" data-boss-del="${escapeHTML(String(s.id))}"
-                        title="Arxivlash (tarix saqlanadi)" aria-label="Arxivlash"><i class="fas fa-box-archive"></i></button>` : ''}
+                        aria-label="${blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash'}: ${escapeHTML(s.name || '')}">
+                        <i class="fas ${blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban'}" aria-hidden="true"></i></button>` : ''}
+                    ${canManage ? `<button type="button" class="boss-action-btn danger"
+                        data-boss-del="${escapeHTML(String(s.id))}"
+                        title="Arxivlash (savdo tarixi saqlanadi)"
+                        aria-label="Arxivlash: ${escapeHTML(s.name || '')}">
+                        <i class="fas fa-box-archive" aria-hidden="true"></i></button>` : ''}
+                    </div>
                 </td></tr>`;
         }).join('');
     }
@@ -528,7 +639,7 @@ function setPeriod(value) {
                         </div>
                     </div>
                     ${canEdit ? `<button type="button" class="bsc-edit-btn" data-boss-edit="${escapeHTML(String(s.id))}"
-                        aria-label="Tahrirlash" title="Tahrirlash"><i class="fas fa-pen"></i></button>` : ''}
+                        aria-label="Tahrirlash: ${escapeHTML(s.name || '')}" title="Tahrirlash"><i class="fas fa-pen" aria-hidden="true"></i></button>` : ''}
                     <button type="button" class="bsc-menu-btn" data-boss-menu="${escapeHTML(String(s.id))}"
                         aria-haspopup="menu" aria-expanded="false" aria-label="Boshqaruv menyusi">
                         <i class="fas fa-ellipsis-vertical"></i></button>
@@ -536,7 +647,10 @@ function setPeriod(value) {
                 <div class="bsc-rows">
                     <div class="bsc-row"><i class="fas fa-phone"></i><span>${escapeHTML(s.phone || '—')}</span></div>
                     <div class="bsc-row"><i class="fas fa-store"></i><span>${escapeHTML(s.branchName || '—')}</span></div>
-                    <div class="bsc-row"><i class="fas fa-money-bill-wave"></i><span>${s.salary ? fmt(s.salary) + " so'm" : '—'}</span></div>
+                    <div class="bsc-row"><i class="fas fa-money-bill-wave"></i><span>${escapeHTML(salaryLabel(s.salary))}</span></div>
+                    <div class="bsc-row bsc-row-pass ${s.hasPassword ? 'set' : 'unset'}">
+                        <i class="fas ${s.hasPassword ? 'fa-lock' : 'fa-lock-open'}"></i>
+                        <span>Parol ${s.hasPassword ? "o'rnatilgan" : "o'rnatilmagan"}</span></div>
                 </div>
                 <div class="bsc-metrics">
                     <span><strong>${Number(s.sales || 0)}</strong> savdo · ${Number(s.units || 0)} dona</span>
@@ -574,7 +688,7 @@ function setPeriod(value) {
                 ${field('Telefon', p.phone)}
                 ${showLogin ? field('Login identifikatori', p.login) : ''}
                 ${field('Filial', p.branchName)}
-                ${field('Oylik maosh', p.salary ? fmt(p.salary) + " so'm" : '')}
+                ${field('Oylik maosh', salaryLabel(p.salary))}
                 ${field('Ro\'yxatdan o\'tgan', p.createdAt)}
                 ${field('Oxirgi faollik', p.lastSeen || p.updatedAt)}
             </div>
@@ -1285,6 +1399,42 @@ function setPeriod(value) {
         });
     }
 
+    function formatStaffPhoneInput(input) {
+        if (!input || typeof phoneDigitsUz !== 'function'
+            || typeof formatPhoneMaskUz !== 'function') return;
+        const raw = input.value;
+        const caret = input.selectionStart ?? raw.length;
+        let digits = raw.replace(/\D/g, '');
+        let strippedPrefixDigits = 0;
+        while (digits.startsWith('998') && digits.length > 9) {
+            digits = digits.slice(3);
+            strippedPrefixDigits += 3;
+        }
+        const digitsBeforeCaret = (raw.slice(0, caret).match(/\d/g) || []).length;
+        const localDigitsBeforeCaret = Math.max(
+            0, Math.min(9, digitsBeforeCaret - Math.min(strippedPrefixDigits, digitsBeforeCaret))
+        );
+        const formatted = formatPhoneMaskUz(raw);
+        if (input.value === formatted) return;
+        input.value = formatted;
+
+        let seen = 0;
+        let nextCaret = formatted.length;
+        if (localDigitsBeforeCaret === 0) {
+            nextCaret = 0;
+        } else {
+            for (let i = 0; i < formatted.length; i++) {
+                if (/\d/.test(formatted[i])) seen++;
+                if (seen === localDigitsBeforeCaret) {
+                    nextCaret = i + 1;
+                    if (formatted[nextCaret] === ' ') nextCaret++;
+                    break;
+                }
+            }
+        }
+        try { input.setSelectionRange(nextCaret, nextCaret); } catch (e) { }
+    }
+
     /** Yaratilgan xodimning kirish ma'lumotlarini formadan keyin ko'rsatadi. */
     function showNewStaffCredentials(info) {
         const form = document.getElementById('boss-new-form');
@@ -1302,9 +1452,25 @@ function setPeriod(value) {
         if (saveBtn) saveBtn.hidden = true;
     }
 
+    /** Yangi xodim qo'shish oynasini ochadi. Maosh modulidan ham
+        chaqiriladi — xodim qo'shish FAQAT shu yagona forma orqali. */
+    function openAddStaff() {
+        if (!isBoss()) return;
+        resetNewStaffForm();
+        openModal('bossStaffModal');
+    }
+
+    /** Xodim ma'lumotlari (jumladan oylik maosh) o'zgargach, maosh rejasini
+        ham yangilaydi — ikkala ko'rinish bir xil manbadan bo'lib qolsin. */
+    function refreshSalaryPlan() {
+        if (typeof SalaryModule !== 'undefined' && typeof SalaryModule.render === 'function') {
+            SalaryModule.render();
+        }
+    }
+
     /** Formani tozalab, «yana xodim qo'shish» holatiga qaytaradi. */
     function resetNewStaffForm() {
-        ['boss-new-name', 'boss-new-phone', 'boss-new-password',
+        ['boss-new-name', 'boss-new-phone', 'boss-new-salary', 'boss-new-password',
             'boss-new-password-confirm'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
@@ -1312,6 +1478,11 @@ function setPeriod(value) {
             if (id === 'boss-new-password') el.type = 'password';
             el.removeAttribute('aria-invalid');
         });
+        const salaryHint = document.getElementById('boss-new-salary-hint');
+        if (salaryHint) {
+            salaryHint.textContent = 'Faqat raqam kiriting — minglik ajratgich avtomatik '
+                + 'qo\'shiladi. Manfiy va bo\'sh qiymat qabul qilinmaydi.';
+        }
         const eye = document.getElementById('boss-new-pass-eye');
         if (eye) eye.className = 'fas fa-eye';
         const hint = document.getElementById('boss-new-pass-hint');
@@ -1325,6 +1496,7 @@ function setPeriod(value) {
         // Tahrir holati yopiladi — forma yana «qo'shish» rejimida ochiladi.
         state.editingStaffId = null;
         state.editingStaffOrig = null;
+        state.staffSaving = false;
         clearStaffFormError();
         const title = document.getElementById('boss-staff-modal-title');
         if (title) title.innerHTML = '<i class="fas fa-user-plus"></i> Xodim qo\'shish';
@@ -1341,6 +1513,7 @@ function setPeriod(value) {
         const saveBtn = document.getElementById('boss-new-save');
         if (saveBtn) {
             saveBtn.hidden = false;
+            saveBtn.disabled = false;
             saveBtn.innerHTML = '<i class="fas fa-floppy-disk"></i> Saqlash';
         }
         const form = document.getElementById('boss-new-form');
@@ -1373,31 +1546,62 @@ function setPeriod(value) {
     function toggleOwnPassField(inputId) {
         const input = document.getElementById(inputId);
         if (!input) return;
-        const show = input.type === 'password';
-        input.type = show ? 'text' : 'password';
-        const eye = document.getElementById(inputId + '-eye');
-        if (eye) eye.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+        setPassFieldVisibility(inputId, input.type === 'password');
     }
 
-    /** Kuchli tasodifiy parol yaratadi (~10 belgi, adashtiruvchi belgilarsiz). */
+    /**
+     * Kriptografik tasodifiy son (0..max-1). `Math.random()` xavfsizlik
+     * maqsadida ISHLATILMAYDI; mavjud bo'lmasa chaqiruvchi xato beradi.
+     */
+    function secureRandomIndex(max) {
+        const n = Math.max(1, Math.floor(Number(max) || 1));
+        const buf = new Uint32Array(1);
+        const limit = Math.floor(0x100000000 / n) * n;
+        do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
+        return buf[0] % n;
+    }
+
+    /**
+     * 16 belgili kuchli parol: katta/kichik harf, raqam va belgi.
+     * Adashtiruvchi I, l, O, 0, 1 belgilari ataylab ishlatilmaydi.
+     */
+    function generateStrongPassword(length = 16) {
+        if (typeof crypto === 'undefined' || !crypto.getRandomValues) return '';
+        const sets = [
+            'ABCDEFGHJKLMNPQRSTUVWXYZ',
+            'abcdefghijkmnopqrstuvwxyz',
+            '23456789',
+            '!@#$%&*'
+        ];
+        const all = sets.join('');
+        const chars = sets.map(set => set[secureRandomIndex(set.length)]);
+        while (chars.length < length) chars.push(all[secureRandomIndex(all.length)]);
+        for (let i = chars.length - 1; i > 0; i--) {
+            const j = secureRandomIndex(i + 1);
+            const tmp = chars[i];
+            chars[i] = chars[j];
+            chars[j] = tmp;
+        }
+        return chars.join('');
+    }
+
+    /** Yangi xodim formasi uchun kuchli parol yaratadi (asosiy + tasdiq). */
     function generatePassword() {
         const input = document.getElementById('boss-new-password');
         if (!input) return;
-        const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-        const bytes = new Uint8Array(10);
-        if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-            crypto.getRandomValues(bytes);
-        } else {
-            for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+        const pass = generateStrongPassword(16);
+        if (!pass) {
+            showNotif('error', 'Xatolik', 'Brauzer xavfsiz parol yaratishni qo\'llab-quvvatlamaydi');
+            return;
         }
-        let pass = '';
-        for (let i = 0; i < bytes.length; i++) pass += abc[bytes[i] % abc.length];
         input.value = pass;
+        const confirm = document.getElementById('boss-new-password-confirm');
+        if (confirm) confirm.value = pass;
         input.type = 'text';
         const eye = document.getElementById('boss-new-pass-eye');
         if (eye) eye.className = 'fas fa-eye-slash';
         const hint = document.getElementById('boss-new-pass-hint');
-        if (hint) hint.textContent = 'Parol yaratildi — xodimga shu parolni bering.';
+        if (hint) hint.textContent = 'Kuchli parol yaratildi - xodimga shu parolni bering.';
     }
 
     /**
@@ -1423,7 +1627,9 @@ function setPeriod(value) {
             phone: String(row.phone || ''),
             role: String(row.role || 'cashier'),
             branch: String(row.branchId || ''),
-            status: String(row.status || 'active')
+            status: String(row.status || 'active'),
+            salary: (row.salary === null || row.salary === undefined || row.salary === '')
+                ? null : Number(row.salary)
         };
         const role = state.editingStaffOrig.role.toLowerCase();
         const isBossRow = role === 'boss';
@@ -1435,9 +1641,21 @@ function setPeriod(value) {
         };
         clearStaffFormError();
         set('boss-new-name', row.name || '');
-        set('boss-new-phone', row.phone || '');
+        set('boss-new-phone', (typeof formatPhoneMaskUz === 'function')
+            ? formatPhoneMaskUz(row.phone || '') : '');
         set('boss-new-status', state.editingStaffOrig.status);
         set('boss-new-branch', state.editingStaffOrig.branch);
+        // Maosh belgilanmagan bo'lsa maydon BO'SH qoladi — 0 bilan boshlanmaydi.
+        set('boss-new-salary', state.editingStaffOrig.salary === null
+            ? '' : formatSalaryInput(state.editingStaffOrig.salary));
+        const salaryInput = document.getElementById('boss-new-salary');
+        if (salaryInput) salaryInput.removeAttribute('aria-invalid');
+        const salaryHint = document.getElementById('boss-new-salary-hint');
+        if (salaryHint) {
+            salaryHint.textContent = state.editingStaffOrig.salary === null
+                ? 'Bu xodimga maosh hali belgilanmagan. Yangi qiymat kiritsangiz — saqlanadi.'
+                : 'Joriy maosh. O\'zgartirsangiz, eski qiymat tarixga yoziladi.';
+        }
         const roleSel = document.getElementById('boss-new-role');
         if (roleSel) {
             // Boshliq roli tayinlanmaydi. Boshliq qatorida select o'chiriladi
@@ -1493,6 +1711,9 @@ function setPeriod(value) {
         if (text.includes('telefon') || text.includes('login')) return 'boss-new-phone';
         if (text.includes('parol')) return 'boss-new-password';
         if (text.includes('ism')) return 'boss-new-name';
+        if (text.includes('maosh') || text.includes('so\'m') || text.includes('sum')) {
+            return 'boss-new-salary';
+        }
         if (text.includes('filial')) return 'boss-new-branch';
         if (text.includes('rol')) return 'boss-new-role';
         return '';
@@ -1508,6 +1729,7 @@ function setPeriod(value) {
         const status = document.getElementById('boss-new-status')?.value || 'active';
         const password = document.getElementById('boss-new-password')?.value || '';
         const confirm = document.getElementById('boss-new-password-confirm')?.value || '';
+        const salaryRaw = document.getElementById('boss-new-salary')?.value || '';
 
         if (name.length < 2) {
             staffFormError('Xodim ismini kiriting (kamida 2 belgi)', 'boss-new-name');
@@ -1530,6 +1752,28 @@ function setPeriod(value) {
             staffFormError('Holat noto\'g\'ri tanlangan', 'boss-new-status');
             return;
         }
+        // ── Oylik maosh: majburiy, butun son (so'm) ────────────────────
+        const salaryParsed = parseSalaryInput(salaryRaw);
+        const origSalary = state.editingStaffId && state.editingStaffOrig
+            ? state.editingStaffOrig.salary : null;
+        if (state.editingStaffId) {
+            // Tahrirda mavjud maoshni bo'sh maydon bilan o'chirib bo'lmaydi;
+            // belgilanmagan bo'lsa — bo'sh qoldirish mumkin (o'zgarish yo'q).
+            if (salaryParsed.empty && origSalary !== null) {
+                staffFormError('Oylik maoshni kiriting (mavjud qiymatni o\'chirib bo\'lmaydi)',
+                    'boss-new-salary');
+                return;
+            }
+        } else if (salaryParsed.empty) {
+            staffFormError('Oylik maoshni kiriting — masalan: 4 000 000', 'boss-new-salary');
+            return;
+        }
+        if (salaryParsed.error) {
+            staffFormError(salaryParsed.error, 'boss-new-salary');
+            return;
+        }
+        // Takroriy yuborish: so'rov davom etayotganda qayta bosish e'tiborsiz.
+        if (state.staffSaving) return;
 
         // ── Tahrir rejimi: faqat o'zgargan maydonlar PUT qilinadi ──────
         if (state.editingStaffId) {
@@ -1542,6 +1786,9 @@ function setPeriod(value) {
             const statusSel = document.getElementById('boss-new-status');
             if (statusSel && !statusSel.disabled && status !== (orig.status || '')) patch.status = status;
             if (branch !== (orig.branch || '')) patch.branchId = branch;
+            if (!salaryParsed.empty && salaryParsed.value !== origSalary) {
+                patch.salary = salaryParsed.value;
+            }
             if (password) {
                 if (password.length < 6) {
                     staffFormError('Parol kamida 6 belgidan iborat bo\'lsin', 'boss-new-password');
@@ -1571,6 +1818,7 @@ function setPeriod(value) {
             }
             const eSaveBtn = document.getElementById('boss-new-save');
             const eOldLabel = eSaveBtn ? eSaveBtn.innerHTML : '';
+            state.staffSaving = true;
             if (eSaveBtn) {
                 eSaveBtn.disabled = true;
                 eSaveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saqlanmoqda...';
@@ -1582,7 +1830,7 @@ function setPeriod(value) {
                     body: JSON.stringify(patch)
                 });
                 const body = await res.json().catch(() => ({}));
-                if (!res.ok) {
+                if (!res.ok || body.status !== 'success' || !body.staff) {
                     staffFormError(body.message || 'Xodimni yangilab bo\'lmadi',
                         staffErrorField(body.message));
                     return;   // modal OCHIQ qoladi — kiritilgan qiymatlar yo'qolmaydi
@@ -1600,7 +1848,13 @@ function setPeriod(value) {
                 closeModal('bossStaffModal');
                 resetNewStaffForm();
                 await loadStaff();
+                refreshSalaryPlan();
+            } catch (err) {
+                // Tarmoq/server uzilishi: modal ochiq, kiritilgan qiymatlar saqlanadi.
+                staffFormError('Server bilan aloqa uzildi. O\'zgarishlar saqlanmadi — '
+                    + 'internetni tekshirib, qayta urinib ko\'ring');
             } finally {
+                state.staffSaving = false;
                 if (eSaveBtn) {
                     eSaveBtn.disabled = false;
                     eSaveBtn.innerHTML = eOldLabel;
@@ -1620,39 +1874,61 @@ function setPeriod(value) {
 
         const saveBtn = document.getElementById('boss-new-save');
         const oldLabel = saveBtn ? saveBtn.innerHTML : '';
+        state.staffSaving = true;
         if (saveBtn) {
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saqlanmoqda...';
         }
+        let body = null;
         try {
             const res = await fetch('/api/boss/staff', {
                 method: 'POST',
                 headers: authHeaders({ 'Content-Type': 'application/json' }),
-                body: JSON.stringify({ name, phone, role, branchId: branch, status, password })
+                body: JSON.stringify({
+                    name, phone, role, branchId: branch, status, password,
+                    salary: salaryParsed.value
+                })
             });
-            const body = await res.json().catch(() => ({}));
-            if (!res.ok) {
+            body = await res.json().catch(() => ({}));
+            // HTTP status bilan birga biznes natijasini ham tekshiramiz:
+            // 2xx kelib, `status: error` bo'lsa modal YOPILMAYDI.
+            if (!res.ok || body.status !== 'success' || !body.staff) {
                 staffFormError(body.message || 'Xodimni qo\'shib bo\'lmadi',
                     staffErrorField(body.message));
                 return;   // modal OCHIQ qoladi — forma tozalanmaydi
             }
-            const created = body.staff || {};
-            // Kirish ma'lumotlari FAQAT SHU BIR MARTA ko'rsatiladi — Boshliq
-            // xodimga beradi. Serverda parol nusxasi saqlanmaydi.
-            showNewStaffCredentials({
-                login: created.phone || phone,
-                password: password,
-                role: created.role || role
-            });
-            showNotif('success', 'Xodim qo\'shildi',
-                name + ' endi shu login va parol bilan kiradi');
-            await loadStaff();
+        } catch (err) {
+            // Tarmoq/server uzilishi: ma'lumot yo'qolmaydi, modal ochiq qoladi.
+            staffFormError('Server bilan aloqa uzildi. Ma\'lumotlar saqlanmadi — '
+                + 'internetni tekshirib, qayta urinib ko\'ring');
+            return;
         } finally {
+            state.staffSaving = false;
             if (saveBtn) {
                 saveBtn.disabled = false;
                 saveBtn.innerHTML = oldLabel;
             }
         }
+
+        // ── MUVAFFAQIYAT (backend haqiqatan saqladi) ────────────────
+        const created = body.staff || {};
+        // Avval modal yopiladi, keyin ro'yxat yangilanadi.
+        // Kirish ma'lumotlari alohida «credentials» ekranida QOLMAYDI —
+        // parolni Boshliq formada o'zi kiritgan (kerak bo'lsa nusxalab oladi).
+        closeModal('bossStaffModal');
+        resetNewStaffForm();
+        // Faol qidiruv/filtr yangi xodimni yashirib qo'ymasin.
+        clearStaffFilters();
+        try {
+            await loadStaff();
+        } catch (refreshError) {
+            // Xodim allaqachon saqlangan — xato xabarini «saqlanmadi» deb bermaymiz.
+            console.warn('Xodim saqlandi, lekin jadvalni yangilab bo\'lmadi:', refreshError);
+        }
+        showNotif('success', 'Xodim qo\'shildi',
+            (created.name || name) + ' ro\'yxatga qo\'shildi. Login: '
+            + (created.phone || phone));
+        refreshSalaryPlan();
     }
 
     /** Yaratilgan xodimning kirish ma'lumotlarini buferga nusxalaydi. */
@@ -1730,6 +2006,116 @@ function setPeriod(value) {
     }
 /* ── 10) Parol modallari ─────────────────────────── */
 
+    /** Parol maydonining ko'rinishini va ko'zcha holatini sinxronlaydi. */
+    function setPassFieldVisibility(inputId, show) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        input.type = show ? 'text' : 'password';
+        const eye = document.getElementById(inputId + '-eye');
+        if (eye) eye.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+        const btn = input.closest('.boss-pass-inline')?.querySelector('.pass-toggle');
+        if (btn) {
+            btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+            const base = btn.dataset.eyeLabel || 'Parolni';
+            btn.setAttribute('aria-label', base + (show ? ' yashirish' : " ko'rsatish"));
+            btn.title = show ? 'Parolni yashirish' : "Parolni ko'rsatish";
+        }
+    }
+
+    /** Parol oynasidagi barcha maxfiy qiymatlarni DOM va xotiradan tozalaydi. */
+    function clearStaffPassSensitive() {
+        ['boss-pass-new', 'boss-pass-confirm'].forEach(inputId => {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            input.value = '';
+            input.type = 'password';
+            input.removeAttribute('aria-invalid');
+            const eye = document.getElementById(inputId + '-eye');
+            if (eye) eye.className = 'fas fa-eye';
+            const btn = input.closest('.boss-pass-inline')?.querySelector('.pass-toggle');
+            if (btn) {
+                btn.setAttribute('aria-pressed', 'false');
+                const base = btn.dataset.eyeLabel || 'Parolni';
+                btn.setAttribute('aria-label', base + " ko'rsatish");
+                btn.title = "Parolni ko'rsatish";
+            }
+        });
+        const result = document.getElementById('boss-pass-result');
+        if (result) result.hidden = true;
+        const resultValue = document.getElementById('boss-pass-result-value');
+        if (resultValue) {
+            resultValue.textContent = '';
+            resultValue.classList.remove('masked');   // keyingi ochilishda toza holat
+        }
+        const resultEye = document.getElementById('boss-pass-result-eye');
+        if (resultEye) resultEye.className = 'fas fa-eye-slash';
+        const formView = document.getElementById('boss-pass-form-view');
+        if (formView) formView.hidden = false;
+        const foot = document.getElementById('boss-pass-form-foot');
+        if (foot) foot.hidden = false;
+        const err = document.getElementById('boss-pass-error');
+        if (err) { err.hidden = true; err.textContent = ''; }
+        const policy = document.getElementById('boss-pass-policy');
+        if (policy) policy.innerHTML = '<i class="fas fa-circle-info" aria-hidden="true"></i> '
+            + 'Kamida 6 belgi';
+        state.generatedStaffPassword = '';
+        state.passWasGenerated = false;
+        state.passSubmitting = false;
+        state.activeStaffId = null;
+        setPassSubmitLoading(false);
+    }
+
+    /** Parol oynasini yopadi (so'rov ketayotganda yopilishni bloklaydi). */
+    function closeStaffPassModal() {
+        if (state.passSubmitting) {
+            showNotif('info', 'Kuting', 'Parol saqlanmoqda - jarayon tugashini kuting');
+            return;
+        }
+        const modal = document.getElementById('bossPassModal');
+        if (modal && modal.classList.contains('open')) closeModal('bossPassModal');
+        clearStaffPassSensitive();
+    }
+
+    function setPassSubmitLoading(loading) {
+        const btn = document.getElementById('boss-pass-submit');
+        if (btn) {
+            btn.disabled = !!loading;
+            btn.innerHTML = loading
+                ? '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Saqlanmoqda...'
+                : '<i class="fas fa-key" aria-hidden="true"></i> Parolni almashtirish';
+        }
+        const generateBtn = document.getElementById('boss-pass-generate');
+        if (generateBtn) generateBtn.disabled = !!loading;
+    }
+
+    function showStaffPassError(message, fieldId) {
+        const err = document.getElementById('boss-pass-error');
+        ['boss-pass-new', 'boss-pass-confirm'].forEach(id => {
+            document.getElementById(id)?.removeAttribute('aria-invalid');
+        });
+        if (err) {
+            err.hidden = false;
+            err.innerHTML = '<i class="fas fa-circle-exclamation" aria-hidden="true"></i> '
+                + escapeHTML(message);
+        }
+        if (fieldId) {
+            const input = document.getElementById(fieldId);
+            if (input) {
+                input.setAttribute('aria-invalid', 'true');
+                input.focus();
+            }
+        }
+        playError();
+    }
+
+    function clearStaffPassError() {
+        const err = document.getElementById('boss-pass-error');
+        if (err) { err.hidden = true; err.textContent = ''; }
+        ['boss-pass-new', 'boss-pass-confirm'].forEach(id => {
+            document.getElementById(id)?.removeAttribute('aria-invalid');
+        });
+    }
+
     /** Xodimga yangi parol o'rnatish oynasi (joriy parol KO'RSATILMAYDI). */
     function openPassModal(id) {
         const row = findStaffRow(id);
@@ -1741,47 +2127,203 @@ function setPeriod(value) {
             showNotif('error', "Ruxsat yo'q", "Boshliq parolini bu oynadan o'zgartirib bo'lmaydi");
             return;
         }
+        clearStaffPassSensitive();
         state.activeStaffId = id;
-        const nameEl = document.getElementById('boss-pass-name');
-        if (nameEl) nameEl.textContent = row.name;
-        ['boss-pass-new', 'boss-pass-confirm'].forEach(inputId => {
-            const input = document.getElementById(inputId);
-            if (input) input.value = '';
-        });
-        const err = document.getElementById('boss-pass-error');
-        if (err) { err.hidden = true; err.textContent = ''; }
+
+        const setText = (targetId, value) => {
+            const el = document.getElementById(targetId);
+            if (el) el.textContent = value;
+        };
+        setText('boss-pass-name', row.name || 'Xodim');
+        setText('boss-pass-phone', row.phone || row.login || '—');
+        const roleKey = String(row.role || '').toLowerCase();
+        const roleText = (typeof ROLES !== 'undefined' && ROLES[roleKey])
+            || String(row.role || '').toUpperCase() || '—';
+        setText('boss-pass-role', roleText);
+        const avatar = document.getElementById('boss-pass-avatar');
+        if (avatar) avatar.textContent = ((row.name || '?').trim()[0] || '?').toUpperCase();
+        const statusEl = document.getElementById('boss-pass-status');
+        if (statusEl) {
+            const status = String(row.status || 'active').toLowerCase();
+            const blocked = status === 'blocked';
+            const inactive = status === 'inactive';
+            statusEl.textContent = blocked ? 'Bloklangan' : inactive ? 'Nofaol' : 'Faol';
+            statusEl.className = 'boss-pass-status'
+                + (blocked ? ' blocked' : inactive ? ' inactive' : '');
+        }
+        const extra = document.getElementById('boss-pass-login-extra');
+        if (extra) {
+            const login = String(row.login || '');
+            const phone = String(row.phone || '');
+            const differs = login && login !== phone;
+            extra.hidden = !differs;
+            extra.textContent = differs ? 'Login ID: ' + login : '';
+        }
+
+        // Parol holati: faqat O'RNATILGAN/O'RNATILMAGAN + audit sanasi.
+        // Parol qiymati, xesh yoki salt bu yerga HECH QACHON chiqmaydi.
+        const passState = document.getElementById('boss-pass-passstate');
+        const passStateText = document.getElementById('boss-pass-passstate-text');
+        const passStateMeta = document.getElementById('boss-pass-passstate-meta');
+        if (passStateText) {
+            const has = !!row.hasPassword;
+            passStateText.textContent = has ? "Parol o'rnatilgan" : "Parol o'rnatilmagan";
+            if (passState) passState.classList.toggle('unset', !has);
+            if (passStateMeta) {
+                passStateMeta.textContent = (has && row.passChangedAt)
+                    ? "Oxirgi o'zgarish: " + row.passChangedAt
+                        + (row.passChangedBy ? ' · ' + row.passChangedBy : '')
+                    : (has ? '' : 'Bu xodim uchun hali parol belgilanmagan');
+            }
+        }
+
         openModal('bossPassModal');
         setTimeout(() => document.getElementById('boss-pass-new')?.focus(), 60);
     }
 
+    /** Vaqtinchalik kuchli parol yaratib, ikkala maydonga yozadi. */
+    function generateStaffPassword() {
+        if (state.passSubmitting) return;
+        const pass = generateStrongPassword(16);
+        if (!pass) {
+            showStaffPassError('Brauzer xavfsiz parol yaratishni qo\'llab-quvvatlamaydi');
+            return;
+        }
+        clearStaffPassError();
+        const input = document.getElementById('boss-pass-new');
+        const confirm = document.getElementById('boss-pass-confirm');
+        if (input) input.value = pass;
+        if (confirm) confirm.value = pass;
+        setPassFieldVisibility('boss-pass-new', true);
+        setPassFieldVisibility('boss-pass-confirm', true);
+        state.passWasGenerated = true;
+        const policy = document.getElementById('boss-pass-policy');
+        if (policy) policy.innerHTML = '<i class="fas fa-shield-halved" aria-hidden="true"></i> '
+            + '16 belgi · kuchli vaqtinchalik parol';
+        (input || confirm)?.focus();
+    }
+
+    /**
+     * Natija oynasidagi vaqtinchalik parolni ko'rsatish/yashirish.
+     * YASHIRILGANDA DOM'dagi qiymat o'chiriladi (nuqtalar bilan almashadi) —
+     * parol faqat `state.generatedStaffPassword` xotirasida qoladi va
+     * localStorage/sessionStorage/log'ga yozilmaydi.
+     */
+    function setResultPasswordVisible(visible) {
+        const code = document.getElementById('boss-pass-result-value');
+        const eye = document.getElementById('boss-pass-result-eye');
+        const btn = document.querySelector('.boss-pass-result-toggle');
+        if (code) {
+            code.textContent = visible
+                ? (state.generatedStaffPassword || '')
+                : '••••••••••••••••';
+            code.classList.toggle('masked', !visible);
+        }
+        if (eye) eye.className = visible ? 'fas fa-eye-slash' : 'fas fa-eye';
+        if (btn) {
+            btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+            btn.title = visible ? 'Parolni yashirish' : "Parolni ko'rsatish";
+            btn.setAttribute('aria-label', visible
+                ? 'Vaqtinchalik parolni yashirish' : "Vaqtinchalik parolni ko'rsatish");
+        }
+    }
+
+    /** Natija oynasidagi parolni ko'rsatish/yashirishni almashtiradi. */
+    function toggleResultPassword() {
+        const code = document.getElementById('boss-pass-result-value');
+        if (!code) return;
+        setResultPasswordVisible(code.classList.contains('masked'));
+    }
+
+    /** Vaqtinchalik parolni faqat shu oynada bir marta ko'rsatadi. */
+    function showStaffPassResult(password) {
+        const result = document.getElementById('boss-pass-result');
+        const formView = document.getElementById('boss-pass-form-view');
+        const foot = document.getElementById('boss-pass-form-foot');
+        state.generatedStaffPassword = String(password || '');
+        setResultPasswordVisible(true);   // boshida ko'rinadi, ko'zcha bilan yashiriladi
+        const inputs = ['boss-pass-new', 'boss-pass-confirm'];
+        inputs.forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
+        });
+        if (formView) formView.hidden = true;
+        if (foot) foot.hidden = true;
+        if (result) {
+            result.hidden = false;
+            result.querySelector('.boss-pass-result-close')?.focus();
+        }
+    }
+
+    function copyGeneratedStaffPassword() {
+        if (!state.generatedStaffPassword) return;
+        copyText(state.generatedStaffPassword, 'Vaqtinchalik parol nusxalandi');
+    }
+
     async function submitStaffPassword() {
+        if (state.passSubmitting) return;   // takroriy bosish / double-submit
+        const modal = document.getElementById('bossPassModal');
+        if (!modal || !modal.classList.contains('open')) return;
         const pass = document.getElementById('boss-pass-new')?.value || '';
         const confirmPass = document.getElementById('boss-pass-confirm')?.value || '';
-        const err = document.getElementById('boss-pass-error');
-        const showErr = (message, fieldId) => {
-            if (err) {
-                err.hidden = false;
-                err.innerHTML = '<i class="fas fa-circle-exclamation"></i> ' + escapeHTML(message);
-            }
-            if (fieldId) document.getElementById(fieldId)?.focus();
-            playError();
-        };
-        if (pass.length < 6) { showErr('Parol kamida 6 belgidan iborat bo\'lsin', 'boss-pass-new'); return; }
-        if (pass !== confirmPass) { showErr('Parollar mos kelmadi', 'boss-pass-confirm'); return; }
-        const res = await fetch('/api/boss/staff/' + encodeURIComponent(state.activeStaffId), {
-            method: 'PUT',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ password: pass })
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            showErr(body.message || 'Parolni yangilab bo\'lmadi');
-            return;   // modal OCHIQ qoladi
+        if (pass.length < 6) {
+            showStaffPassError('Parol kamida 6 belgidan iborat bo\'lsin', 'boss-pass-new');
+            return;
         }
-        closeModal('bossPassModal');
-        showNotif('success', 'Parol yangilandi',
-            'Xodimning barcha sessiyalari yopildi — yangi parol bilan kiring');
-        await loadStaff();
+        if (pass.length > 200) {
+            showStaffPassError('Parol juda uzun (200 belgidan oshmasin)', 'boss-pass-new');
+            return;
+        }
+        if (pass !== confirmPass) {
+            showStaffPassError('Parollar mos kelmadi', 'boss-pass-confirm');
+            return;
+        }
+        const staffId = state.activeStaffId;
+        if (!staffId) {
+            showStaffPassError('Xodim tanlanmagan - oynani qayta oching');
+            return;
+        }
+        if (!staffToken) {
+            showStaffPassError('Sessiya topilmadi - qaytadan kiring');
+            return;
+        }
+        const temporary = !!state.passWasGenerated;
+        state.passSubmitting = true;
+        setPassSubmitLoading(true);
+        clearStaffPassError();
+        try {
+            const res = await fetch('/api/boss/staff/' + encodeURIComponent(staffId), {
+                method: 'PUT',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({
+                    password: pass,
+                    requirePasswordChange: temporary
+                })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || (body.status && body.status !== 'success')) {
+                showStaffPassError(body.message || 'Parolni yangilab bo\'lmadi');
+                return;   // modal OCHIQ qoladi, kiritilgan qiymatlar saqlanadi
+            }
+            state.passSubmitting = false;   // endi yopish ruxsat etiladi
+            if (temporary) {
+                showStaffPassResult(pass);
+                showNotif('success', 'Parol o\'rnatildi',
+                    'Vaqtinchalik parolni xodimga xavfsiz yetkazing');
+            } else {
+                closeStaffPassModal();
+                showNotif('success', 'Parol yangilandi',
+                    'Xodimning barcha sessiyalari yopildi - yangi parol bilan kiring');
+            }
+            await loadStaff();
+        } catch (e) {
+            // Tarmoq/server uzilishi: modal va kiritilgan qiymatlar saqlanadi.
+            showStaffPassError('Server bilan aloqa uzildi. O\'zgarish saqlanmagan '
+                + 'bo\'lishi mumkin - qayta urinib ko\'ring');
+        } finally {
+            state.passSubmitting = false;
+            setPassSubmitLoading(false);
+        }
     }
 
     function openOwnPasswordModal() {
@@ -1852,7 +2394,7 @@ function setPeriod(value) {
         const inactive = status === 'inactive';
         const bossRole = String(row.role || '').toLowerCase() === 'boss';
         const items = [
-            ['data-boss-sale', 'fa-chart-line', 'Savdolar', '']
+            ['data-boss-sale', 'fa-chart-line', 'Savdo statistikasi', '']
         ];
         if (!bossRole || me) {
             items.unshift(['data-boss-edit', 'fa-pen-to-square', 'Tahrirlash', '']);
@@ -1860,9 +2402,11 @@ function setPeriod(value) {
         if (me) {
             items.push(['data-boss-ownpass', 'fa-key', 'O\'z parolimni o\'zgartirish', '']);
         } else if (!bossRole) {
-            items.push(['data-boss-pass', 'fa-key', 'Parolni yangilash', '']);
+            items.push(['data-boss-pass', 'fa-key',
+                row.hasPassword ? 'Parolni almashtirish' : "Parol o'rnatish", '']);
             items.push(['data-boss-block', blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban',
-                blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash', '']);
+                blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash',
+                blocked || inactive ? 'ok' : 'warn']);
             items.push(['data-boss-del', 'fa-box-archive', 'Arxivlash', 'danger']);
         }
         menu.innerHTML = items.map(([attr, icon, label, cls]) =>
@@ -2028,6 +2572,52 @@ function setPeriod(value) {
     function bind() {
         if (bind.done) return;
         bind.done = true;
+
+        // Parol oynasi yopilganda maxfiy qiymat DOM'da qolmasin. Bu har qanday
+        // yopilish yo'lini (tugma, Escape, tashqi closeModal) qamrab oladi.
+        const passModal = document.getElementById('bossPassModal');
+        if (passModal && typeof MutationObserver === 'function') {
+            const passObserver = new MutationObserver(() => {
+                if (!passModal.classList.contains('open')) clearStaffPassSensitive();
+            });
+            passObserver.observe(passModal, { attributes: true, attributeFilter: ['class'] });
+        }
+        ['boss-pass-new', 'boss-pass-confirm'].forEach(id => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.addEventListener('input', () => {
+                // Qo'lda kiritilgan parol «vaqtinchalik» hisoblanmaydi.
+                if (state.passWasGenerated) {
+                    state.passWasGenerated = false;
+                    const policy = document.getElementById('boss-pass-policy');
+                    if (policy) policy.innerHTML =
+                        '<i class="fas fa-circle-info" aria-hidden="true"></i> Kamida 6 belgi';
+                }
+            });
+        });
+        passModal?.addEventListener('click', ev => {
+            if (ev.target === passModal) closeStaffPassModal();
+        });
+
+        document.addEventListener('keydown', ev => {
+            if (ev.target.id === 'boss-new-phone' && ev.target.selectionStart === ev.target.selectionEnd) {
+                const input = ev.target;
+                const caret = input.selectionStart;
+                if (ev.key === 'Backspace' && caret > 1 && input.value[caret - 1] === ' ') {
+                    input.setSelectionRange(caret - 2, caret - 1);
+                } else if (ev.key === 'Delete' && caret < input.value.length - 1
+                    && input.value[caret] === ' ') {
+                    input.setSelectionRange(caret + 1, caret + 2);
+                }
+            }
+            if (ev.key !== 'Escape') return;
+            if (passModal?.classList.contains('open')) {
+                closeStaffPassModal();
+                return;
+            }
+            if (state.staffMenuId) closeStaffMenu();
+        });
+
         document.addEventListener('click', async (ev) => {
             // ── Uch nuqtali menyu boshqaruvi ─────────────────────────
             const menuBtn = ev.target.closest('[data-boss-menu]');
@@ -2128,17 +2718,27 @@ function setPeriod(value) {
             }
 
             if (ev.target.closest('[data-boss-export]')) { await exportReportsCsv(); return; }
-            if (ev.target.closest('[data-boss-add]')) {
-                resetNewStaffForm();
-                openModal('bossStaffModal');
-                return;
-            }
+            if (ev.target.closest('[data-boss-add]')) { openAddStaff(); return; }
             if (ev.target.closest('[data-boss-ownpass]')) { openOwnPasswordModal(); return; }
             if (ev.target.closest('[data-boss-refresh]')) { refreshCurrent(); return; }
         });
 
         // Real-time qidiruv (debounce bilan).
         document.addEventListener('input', (ev) => {
+            if (ev.target.id === 'boss-new-phone') {
+                formatStaffPhoneInput(ev.target);
+                return;
+            }
+            // Oylik maosh: faqat raqamlar + avtomatik minglik ajratgich.
+            if (ev.target.id === 'boss-new-salary') {
+                const el = ev.target;
+                const end = el.selectionEnd === null || el.selectionEnd === undefined;
+                el.value = formatSalaryInput(el.value);
+                if (!end) {
+                    try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) { }
+                }
+                return;
+            }
             if (ev.target.id === 'boss-staff-search' || ev.target.id === 'boss-staff-search-m') {
                 state.staffQuery = ev.target.value || '';
                 // desktop/mobil qidiruv maydonlari bir xil holatda qoladi.
@@ -2293,8 +2893,11 @@ function setPeriod(value) {
         loadFinanceCharts, renderCharts, paintCharts,
         openReceiptModal, openProductModal, openBranchModal,
         createStaff, deleteStaff, toggleBlock, submitStaffPassword, openPassModal,
+        closeStaffPassModal, generateStaffPassword, copyGeneratedStaffPassword,
+        toggleResultPassword,
         rerenderStaffTable,
         openEditStaff, openStaffMenu, closeStaffMenu, renderStaffList,
+        openAddStaff, refreshSalaryPlan,
         toggleNewPassword, generatePassword, copyCredentials, resetNewStaffForm,
         showNewStaffCredentials, copyText, toggleOwnPassField,
         submitOwnPassword, openOwnPasswordModal, exportReportsCsv,

@@ -127,16 +127,6 @@ const TOUR_STEPS = {
             text: 'Xaridlar soni, jami summasi va bonus ballari shu yerda. SMS belgisi — shu mijozga xabar yuborish, axlat belgisi — o\'chirish.'
         },
         {
-            page: 'page-employees', target: '#employeesTable',
-            title: 'Xodimlar va sotuv ko\'rsatkichlari',
-            text: 'Har bir xodimning sotuvlar soni va daromadi real savdo tarixidan hisoblanadi. Yangi xodim qo\'shsangiz jadval yangilanadi.'
-        },
-        {
-            page: 'page-employees', target: '#salary-stat-cards',
-            title: 'Oylik maosh moduli',
-            text: 'Xodimlarning oylik maoshi, navbatdagi to\'lov sanasi va holati. "Xodim Qo\'shish" tugmasi orqali maosh yozuvi kiritiladi, to\'lov qilinganda tarixga tushadi.'
-        },
-        {
             page: 'page-contracts', target: '.contract-auto-banner',
             title: 'Shartnomalar — faqat qo\'lda (admin qaroriga ko\'ra)',
             text: 'Savdo qilinganda shartnoma avtomatik yaratilmaydi. Kim bilan shartnoma tuzishni administrator o\'zi hal qiladi: «Qo\'lda shartnoma» tugmasi bilan mijozni (ro\'yxatdan yoki chekdan) tanlab, summa va kafolat muddatini belgilaydi. «Cheklardan import» — eski savdolarni bir marta qo\'shish uchun, «Holatlarni yangilash» esa kafolat muddatlarini qayta hisoblaydi.'
@@ -338,16 +328,6 @@ const TOUR_STEPS = {
             page: 'page-warehouse', target: '#warehouseTableBody',
             title: 'Zaxiralar jadvali',
             text: 'Har bir mahsulotning qoldig\'i, dona bahosi va jami qiymati. Kam qolgan qatorlar qizil rangda.'
-        },
-        {
-            page: 'page-employees', target: '#employeesTable',
-            title: 'Xodimlar boshqaruvi',
-            text: 'Xodimlarning sotuvlari va daromadi. Bu yerdan yangi xodim qo\'shishingiz mumkin — ro\'yxat darhol yangilanadi.'
-        },
-        {
-            page: 'page-employees', target: '#salary-stat-cards',
-            title: 'Oylik maosh nazorati',
-            text: 'Jami oylik xarajat, kechikkan va bugun to\'lanadigan to\'lovlar. Karta bosilganda filtr tugmalari jadvalni shunga moslab tozalaydi.'
         },
         {
             page: 'page-contracts', target: '#contractsTable',

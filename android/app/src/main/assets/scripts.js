@@ -929,8 +929,9 @@ function phoneDigitsUz(value) {
     // KESISHDAN OLDIN olib tashlaymiz — aks holda sekin terilganda
     // 10-belgidan keyin kesish "998901234554" -> "998901234" (-998998901234)
     // noto'g'ri raqamga olib kelardi (paste ishlar, terish ishlamas edi).
-    const prefixed = digits.startsWith('998') && digits.length > 9;
-    if (prefixed) digits = digits.slice(3);
+    while (digits.startsWith('998') && digits.length > 9) {
+        digits = digits.slice(3);
+    }
     if (digits.length > 9) digits = digits.slice(0, 9);
     return digits;
 }
@@ -949,30 +950,40 @@ function normalizePhoneUz(value) {
     return '+998' + d;
 }
 
+/** Login maydonida telefon emas, LOGIN NOMI kiritilganini aniqlaydi.
+ *  Masalan: admin, boss2, manager@texnopark.uz. Bunday qiymatga telefon
+ *  maskasi qo'llanmaydi — aks holda harflar darhol o'chib ketardi va
+ *  admin login bilan kirish umuman imkonsiz edi. */
+function isLoginNameValue(value) {
+    return /[A-Za-z@._-]/.test(String(value || ''));
+}
+
+/** Login maydonini telefon maskasiga keltiradi va +998 prefiksini boshqaradi. */
+function formatLoginField(inp) {
+    if (!inp) return;
+    const nameMode = isLoginNameValue(inp.value);
+    const wrap = inp.closest('.phone-field');
+    if (wrap) wrap.classList.toggle('login-mode', nameMode);
+    if (nameMode) return;            // login nomi — maskani tegmymiz
+    const masked = formatPhoneMaskUz(inp.value);
+    if (inp.value !== masked) {
+        inp.value = masked;
+        // Kursor doim matn oxirida qoladi
+        try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
+    }
+}
+
 /** Login telefon maydoniga maskani bog'laydi (bir marta). */
 function initLoginPhoneMask() {
     const inp = document.getElementById('loginPhone');
     if (!inp || inp.dataset.maskBound === '1') return;
     inp.dataset.maskBound = '1';
-    inp.addEventListener('input', () => {
-        const masked = formatPhoneMaskUz(inp.value);
-        if (inp.value !== masked) {
-            inp.value = masked;
-            // Kursor doim matn oxirida qoladi
-            try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
-        }
-    });
+    inp.addEventListener('input', () => formatLoginField(inp));
 }
 
 /** Login telefon maydonidagi qiymatni bir xil maskaga keltiradi. */
 function formatLoginPhoneField() {
-    const inp = document.getElementById('loginPhone');
-    if (!inp) return;
-    const masked = formatPhoneMaskUz(inp.value);
-    if (inp.value !== masked) {
-        inp.value = masked;
-        try { inp.setSelectionRange(masked.length, masked.length); } catch (e) { }
-    }
+    formatLoginField(document.getElementById('loginPhone'));
 }
 
 /** Brauzer autofill uchun telefon qiymatini ham bir xil maskaga keltiradi. */
@@ -1329,7 +1340,7 @@ logs = Array.isArray(logs) ? logs : [];
 const CASHFLOW_TYPES = {
     kirim: { label: 'Kirim', icon: 'fa-arrow-down-long' },
     chiqim: { label: 'Chiqim', icon: 'fa-arrow-up-long' },
-    harajat: { label: 'Harajat', icon: 'fa-receipt' },
+    harajat: { label: 'Xarajat', icon: 'fa-receipt' },
 };
 const CASHFLOW_CATEGORIES = ['Savdo tushumi', "Ta'minotchi to'lovi", 'Ijara',
     'Oylik maosh', 'Kommunal', 'Soliq', 'Transport', 'Reklama',
@@ -1571,6 +1582,106 @@ async function serverLogin(login, password) {
     }
 }
 
+/** Standart/zaif parol aniqlanganda majburiy almashtirish oynasi.
+ *  Server `mustChange=true` bo'lsa boshqa API'larni 403 bilan yopadi, shuning
+ *  uchun bu oyna yopilmaguncha ilovaga o'tilmaydi. */
+function showForcedPasswordChange(user) {
+    document.getElementById('forcedPasswordOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'forcedPasswordOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:18px;';
+    overlay.innerHTML = `
+        <div role="dialog" aria-modal="true" aria-labelledby="forcedPwTitle"
+             style="width:100%;max-width:440px;background:#fff;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.35);font-family:inherit;">
+            <h3 id="forcedPwTitle" style="margin:0 0 6px;font-size:1.15rem;color:#0f172a;">Parolni almashtirish shart</h3>
+            <p style="margin:0 0 14px;color:#475569;font-size:.92rem;line-height:1.45;">
+                <b id="forcedPwUserName"></b>, hisobingizda standart yoki zaif parol aniqlangan.
+                Xavfsizlik uchun davom etishdan oldin yangi parol o'rnating.
+            </p>
+            <form id="forcedPwForm" autocomplete="off">
+                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Joriy parol</label>
+                <input id="forcedPwOld" type="password" required autocomplete="current-password"
+                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:10px;">
+                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Yangi parol (kamida 6 belgi)</label>
+                <input id="forcedPwNew" type="password" required minlength="6" autocomplete="new-password"
+                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:10px;">
+                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Yangi parolni takrorlang</label>
+                <input id="forcedPwRepeat" type="password" required minlength="6" autocomplete="new-password"
+                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:12px;">
+                <div id="forcedPwError" style="display:none;color:#b91c1c;font-size:.86rem;margin-bottom:10px;"></div>
+                <button id="forcedPwSubmit" type="submit"
+                        style="width:100%;padding:11px 14px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;">
+                    Parolni saqlash
+                </button>
+                <button id="forcedPwLogout" type="button"
+                        style="width:100%;margin-top:8px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;cursor:pointer;">
+                    Chiqish
+                </button>
+            </form>
+        </div>`;
+    document.body.appendChild(overlay);
+    const nameEl = document.getElementById('forcedPwUserName');
+    if (nameEl) nameEl.textContent = String(user?.name || user?.login || 'Xodim');
+    const oldInput = document.getElementById('forcedPwOld');
+    const newInput = document.getElementById('forcedPwNew');
+    const repeatInput = document.getElementById('forcedPwRepeat');
+    const errorEl = document.getElementById('forcedPwError');
+    const form = document.getElementById('forcedPwForm');
+    const submitBtn = document.getElementById('forcedPwSubmit');
+    const showError = (message) => {
+        if (!errorEl) return;
+        errorEl.textContent = String(message || 'Xatolik');
+        errorEl.style.display = 'block';
+    };
+    document.getElementById('forcedPwLogout')?.addEventListener('click', () => {
+        clearStaffToken();
+        location.reload();
+    });
+    form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!errorEl) return;
+        errorEl.style.display = 'none';
+        const currentPassword = oldInput?.value || '';
+        const newPassword = newInput?.value || '';
+        const repeatPassword = repeatInput?.value || '';
+        if (newPassword.length < 6) return showError('Yangi parol kamida 6 belgidan iborat bo\'lishi kerak');
+        if (newPassword !== repeatPassword) return showError('Yangi parollar mos kelmadi');
+        if (newPassword === currentPassword) return showError('Yangi parol joriy paroldan farq qilishi kerak');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saqlanmoqda...';
+        try {
+            const response = await fetch('/api/auth/change-password', {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({
+                    login: user?.login || '',
+                    currentPassword,
+                    newPassword
+                })
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data?.token) {
+                showError(data?.message || 'Parolni almashtirib bo\'lmadi');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Parolni saqlash';
+                return;
+            }
+            setStaffToken(data.token);
+            storeUserPassword(user?.login || '', newPassword,
+                user?.name || 'Xodim');
+            overlay.remove();
+            finishLogin(user);
+            showNotif('success', 'Parol yangilandi',
+                'Yangi parol bilan ishlashda davom eting');
+        } catch (e) {
+            showError('Serverga ulanib bo\'lmadi. Qayta urinib ko\'ring.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Parolni saqlash';
+        }
+    });
+    setTimeout(() => oldInput?.focus(), 80);
+}
+
 /** Token eskirgan/bloklangan bo'lsa — xavfsiz tarzda sessiyani yopadi.
  *  Server 401 qaytarganda (token muddati tugagan / sessiya bekor qilingan)
  *  faqat token o'chirish YETARLI EMAS: foydalanuvchi "kirilgan" holatda
@@ -1578,7 +1689,11 @@ async function serverLogin(login, password) {
  *  «Sessiya yo'q / Qayta kiring» xatini takrorlaydi. Shuning uchun
  *  frontend sessiyasi ham yakunlanib, login ekranga qaytiladi. */
 function handleSessionExpired() {
-    if (!staffToken) return;
+    // Token bo'lmasa ham `currentUser` "kirgan" holatda qolgan bo'lishi mumkin
+    // (lokal sessiya server tokenisiz tiklangan). Bunday holatda ham login
+    // ekraniga qaytaramiz — aks holda barcha amallar "Avtorizatsiya talab
+    // qilinadi" xatosi bilan tugaydi va foydalanuvchi sababini bilmaydi.
+    if (!staffToken && !currentUser) return;
     clearStaffToken();
     if (currentUser && currentUser.role !== 'customer') {
         showNotif('warning', 'Sessiya tugadi', 'Xavfsizlik uchun tizimga qaytadan kiring');
@@ -1642,8 +1757,6 @@ function buildSyncPayload() {
         categories: CATEGORIES,
         discounts: readLocalJSON('tp_discounts', []),
         smsHistory: readLocalJSON('tp_sms_history', []),
-        salaryRecords: readLocalJSON('tp_salary_records', []),
-        salaryHistory: readLocalJSON('tp_salary_history', []),
         securityLog: readLocalJSON('tp_security_log', []),
         branches: branches,
         // Kirim / chiqim / harajat yozuvlari (filial bo'yicha)
@@ -1820,6 +1933,17 @@ async function loadFromBackend() {
             return;
         }
         if (response.status === 403) {
+            const errorData = await response.json().catch(() => null);
+            if (errorData?.code === 'password_change_required') {
+                console.warn('Parol almashtirish talab qilinadi — token saqlanadi');
+                if (currentUser) {
+                    showForcedPasswordChange(currentUser);
+                } else {
+                    showNotif('warning', 'Parolni almashtiring',
+                        'Xavfsizlik uchun avval parolni yangilang');
+                }
+                return;
+            }
             console.warn('Xodim tokeni yo\'q yoki huquq yetarli emas — faqat ommaviy katalog yuklanadi');
             clearStaffToken();
             await loadPublicCatalog();
@@ -1865,12 +1989,7 @@ async function loadFromBackend() {
             if (Array.isArray(data.smsHistory)) {
                 try { localStorage.setItem('tp_sms_history', JSON.stringify(data.smsHistory)); } catch (e) { }
             }
-            if (Array.isArray(data.salaryRecords)) {
-                try { localStorage.setItem('tp_salary_records', JSON.stringify(data.salaryRecords)); } catch (e) { }
-            }
-            if (Array.isArray(data.salaryHistory)) {
-                try { localStorage.setItem('tp_salary_history', JSON.stringify(data.salaryHistory)); } catch (e) { }
-            } if (Array.isArray(data.securityLog)) {
+            if (Array.isArray(data.securityLog)) {
                 securityEvents = data.securityLog;
                 try { localStorage.setItem('tp_security_log', JSON.stringify(securityEvents)); } catch (e) { }
             }
@@ -1926,6 +2045,10 @@ async function loadFromBackend() {
         renderProducts();
         console.warn('Failed to load from backend. Using local storage:', e);
     }
+    // Mahsulotlar shu chaqiruv ichida yuklanib bo'ladi. Sahifani yangilashdan
+    // keyin savat ancq shu vaqtda tiklanadi (ichidagi `posCartStateRestored`
+    // bayrog'i tufayli bir martadan ortiq ishlamaydi).
+    posRestoreCartState();
 }
 
 /**
@@ -2085,7 +2208,10 @@ function renderEmployeeDropdown() {
     const dp = document.getElementById('topbarEmployeeDropdown');
     if (!dp) return;
     const role = currentUser?.role || 'guest';
-    const isStaff = ['admin', 'cashier', 'manager'].includes(role);
+    // Boshliq ham tizimga kirgan xodim: uning dropdown'ida ham "Tizimdan chiqish"
+    // bo'lishi kerak (mobil headerda logout yo'q edi — faqat "Xodim kirishi").
+    // Har uchala rol uchun bitta `doLogout()` — alohida parallel logout yo'q.
+    const isStaff = ['admin', 'cashier', 'manager', 'boss'].includes(role);
     const item = (icon, label, action, cls) => `
         <div class="employee-dropdown-item ${cls || ''}" onclick="${action}; document.getElementById('topbarEmployeeDropdown').style.display='none';">
             <i class="fas ${icon}" style="width:16px; margin-right:8px;"></i><span>${label}</span>
@@ -2094,7 +2220,6 @@ function renderEmployeeDropdown() {
     if (isStaff) {
         html += item('fa-user-circle', 'Profil', 'showEmployeeProfile()');
         if (role === 'admin') html += item('fa-cog', 'Sozlamalar', "goTo('page-settings', document.getElementById('nav-settings'))");
-        if (role === 'admin' || role === 'manager') html += item('fa-user-plus', "Xodim qo'shish", 'triggerEmployeeRegistration()');
         html += item('fa-sign-out-alt', 'Tizimdan chiqish', 'doLogout()', 'logout');
     } else {
         html += item('fa-sign-in-alt', 'Xodim kirishi', 'openEmployeeLogin()');
@@ -2104,12 +2229,13 @@ function renderEmployeeDropdown() {
 
 function triggerEmployeeRegistration() {
     document.getElementById('topbarEmployeeDropdown').style.display = 'none';
-    if (!currentUser || !['admin', 'manager'].includes(currentUser.role)) {
+    // Xodimlar boshqaruvi yagona joy — Boshliq → Xodimlar (page-bossStaff).
+    if (!currentUser || currentUser.role !== 'boss') {
         playError();
-        showNotif('error', 'Ruxsat yo\'q!', 'Faqat Admin yoki Menejer xodimlarni ro\'yxatdan o\'tkazishi mumkin');
+        showNotif('error', 'Ruxsat yo\'q!', 'Xodimlarni faqat Boshliq boshqaradi');
         return;
     }
-    goTo('page-employees', document.getElementById('nav-employees'));
+    goTo('page-bossStaff', document.getElementById('nav-bossStaff'));
     if (typeof openEmployeeModal === 'function') {
         openEmployeeModal();
     }
@@ -2145,16 +2271,22 @@ async function doLogin() {
 
     clearLoginFieldErrors();
 
-    // ── Validatsiya (telefon + parol) ──
-    const phone = normalizePhoneUz(phoneRaw);
-    if (!phoneRaw.replace(/\D/g, '')) {
-        showLoginFieldError('loginPhoneError', 'Telefon raqamini kiriting');
+    // ── Validatsiya (telefon YOKI login nomi + parol) ──
+    const rawLogin = String(phoneRaw).trim();
+    const phone = normalizePhoneUz(rawLogin);
+    // Login nomi: admin, boss2, manager@texnopark.uz kabi qiymatlar.
+    // Server ikkala shaklni ham qabul qiladi (telefon yoki login).
+    const username = /^[A-Za-z0-9][A-Za-z0-9._@+-]{1,119}$/.test(rawLogin) ? rawLogin : '';
+    const loginKey = phone || username;
+
+    if (!rawLogin) {
+        showLoginFieldError('loginPhoneError', 'Telefon yoki loginni kiriting');
         phoneInp?.focus();
         playError();
         return;
     }
-    if (!phone) {
-        showLoginFieldError('loginPhoneError', 'Telefon raqami noto\u2018g\u2018ri');
+    if (!loginKey) {
+        showLoginFieldError('loginPhoneError', 'Telefon raqami yoki login noto\u2018g\u2018ri');
         phoneInp?.focus();
         playError();
         return;
@@ -2166,14 +2298,14 @@ async function doLogin() {
         return;
     }
 
-    if (hasSqlInjectionPattern(phone) || hasSqlInjectionPattern(p) || hasXssPattern(phone) || hasXssPattern(p)) {
+    if (hasSqlInjectionPattern(loginKey) || hasSqlInjectionPattern(p) || hasXssPattern(loginKey) || hasXssPattern(p)) {
         playError();
         showNotif('error', 'Xavfsizlik!', 'Login ma\'lumotlarida shubhali belgilar topildi');
         securityLog('login-injection-block', 'high', 'Kirish maydonida shubhali belgilar aniqlandi');
         return;
     }
 
-    // ── Brute-force himoyasi (telefon raqami bo'yicha) ──
+    // ── Brute-force himoyasi (telefon/login bo'yicha) ──
     // MUHIM (ROOT CAUSE FIX): lokal (brauzer) lockout FAQAT noto'g'ri parol
     // urinishlarini cheklashi kerak. To'g'ri telefon + parol eski (stale)
     // `tp_login_guard` holatidan bloklanmaydi — haqiqiy tekshiruv
@@ -2182,15 +2314,15 @@ async function doLogin() {
     // registerLoginFailure() lockoutni qayta qo'llaydi (5 xato urinish -> blok).
     // Server xavfsizligi o'zgartirilmaydi: IP-ratelimit (429) va bloklangan
     // hisob (403 account_blocked) xuddi avvalgidek ishlaydi.
-    const guard = loginGuardStatus(phone);
+    const guard = loginGuardStatus(loginKey);
     if (guard.locked) {
-        securityLog('lockout', 'high', 'Bloklangan telefon raqami uchun login tekshiruvi: ' + phone);
+        securityLog('lockout', 'high', 'Bloklangan login uchun tekshiruv: ' + loginKey);
     }
 
     // Yuklanish holati: tugma o'chadi — ikki marta bosish duplicate request yubormaydi
     setLoginLoading(true);
     try {
-        await attemptLogin(phone, p);
+        await attemptLogin(loginKey, p);
     } finally {
         setLoginLoading(false);
         // Turnstile tokeni bir martalik — muvaffaqiyatsiz urinishdan keyin
@@ -2260,7 +2392,7 @@ async function attemptLogin(u, p) {
         const local = findBaseUser(u);
         const role = ROLE_RANK[String(server.user?.role || '').toLowerCase()] > 0
             ? server.user.role : 'customer';
-        finishLogin({
+        const loginUser = {
             id: local?.id || Date.now(),
             login: cleanText(server.user?.login, 120) || u,
             name: cleanText(server.user?.name, 120) || u,
@@ -2272,13 +2404,14 @@ async function attemptLogin(u, p) {
             // o'z filialida boshlash uchun ishlatiladi.
             branchId: cleanText(server.user?.branchId, 40) || '',
             color: local?.color || '#2563EB'
-        });
+        };
         if (server.mustChange) {
             securityLog('weak-password', 'medium',
-                'Standart parol bilan kirildi — almashtirish tavsiya etiladi');
-            showNotif('warning', 'Parolni almashtiring',
-                'Standart parol ishlatilmoqda — Sozlamalar bo\'limidan yangilang');
+                'Standart parol bilan kirildi — almashtirish majburiy');
+            showForcedPasswordChange(loginUser);
+            return;
         }
+        finishLogin(loginUser);
         return;
     }
 
@@ -2302,6 +2435,38 @@ async function attemptLogin(u, p) {
         securityLog('password-upgraded', 'low', `${result.user.login} paroli salted SHA-256 xeshga o'tkazildi`);
     }
     finishLogin(result.user);
+}
+
+/* ============================================================
+   YAGONA «ROL → BOSHLANG'ICH SAHIFA» MANBASI
+   ------------------------------------------------------------
+   Muammo: ro'l→sahifa xaritasi faqat `finishLogin` (yangi login)
+   ichida edi; `loginWithUser` (sahifa yangilash / orqaga qaytish /
+   sessiya tiklash) esa hech qayerga yo'naltirmasdi va HTML'dagi
+   default `.active` sahifaga tayanardi. Natijada xodim ba'zan
+   ommaviy onlayn do'kon (page-shop) ko'rib qolardi.
+   Endi IKKALA yo'l ham shu yagona manbadan foydalanadi.
+   ============================================================ */
+
+/** Berilgan ro'l uchun standart (birinchi) sahifa. Do'kon faqat mehmon/xaridor uchun. */
+function landingPageForRole(role) {
+    if (!role || role === 'customer') return 'page-shop';
+    if (role === 'boss') return 'page-boss';
+    if (role === 'cashier') return 'page-pos';
+    // admin va menejer — boshqaruv paneli (page-dashboard ichida o'z dashboardi)
+    return 'page-dashboard';
+}
+
+/** Sahifaga mos sidebar menyuni topadi (faol holat uchun). Topilmasa null. */
+function navElForPage(pageId) {
+    return Array.from(document.querySelectorAll('.nav-item')).find(n =>
+        (n.getAttribute('onclick') || '').includes(`'${pageId}'`)) || null;
+}
+
+/** Login yoki sessiya tiklashdan so'ng ro'lga mos ICHKI sahifaga o'tadi (do'kon emas). */
+function goToLandingFor(user) {
+    const firstPage = landingPageForRole(user && user.role);
+    goTo(firstPage, navElForPage(firstPage));
 }
 
 /** Login muvaffaqiyatli bo'lgach interfeysni tayyorlaydi. */
@@ -2338,13 +2503,8 @@ function finishLogin(user) {
     if (user.role !== 'customer') loadFromBackend().catch(() => { });
     // Xodim kirganda eng asosiy bo'lim ochiladi (do'kon yon panelning oxirida turadi)
     if (user.role !== 'customer') {
-        // BOSHLIQ kirganda uning o'z "Boshliq Dashboard"i ochiladi (page-boss),
-        // boshqa rollar o'z standart sahifasiga o'tadi.
-        const firstPage = user.role === 'cashier' ? 'page-pos'
-            : (user.role === 'boss' ? 'page-boss' : 'page-dashboard');
-        const firstNav = Array.from(document.querySelectorAll('.nav-item')).find(n =>
-            (n.getAttribute('onclick') || '').includes(`'${firstPage}'`));
-        goTo(firstPage, firstNav);
+        // Yagona manba: ro'lga mos boshlang'ich ichki sahifa (do'kon emas).
+        goToLandingFor(user);
     }
     playSuccess();
     showNotif('success', 'Xush kelibsiz! 👋', user.name + ' — ' + ROLES[user.role]);
@@ -2375,6 +2535,10 @@ function doLogout(force = false) {
     try { localStorage.removeItem('tp_active_branch'); } catch (e) { }
     try { Branches.refreshBranchSwitcher(); } catch (e) { }
     currentUser = null; cart = []; shopCart = [];
+    // Chiqishda kassa savatining saqlangan holati tozalanadi
+    // (keyingi kiruvchi xodimning ekranida eski savat qolmasligi uchun)
+    posClearCartState();
+    posToggleSheet(false);
 
     const topName = document.getElementById('topbarEmployeeName');
     if (topName) topName.textContent = 'Xodim';
@@ -2406,6 +2570,15 @@ function doLogout(force = false) {
     // Do'kon sahifasini ochib qo'ymaymiz: keyingi muvaffaqiyatli kirishda
     // finishLogin() foydalanuvchiga ruxsat etilgan birinchi sahifani ochadi.
     setupRoleBasedNav();
+    // XODIM (admin/menejer/kassir/boshliq) chiqishda — xavfsiz login sahifasi
+    // ochiladi (ommaviy do'kon emas). Bu sessiya muddati tugaganda ham
+    // (majburiy chiqish) qo'llaniladi. Mehmon/xaridor — ochiq do'konga qaytadi.
+    const wasStaff = user && user.role && user.role !== 'customer';
+    if (wasStaff) {
+        showLoginScreen();
+    } else {
+        goTo('page-shop', document.getElementById('nav-shop'));
+    }
 }
 
 // ============================================================
@@ -2439,6 +2612,8 @@ function initApp() {
     renderLogs();
     renderReports();
     updateCustomerDropdown();
+    // Mahsulotlar loadPOS() paytida hali tayyor bo'lmasa — shu yerda qayta uriniladi
+    posRestoreCartState();
     const rDateEl = document.getElementById('rDate');
     if (rDateEl) rDateEl.textContent = new Date().toLocaleDateString('uz-UZ');
     // Sessiya va xavfsizlik nazorati
@@ -2566,6 +2741,8 @@ function goTo(pageId, el) {
     }
     // 1) barcha page larni yopamiz
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    // Mobil kassa savat drawer'i yopiladi (body qulfi qolmaydi)
+    posToggleSheet(false);
 
     // 2) qat'iy ID tekshiruvi
     const target = document.getElementById(pageId);
@@ -2608,7 +2785,7 @@ function goTo(pageId, el) {
         contracts: ['Shartnomalar', 'Shartnomalar, kunlik va oylik savdo'],
         pos: ['Kassa (POS)', 'F2=To\'lov | Esc=Tozala | F3=Kassa | F8=Chek'],
         branches: ['Filiallar va joylashuv', 'Filiallar ro\'yxati va boshqaruv'],
-        cashflow: ['Kirim / Chiqim / Harajat', 'Filiallar bo\'yicha pul harakati nazorati'],
+        cashflow: ['Kirim-chiqim', 'Pul harakatlarini boshqaring'],
         settings: ['Sozlamalar', 'Tizim sozlamalari'],
         assistant: ['AI Yordamchi', 'Bazadagi real ko\'rsatkichlar bo\'yicha yordamchi (admin)'],
     };
@@ -2671,10 +2848,8 @@ function canAccessPage(pageId) {
     const nav = Array.from(document.querySelectorAll('.nav-item')).find(item => {
         const handler = item.getAttribute('onclick') || '';
         return handler.includes(`'${pageId}'`) || handler.includes(`"${pageId}"`)
-            // Menyudan olib tashlangan bo'limlar uchun ham ruxsat saqlanadi:
-            // masalan, `nav-employees`da `data-page="page-employees"` — Xodimlar
-            // sahifasiga kirish manbai (admin/menejer topbar «Xodim qo'shish»
-            // orqali ishlatadi), menyu ko'rinishi esa wrapper data-role'da.
+            // `data-page` bilan bog'langan menyu bandlari ham ruxsat manbai
+            // bo'lishi mumkin (masalan, submenu ochadigan wrapper'lar).
             || item.getAttribute('data-page') === pageId;
     });
     // Nav ro'yxatida bo'lmagan sahifa — faqat ochiq do'kon (page-shop) uchun ruxsat.
@@ -3565,6 +3740,8 @@ function loadPOS() {
         renderProductGrid();
     }
     if (typeof renderPosHeld === 'function') renderPosHeld();
+    // Sahifani yangilashdan keyin savat holatini tiklash (yagona `cart` manbasi)
+    posRestoreCartState();
 }
 
 // POS kategoriya tugmalari — doimiy CATEGORIES ro'yxatidan quriladi,
@@ -4270,6 +4447,7 @@ function updateCustomerDropdown() {
     if (!sel) return;
     sel.innerHTML = '<option value="">Mijoz tanlanmagan</option>' +
         customers.map(c => `<option value="${Number(c.id)}">${escapeHTML(c.name)} (${escapeHTML(c.phone)})</option>`).join('');
+    posApplyPendingCustomer();
 }
 
 function addToCartWithEvent(event, id) {
@@ -4444,9 +4622,118 @@ function posUpdateChange() {
     else { out.textContent = fmt(Math.round(-diff)) + ' so\'m'; out.className = 'bad'; if (label) label.textContent = 'Yetishmaydi'; }
 }
 
+// ---- Mobil kassa: savat drawer'i (bottom sheet) ----
+// Ochish/YOPISh faqat bitta yo'ldan o'tadi: posToggleSheet(). Esc (global
+// listener), savat bo'sh holat, sahifadan chiqish va KENGLIK mobil
+// diapazondan chiqish — hammasi shu funksiyani chaqiradi (parallel
+// mexanizm yaratilmagan, tugmada takroriy listener yo'q).
+const POS_DRAWER_MQ = '(max-width: 768px)';
+
+function posIsMobileLayout() {
+    try { return window.matchMedia(POS_DRAWER_MQ).matches; } catch (e) { return false; }
+}
+
 function posToggleSheet(open) {
-    const el = document.querySelector('#page-pos .pos-right');
-    if (el) el.classList.toggle('sheet-open', !!open);
+    const panel = document.querySelector('#page-pos .pos-right');
+    const scrim = document.getElementById('posCartScrim');
+    const bar = document.getElementById('posMobileBar');
+    const posPage = document.getElementById('page-pos');
+    const onPos = !!(posPage && posPage.classList.contains('active'));
+    // Desktopda drawer yo'q: `.pos-right` odatdagidek ustunda turadi,
+    // shuning uchun holat faqat mobil + KASSA sahifasi ochiq bo'lganda o'zgaradi.
+    const willOpen = !!open && posIsMobileLayout() && onPos;
+    if (panel) panel.classList.toggle('sheet-open', willOpen);
+    if (scrim) scrim.classList.toggle('show', willOpen);
+    if (bar) bar.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    document.body.classList.toggle('pos-cart-lock', willOpen);
+    return willOpen;
+}
+
+// Mobil → desktop kenglik o'zgarsa drawer yopiladi (body qulfi qolmaydi)
+try {
+    const _posMq = window.matchMedia(POS_DRAWER_MQ);
+    const _posMqChange = () => { if (!_posMq.matches) posToggleSheet(false); };
+    if (typeof _posMq.addEventListener === 'function') _posMq.addEventListener('change', _posMqChange);
+    else if (typeof _posMq.addListener === 'function') _posMq.addListener(_posMqChange);
+} catch (e) { }
+
+// ---- Kassa savatining sessiya holati (sahifani yangilashda tiklanadi) ----
+// YAGONA manba: `cart` massivi. Bu yerda ikkinchi nusxa yaratilmaydi —
+// faqat xotiraga ko'chiriladi/undan qaytariladi.
+var POS_CART_KEY = 'tp_pos_cart';
+// `var` bilan e'lon qilingan: updateCustomerDropdown() skriptning boshida
+// (hoisting davrida) chaqirilsa ham TDZ xatosi bo'lmaydi.
+var posCartStateRestored = false;
+var posPendingCustomer = '';
+
+function posCartOwnerKey() {
+    return (currentUser && (currentUser.role || '')) + '|' + (currentUser && (currentUser.name || ''));
+}
+
+function posClearCartState() {
+    try { sessionStorage.removeItem(POS_CART_KEY); } catch (e) { }
+    posCartStateRestored = false;
+    posPendingCustomer = '';
+}
+
+function posSaveCartState() {
+    // Saqlash faqat tiklash urinishidan keyin boshlanadi: aks holda ilova
+    // ochilishi bilan bo'sh savat yozilib, yangilashdan oldingi holat yo'qoladi.
+    if (!posCartStateRestored) return;
+    try {
+        sessionStorage.setItem(POS_CART_KEY, JSON.stringify({
+            u: posCartOwnerKey(),
+            t: Date.now(),
+            cart: cart,
+            disc: document.getElementById('discountInput')?.value || '',
+            cust: document.getElementById('cartCustomer')?.value || '',
+            promo: document.getElementById('posPromoCode')?.value || ''
+        }));
+    } catch (e) { /* xotira bloklangan bo'lsa — jim o'tamiz */ }
+}
+
+/** Mijoz select'i qayta to'ldirilganda kutilayotgan mijozni qayta tiklaydi. */
+function posApplyPendingCustomer() {
+    if (!posPendingCustomer) return;
+    const sel = document.getElementById('cartCustomer');
+    if (!sel) return;
+    if (Array.from(sel.options || []).some(o => o.value === posPendingCustomer)) {
+        sel.value = posPendingCustomer;
+        posPendingCustomer = '';
+    }
+}
+
+function posRestoreCartState() {
+    if (posCartStateRestored) return false;
+    if (!Array.isArray(products) || !products.length) return false; // hali yuklanmagan — keyin qayta uriniladi
+    let s = null;
+    try { s = JSON.parse(sessionStorage.getItem(POS_CART_KEY) || 'null'); } catch (e) { s = null; }
+    if (!s || !Array.isArray(s.cart) || !s.cart.length) { posCartStateRestored = true; return false; }
+    // Boshqa xodimning savati qayta tiklanmasin
+    if (s.u && s.u !== posCartOwnerKey()) { posCartStateRestored = true; posClearCartState(); return false; }
+    posCartStateRestored = true;
+    const restored = [];
+    s.cart.forEach(it => {
+        if (!it) return;
+        const p = products.find(x => x.id === it.id);
+        if (!p) return; // mahsulot o'chirilgan
+        const stock = Number(p.stock) || 0;
+        if (stock <= 0) return; // qoldiq tugagan
+        const qty = Math.max(1, Math.min(Number(it.qty) || 1, stock));
+        restored.push({ id: p.id, name: p.name, price: p.price, qty, img: p.img, cat: p.cat, cost: p.cost });
+    });
+    if (!restored.length) return false;
+    cart = restored;
+    const di = document.getElementById('discountInput');
+    if (di && s.disc !== undefined && s.disc !== null) di.value = s.disc;
+    const pr = document.getElementById('posPromoCode');
+    if (pr && typeof s.promo === 'string') pr.value = s.promo;
+    posPendingCustomer = typeof s.cust === 'string' ? s.cust : '';
+    updateCustomerDropdown(); // ichida posApplyPendingCustomer() chaqiriladi
+    posApplyPendingCustomer();
+    updateCart();
+    showNotif('info', 'Savat tiklandi', 'Sahifani yangilashdan oldingi savat qaytarildi');
+    return true;
 }
 
 /** Har bir savat o'zgarishidan keyin: badge, tugma, mobil panel, qaytim. */
@@ -4469,6 +4756,7 @@ function posAfterCartUpdate() {
     const cash = document.getElementById('posCashPanel');
     if (cash) cash.classList.toggle('show', payType === 'cash' && cart.length > 0);
     if (!cart.length) { const r = document.getElementById('posReceived'); if (r) r.value = ''; posToggleSheet(false); }
+    posSaveCartState();
     posUpdateChange();
 }
 
@@ -4564,8 +4852,74 @@ function readCreditInfo() {
     return { down, months, remaining, monthly: Math.ceil(remaining / months) };
 }
 
-function checkout() {
+// Ikki marta bosishdan himoya: savdo serverga yuborilayotganda qayta ishga
+// tushmasin (aks holda ikkinchi so'rov qoldiqni takror tekshiradi).
+let _checkoutInFlight = false;
+
+/**
+ * POS savdoni SERVERDA tasdiqlaydi va ombor qoldig'ini kamaytiradi (/api/sell).
+ * Natija: { ok, sale, productStocks, duplicate } yoki
+ * { ok:false, offline:true|false, status, message }.
+ */
+async function postSaleToServer(sale) {
+    if (!staffToken) {
+        return { ok: false, offline: true, status: 0, message: 'Xodim sessiyasi yo\'q' };
+    }
+    const payload = {
+        id: sale.id,
+        items: (sale.items || []).map(i => ({
+            id: i.id, name: i.name, qty: i.qty, price: i.price,
+            cost: i.cost, img: i.img, barcode: i.barcode,
+            ikpu: i.ikpu, packageCode: i.packageCode, vatPercent: i.vatPercent
+        })),
+        branchId: sale.branchId,
+        customer: sale.customer,
+        customerId: sale.customerId,
+        customerPhone: sale.customerPhone,
+        pay: sale.pay,
+        provider: sale.provider,
+        subtotal: sale.subtotal,
+        disc: sale.disc,
+        discAmt: sale.discAmt,
+        total: sale.total,
+        date: sale.date,
+        time: sale.time,
+        isOnline: false
+    };
+    try {
+        const res = await fetchWithTimeout('/api/sell', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(payload)
+        }, SYNC_TIMEOUT_MS);
+        const data = await res.json().catch(() => null);
+        if (res.status === 401) {
+            return { ok: false, offline: false, status: 401, message: data?.message || 'Sessiya tugadi — qaytadan tizimga kiring' };
+        }
+        if (!res.ok) {
+            return { ok: false, offline: false, status: res.status, message: data?.message || ('Server xatosi (HTTP ' + res.status + ')') };
+        }
+        if (!data || data.status !== 'success') {
+            return { ok: false, offline: false, status: res.status, message: data?.message || 'Server savdoni tasdiqlamadi' };
+        }
+        return { ok: true, sale: data.sale, productStocks: data.productStocks || [], duplicate: !!data.duplicate };
+    } catch (e) {
+        console.warn('POS savdo serverga yuborilmadi:', e);
+        return { ok: false, offline: true, status: 0, message: e?.message || 'Serverga ulanib bo\'lmadi' };
+    }
+}
+
+/** Server javobidagi qoldiqlarni lokal `products` massiviga qo'llaydi. */
+function applyServerStocks(productStocks) {
+    (productStocks || []).forEach(ps => {
+        const p = products.find(x => String(x.id) === String(ps.id));
+        if (p) p.stock = Math.max(0, Number(ps.stock) || 0);
+    });
+}
+
+async function checkout() {
     if (!requireRole('admin', 'cashier', 'manager')) return;
+    if (_checkoutInFlight) return;
     if (cart.length === 0) { playError(); showNotif('error', 'Savat bo\'sh!', 'Mahsulot qo\'shing'); return; }
 
     // Sotuvdan OLDIN qoldiq qayta tekshiriladi: savat tuzilgandan beri
@@ -4627,37 +4981,23 @@ function checkout() {
         time: new Date().toLocaleTimeString('uz-UZ'),
         date: new Date().toLocaleDateString('uz-UZ'),
         cashier: currentUser?.name || 'Noma\'lum',
+        cashierLogin: currentUser?.login || '',
         customer: cust?.name || 'Noma\'lum',
         customerId: custId || null,
         customerPhone: cust?.phone || '',
-        branchId: (typeof activeBranch !== 'undefined' && activeBranch?.id) ? String(activeBranch.id) : '',
+        branchId: (typeof getActiveBranch === 'function' && getActiveBranch())
+            ? String(getActiveBranch().id) : '',
         credit: providerId === 'credit' ? readCreditInfo() : null,
         status: isOnline ? 'pending' : 'paid'
     };
-    salesHistory.push(sale);
-    lastCheckoutSale = sale;
 
-    // Ombor faqat darhol to'lanadigan usullarda kamayadi
-    if (!isOnline) {
-        cart.forEach(ci => {
-            const p = products.find(x => x.id === ci.id);
-            if (p) p.stock = Math.max(0, p.stock - ci.qty);
-        });
-    }
-
-    // Update customer bonus
-    if (cust) {
-        cust.orders++;
-        cust.total += total;
-        cust.bonus += Math.floor(total / 10000);
-    }
-
-    saveToStorage();
-    addLog('Savdo', `Chek #${saleId} — ${fmt(total)} so'm (${provider.label})`);
-    playCheckout();
-
+    // ── Onlayn to'lov yo'li (to'lov shlyuzi tasdiqlagach ombor yangilanadi) ──
     if (isOnline) {
-        // Online to'lov: tasdiqlangach ombor, chek va shartnoma yangilanadi
+        salesHistory.push(sale);
+        lastCheckoutSale = sale;
+        saveToStorage();
+        addLog('Savdo', `Chek #${saleId} — ${fmt(total)} so'm (${provider.label})`);
+        playCheckout();
         clearCart();
         loadDashboard();
         renderProductGrid();
@@ -4666,13 +5006,108 @@ function checkout() {
         return;
     }
 
+    // ── Naqd/karta: savdo SERVERDA tasdiqlanadi va ombor serverda kamayadi ──
+    if (sale.branchId) {
+        _checkoutInFlight = true;
+        let result;
+        try {
+            result = await postSaleToServer(sale);
+        } finally {
+            _checkoutInFlight = false;
+        }
+
+        if (result.ok) {
+            const confirmed = result.sale || sale;
+            // Server tasdiqlagan qoldiq darhol interfeysga qo'llanadi
+            applyServerStocks(result.productStocks);
+            if (!salesHistory.some(s => String(s.id) === String(confirmed.id))) {
+                salesHistory.push(confirmed);
+            }
+            lastCheckoutSale = confirmed;
+            if (cust) {
+                cust.orders++;
+                cust.total += total;
+                cust.bonus += Math.floor(total / 10000);
+            }
+            saveToStorage();
+            addLog('Savdo', `Chek #${confirmed.id} — ${fmt(total)} so'm (${provider.label})`);
+            playCheckout();
+            renderReceipt(confirmed);
+            openModal('checkoutModal');
+            clearCart();
+            loadDashboard();
+            renderProductGrid();
+            renderProducts();       // Mahsulotlar jadvali qoldig'i darhol yangilanadi
+            renderWarehousePage();
+            // Shartnoma AVTOMATIK tuzilmaydi — administrator «Shartnomalar» bo'limida
+            // «Qo'lda shartnoma» yoki «Cheklardan import» orqali o'zi tuzadi.
+            showNotif('success', '✅ To\'lov qabul qilindi!', `${fmt(total)} so'm — ${provider.label}`);
+            finishPaidSale(confirmed);
+            return;
+        }
+
+        if (result.status === 401) {
+            playError();
+            showNotif('error', 'Sessiya tugadi', result.message || 'Qaytadan tizimga kiring');
+            handleSessionExpired();
+            return;
+        }
+
+        // Server savdoni RAD ETDI (qoldiq yetarli emas, filial mos emas va h.k.)
+        // — ombor o'zgarmaydi, savdo saqlanmaydi.
+        if (!result.offline) {
+            playError();
+            showNotif('error', 'Savdo rad etildi', result.message || 'Server savdoni qabul qilmadi');
+            return;
+        }
+        // ── Tarmoq uzildi: oflayn zaxira (keyinroq sinxronlanadi) ──
+        salesHistory.push(sale);
+        lastCheckoutSale = sale;
+        cart.forEach(ci => {
+            const p = products.find(x => x.id === ci.id);
+            if (p) p.stock = Math.max(0, p.stock - ci.qty);
+        });
+        if (cust) {
+            cust.orders++;
+            cust.total += total;
+            cust.bonus += Math.floor(total / 10000);
+        }
+        saveToStorage();
+        addLog('Savdo', `Chek #${saleId} — ${fmt(total)} so'm (${provider.label})`);
+        playCheckout();
+        renderReceipt(sale);
+        openModal('checkoutModal');
+        clearCart();
+        loadDashboard();
+        renderProductGrid();
+        renderProducts();
+        showNotif('warning', 'Oflayn saqlandi',
+            'Serverga ulanib bo\'lmadi — savdo qurilmada saqlandi va aloqa tiklanganda yuboriladi');
+        finishPaidSale(sale);
+        return;
+    }
+
+    // ── Filial sozlanmagan holat: lokal kamaytirish + sinxronizatsiya ──
+    salesHistory.push(sale);
+    lastCheckoutSale = sale;
+    cart.forEach(ci => {
+        const p = products.find(x => x.id === ci.id);
+        if (p) p.stock = Math.max(0, p.stock - ci.qty);
+    });
+    if (cust) {
+        cust.orders++;
+        cust.total += total;
+        cust.bonus += Math.floor(total / 10000);
+    }
+    saveToStorage();
+    addLog('Savdo', `Chek #${saleId} — ${fmt(total)} so'm (${provider.label})`);
+    playCheckout();
     renderReceipt(sale);
     openModal('checkoutModal');
     clearCart();
     loadDashboard();
     renderProductGrid();
-    // Shartnoma AVTOMATIK tuzilmaydi — administrator «Shartnomalar» bo'limida
-    // «Qo'lda shartnoma» yoki «Cheklardan import» orqali o'zi tuzadi.
+    renderProducts();
     showNotif('success', '✅ To\'lov qabul qilindi!', `${fmt(total)} so'm — ${provider.label}`);
     finishPaidSale(sale);
 }
@@ -4954,7 +5389,12 @@ function renderProducts() {
         const imgSrc = productImageSrc(p.img);
         const branch = getBranchById(p.branchId);
         const cost = Number(p.cost) || 0;
-        const profitUnit = (Number(p.price) || 0) - cost;
+        const priceNum = Number(p.price) || 0;
+        const profitUnit = priceNum - cost;
+        // Ustama (tannarxga nisbatan) va foyda marjasi (sotuv narxiga nisbatan)
+        // — ikki xil ko'rsatkich, chalkashmasligi uchun alohida yorliq bilan.
+        const markupPct = cost > 0 ? (profitUnit / cost) * 100 : null;
+        const marginPct = priceNum > 0 ? (profitUnit / priceNum) * 100 : null;
         rows.push(`<tr>
     <td data-label="Rasm">
       ${imgSrc
@@ -4968,8 +5408,10 @@ function renderProducts() {
                 : '<span class="badge" style="opacity:.7">Umumiy</span>'}</td>
     <td data-label="Narxi" style="font-weight:700;color:var(--primary)">${fmt(p.price)} so'm</td>
     <td data-label="Tannarx">${p.cost > 0 ? fmt(p.cost) + " so'm" : '<span style="color:var(--muted)">—</span>'}</td>
-    <td data-label="Foyda">${p.cost > 0
-                ? `<span style="font-weight:700;color:${(p.price - p.cost) >= 0 ? '#10b981' : '#ef4444'}">${fmt(p.price - p.cost)} so'm</span><br><small style="color:var(--muted)">${(((p.price - p.cost) / p.cost) * 100).toFixed(1)}%</small>`
+    <td data-label="Foyda">${cost > 0
+                ? `<span class="foyda-val" style="color:${profitUnit >= 0 ? '#10b981' : '#ef4444'}">${fmt(profitUnit)} so'm</span>`
+                + `<small class="foyda-meta">Ustama: ${markupPct.toFixed(1)}%</small>`
+                + (marginPct !== null ? `<small class="foyda-meta">Marja: ${marginPct.toFixed(1)}%</small>` : '')
                 : '<span style="color:var(--muted)">—</span>'}</td>
     <td data-label="Qoldiq"><span class="${p.stock < 5 ? 'badge badge-red' : 'badge badge-green'}">${p.stock} dona</span></td>
     <td data-label="Holati"><span class="badge ${p.stock > 0 ? 'badge-green' : 'badge-red'}">${p.stock > 0 ? 'Bor' : 'Tugagan'}</span></td>
@@ -5043,6 +5485,52 @@ function productCardHtml(p, ctx) {
         </div>
       </div>
     </div>`;
+}
+
+/**
+ * Mahsulotlar sahifasini sahifani qayta yuklamasdan serverdan yangilaydi.
+ * Tugma bosilganda yuklanish holati (spinner) ko'rsatiladi.
+ */
+async function refreshProducts(btn) {
+    if (!staffToken) {
+        showNotif('warning', 'Tizimga kiring', 'Ma\'lumotlarni yangilash uchun xodim sessiyasi kerak');
+        return;
+    }
+    const icon = btn ? btn.querySelector('i') : null;
+    const wasDisabled = btn ? btn.disabled : false;
+    if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
+    if (icon) icon.classList.add('fa-spin');
+    try {
+        const res = await fetchWithTimeout('/api/data', { headers: authHeaders(), cache: 'no-store' }, SYNC_TIMEOUT_MS);
+        if (res.status === 401) { handleSessionExpired(); return; }
+        if (!res.ok) throw new Error('Ma\'lumotlarni yuklab bo\'lmadi (HTTP ' + res.status + ')');
+        const data = await res.json();
+        if (!data || typeof data !== 'object') throw new Error('Server javobi noto\'g\'ri');
+        serverOnline = true;
+        catalogFallbackActive = false;
+        productLoadState = 'ready';
+        if (Array.isArray(data.products)) products = data.products.map(normalizeProduct);
+        if (Array.isArray(data.branches)) {
+            branches = data.branches.map(normalizeBranch).filter(Boolean);
+            try { localStorage.setItem('tp_branches', JSON.stringify(branches)); } catch (e) { }
+        }
+        if (Array.isArray(data.sales)) salesHistory = data.sales.map(normalizeSale).filter(Boolean);
+        try { localStorage.setItem('tp_products', JSON.stringify(products.map(productForCache))); } catch (e) { }
+        try { localStorage.setItem('tp_sales', JSON.stringify(salesHistory)); } catch (e) { }
+        renderProducts();
+        renderProductGrid();
+        renderWarehousePage();
+        loadDashboard();
+        const branchNote = (typeof isAllBranchesView === 'function' && isAllBranchesView())
+            ? 'Barcha filiallar' : (getActiveBranch()?.name || 'Barcha filiallar');
+        showNotif('success', 'Yangilandi', `${products.length} ta mahsulot · ${branchNote}`);
+    } catch (e) {
+        console.warn('Mahsulotlarni yangilashda xatolik:', e);
+        showNotif('error', 'Yangilab bo\'lmadi', e?.message || 'Serverga ulanib bo\'lmadi');
+    } finally {
+        if (btn) { btn.disabled = wasDisabled; btn.classList.remove('is-loading'); }
+        if (icon) icon.classList.remove('fa-spin');
+    }
 }
 
 function filterByCategory(val) { currentCategory = val; renderProducts(); }
@@ -5593,6 +6081,7 @@ function employeeCardHtml(e) {
           <div class="tpm-staff-info">
             <span class="tpm-info-item"><i class="fas fa-phone"></i> ${escapeHTML(phone)}</span>
             <span class="tpm-info-item"><i class="fas fa-location-dot"></i> ${escapeHTML(branchName)}</span>
+            <span class="tpm-info-item"><i class="fas fa-money-bill-wave"></i> ${e.salary ? fmt(e.salary) + " so'm" : '—'}</span>
           </div>
         </div>
         <div class="tpm-staff-end">
@@ -5611,6 +6100,13 @@ function employeeCardHtml(e) {
 }
 
 function openEmployeeDetail(id) {
+    // Xodimlar boshqaruvi endi Boshliq → Xodimlar (page-bossStaff) ichida.
+    // Maosh/tahrirlash amallari backenddagi barqaror xodim ID si orqali
+    // bajariladi (ism bo'yicha taxminiy moslashtirish YO'Q).
+    if (typeof Boss !== 'undefined' && typeof Boss.openEditStaff === 'function') {
+        Boss.openEditStaff(id);
+        return;
+    }
     if (typeof openEmployeeModal === 'function') {
         openEmployeeModal();
     }
@@ -5618,7 +6114,12 @@ function openEmployeeDetail(id) {
 
 function renderEmployees() {
     if (currentUser && !canAccessPage('page-employees')) return;
+    // Umumiy «Xodimlar» sahifasi olib tashlangan — xodimlar boshqaruvi endi
+    // Boshliq → Xodimlar (page-bossStaff) ichida (boss.js). Shu sababli bu
+    // yerdagi jadval DOM'i mavjud bo'lmasa, hech narsa qilmaymiz.
+    if (!document.getElementById('employeesTable')) return;
     const all = employees.map(e => ({ ...e, ...employeeStats(e) }));
+
     const actCount = all.filter(e => e.status === 'active').length;
     const blkCount = all.filter(e => e.status !== 'active').length;
 
@@ -5680,9 +6181,10 @@ function renderEmployees() {
       <div style="margin-bottom:4px;font-weight:700">${fmt(e.total)} so'm</div>
       <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, (e.total / maxTotal) * 100)}%;background:linear-gradient(90deg,var(--primary),var(--warning))"></div></div>
     </td>
+    <td>${e.salary ? `<strong>${fmt(e.salary)}</strong> so'm` : '<span style="color:var(--muted)">—</span>'}</td>
     <td>${escapeHTML(e.login)}</td>
     <td><span class="badge ${e.status === 'active' ? 'badge-green' : 'badge-red'}">${e.status === 'active' ? 'Aktiv' : 'Nofaol'}</span></td>
-  </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">${emptyMsg}</td></tr>`);
+  </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">${emptyMsg}</td></tr>`);
 
     // Mobil kartalar (≤768px'da ko'rinadi, desktopda yashirin)
     uiSetHtml('employeesMobileList', list.map(employeeCardHtml).join('')
@@ -5690,7 +6192,14 @@ function renderEmployees() {
 }
 function openEmployeeModal() {
     if (!requireRole('admin', 'manager')) return;
-    SalaryModule.openAddModal('Yangi Xodim');
+    // Yangi xodim faqat Boshliq → Xodimlar bo'limida (boss.js orqali)
+    // yaratiladi — shunda xodim yagona `staff_users` manbasida paydo bo'ladi
+    // va maosh jadvaliga darhol bog'lanadi.
+    if (typeof Boss !== 'undefined' && typeof Boss.openAddStaff === 'function') {
+        Boss.openAddStaff();
+        return;
+    }
+    showNotif('info', 'Xodim qo\'shish', 'Boshliq → Xodimlar bo\'limidan foydalaning');
 }
 
 // ============================================================
@@ -6048,8 +6557,6 @@ function exportData() {
         categories: CATEGORIES,
         discounts: readLocalJSON('tp_discounts', []),
         smsHistory: readLocalJSON('tp_sms_history', []),
-        salaryRecords: readLocalJSON('tp_salary_records', []),
-        salaryHistory: readLocalJSON('tp_salary_history', []),
         securityLog: readLocalJSON('tp_security_log', []),
         exportDate: new Date().toISOString()
     };
@@ -6103,8 +6610,6 @@ function importData(input) {
             if (Array.isArray(data.categories)) CATEGORIES = data.categories.map(c => cleanText(c, 60)).filter(Boolean);
             if (Array.isArray(data.discounts)) localStorage.setItem('tp_discounts', JSON.stringify(data.discounts));
             if (Array.isArray(data.smsHistory)) localStorage.setItem('tp_sms_history', JSON.stringify(data.smsHistory));
-            if (Array.isArray(data.salaryRecords)) localStorage.setItem('tp_salary_records', JSON.stringify(data.salaryRecords));
-            if (Array.isArray(data.salaryHistory)) localStorage.setItem('tp_salary_history', JSON.stringify(data.salaryHistory));
             if (Array.isArray(data.securityLog)) localStorage.setItem('tp_security_log', JSON.stringify(data.securityLog));
             saveToStorage();
             alert("Ma'lumotlar muvaffaqiyatli tiklandi! Tizim qayta yuklanadi.");
@@ -6462,19 +6967,32 @@ document.addEventListener('keydown', e => {
 const SalaryModule = (() => {
     'use strict';
 
-    // ── PRIVATE STATE ──────────────────────────────────────────
-    let salaryRecords = [];         // Xodimlar maosh ma'lumotlari
-    let paymentHistory = [];        // Barcha to'lovlar tarixi
-    let currentFilter = 'all';      // Active filter
-    let searchQuery = '';           // Search string
-    let editingId = null;           // Currently editing record id
-    let payingId = null;            // Currently paying record id
-    let salaryChart = null;         // Chart.js instance
-
-    const STORAGE_KEY_RECORDS = 'tp_salary_records';
-    const STORAGE_KEY_HISTORY = 'tp_salary_history';
+    // ── YAGONA MANBA ───────────────────────────────────────────
+    // Oylik maosh rejasi va to'lovlari FAQAT backenddan olinadi:
+    //   • xodim va uning BELGILANGAN oyligi — `staff_users` (backend);
+    //   • haqiqiy to'lovlar — `salaryHistory` (backend, `staffId` bilan
+    //     QAT'IY bog'langan; ism/telefon bo'yicha taxmin qilinmaydi).
+    // Frontend endi `tp_salary_records` / `tp_salary_history` kalitlaridan
+    // foydalanmaydi — bu ikki manba butunlay olib tashlandi.
+    let planRows = [];        // /api/boss/salary/plan → rows (staffId bilan)
+    let stats = {};           // /api/boss/salary/plan → stats
+    let payments = [];        // /api/boss/salary/plan → payments (yangi → eski)
+    let totalPayments = 0;
+    let paymentTotalsByMonth = {};
+    let currentMonth = '';    // 'YYYY-MM' — hisoblash davri (rejalashtirilgan oy)
+    let currentBranch = '';
+    let branchOptions = [];
+    let currentFilter = 'all';
+    let searchQuery = '';
+    let loadError = '';
+    let payingStaffId = null;
+    let editingStaffId = null;
+    let salaryChart = null;
+    let loading = false;
+    let loadToken = 0;
 
     const ROLE_LABELS = {
+        boss: 'Boshliq',
         admin: 'Administrator',
         cashier: 'Kassa Xodimi',
         manager: 'Menejer',
@@ -6489,7 +7007,12 @@ const SalaryModule = (() => {
         transfer: '🏦 Bank o\'tkazma',
     };
 
+    const PAY_METHOD_SHORT = {
+        cash: 'Naqd', card: 'Karta', click: 'Click', transfer: 'O\'tkazma',
+    };
+
     const ROLE_COLORS = {
+        boss: 'linear-gradient(135deg,#F59E0B,#B45309)',
         admin: 'linear-gradient(135deg,#8B5CF6,#EC4899)',
         cashier: 'linear-gradient(135deg,#10B981,#059669)',
         manager: 'linear-gradient(135deg,#F59E0B,#D97706)',
@@ -6497,140 +7020,193 @@ const SalaryModule = (() => {
         security: 'linear-gradient(135deg,#EF4444,#B91C1C)',
     };
 
-    // ── PERSISTENCE ────────────────────────────────────────────
-    function save() {
-        try {
-            localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(salaryRecords));
-            localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(paymentHistory));
-        } catch (e) { console.error('Salary save error:', e); }
-        // Maosh ma'lumotlari ham bazaga yoziladi
-        if (typeof scheduleSyncWithBackend === 'function') scheduleSyncWithBackend();
+    const MONTHS_UZ = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+        'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+
+    // ── SANA / RAQAM YORDAMCHILARI ─────────────────────────────
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function monthValue(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
+
+    function monthValueLabel(value) {
+        const m = /^(\d{4})-(\d{2})$/.exec(String(value || ''));
+        if (!m) return '—';
+        const idx = Number(m[2]) - 1;
+        return (MONTHS_UZ[idx] || m[2]) + ' ' + m[1];
     }
 
-    function load() {
-        try {
-            const r = localStorage.getItem(STORAGE_KEY_RECORDS);
-            const h = localStorage.getItem(STORAGE_KEY_HISTORY);
-            salaryRecords = r ? safeJsonParse(r, defaultRecords()) : defaultRecords();
-            paymentHistory = h ? safeJsonParse(h, []) : [];
-            if (!Array.isArray(salaryRecords)) salaryRecords = defaultRecords();
-            if (!Array.isArray(paymentHistory)) paymentHistory = [];
-        } catch (e) {
-            salaryRecords = defaultRecords();
-            paymentHistory = [];
-        }
+    function todayValue() {
+        const d = new Date();
+        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
     }
 
-    function defaultRecords() {
-        const today = new Date();
-        const fmt = d => d.toISOString().split('T')[0];
-        const nextDate = (dayOfMonth) => {
-            const d = new Date(today.getFullYear(), today.getMonth(), dayOfMonth);
-            if (d < today) d.setMonth(d.getMonth() + 1);
-            return fmt(d);
-        };
-        // Demo maosh yozuvlari yo'q: jadval bo'sh boshlanadi va faqat
-        // real qo'shilgan xodimlar bo'yicha to'ladi.
-        return [];
+    function formatMoney(n) {
+        const num = Number(n);
+        if (!Number.isFinite(num)) return '0 so\'m';
+        return Math.round(num).toLocaleString('uz-UZ') + ' so\'m';
     }
 
-    // ── STATUS CALCULATION ─────────────────────────────────────
-    function calcStatus(rec) {
-        if (rec.status === 'paid') return 'paid';
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const next = new Date(rec.nextDate); next.setHours(0, 0, 0, 0);
-        const diff = Math.round((next - today) / 86400000); // days
-        if (diff < 0) return 'overdue';
-        if (diff === 0) return 'today';
-        return 'pending';
-    }
-
-    function statusLabel(status) {
-        return {
-            pending: '<span class="salary-badge salary-badge-pending"><i class="fas fa-clock"></i> Kutilmoqda</span>',
-            today: '<span class="salary-badge salary-badge-today"><i class="fas fa-bell"></i> Bugun to\'lanadi</span>',
-            overdue: '<span class="salary-badge salary-badge-overdue"><i class="fas fa-exclamation-triangle"></i> Kechikkan</span>',
-            paid: '<span class="salary-badge salary-badge-paid"><i class="fas fa-check-circle"></i> To\'langan</span>',
-        }[status] || '';
-    }
-
-    function daysUntil(dateStr) {
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const next = new Date(dateStr); next.setHours(0, 0, 0, 0);
-        return Math.round((next - today) / 86400000);
+    /** Maosh matni. null/undefined = "Belgilanmagan", 0 — haqiqiy nol. */
+    function salaryText(value) {
+        if (value === null || value === undefined || value === '') return 'Belgilanmagan';
+        const num = Number(value);
+        if (!Number.isFinite(num)) return 'Belgilanmagan';
+        return Math.round(num).toLocaleString('uz-UZ') + ' so\'m';
     }
 
     function formatDate(dateStr) {
         if (!dateStr) return '—';
         const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '—';
         return d.toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
 
-    function formatMoney(n) {
-        return Math.round(n).toLocaleString('uz-UZ') + ' so\'m';
+    function daysUntil(dateStr) {
+        if (!dateStr) return null;
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const next = new Date(dateStr); next.setHours(0, 0, 0, 0);
+        if (isNaN(next.getTime())) return null;
+        return Math.round((next - today) / 86400000);
     }
 
-    function monthLabel(dateStr) {
-        if (!dateStr) return '—';
-        const d = new Date(dateStr);
-        const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
-        return months[d.getMonth()] + ' ' + d.getFullYear();
+    // ── HOLAT (backend hisoblaydi) ─────────────────────────────
+    const STATUS_META = {
+        unset: { label: 'Maosh belgilanmagan', cls: 'salary-badge-unset', icon: 'fa-circle-question' },
+        inactive: { label: 'Nofaol — reja hisoblanmaydi', cls: 'salary-badge-unset', icon: 'fa-user-slash' },
+        paid: { label: 'To\'langan', cls: 'salary-badge-paid', icon: 'fa-check-circle' },
+        partial: { label: 'Qisman to\'langan', cls: 'salary-badge-partial', icon: 'fa-circle-half-stroke' },
+        overdue: { label: 'Kechikkan', cls: 'salary-badge-overdue', icon: 'fa-exclamation-triangle' },
+        today: { label: 'Bugun to\'lanadi', cls: 'salary-badge-today', icon: 'fa-bell' },
+        pending: { label: 'Kutilmoqda', cls: 'salary-badge-pending', icon: 'fa-clock' },
+    };
+
+    function statusLabel(status) {
+        const meta = STATUS_META[status];
+        if (!meta) return '';
+        return `<span class="salary-badge ${meta.cls}"><i class="fas ${meta.icon}"></i> ${meta.label}</span>`;
     }
 
-    // ── FILTER & SEARCH ────────────────────────────────────────
+    // ── BACKEND YUKLASH ────────────────────────────────────────
+    function applyPlanResponse(data) {
+        if (!data || typeof data !== 'object') return;
+        if (Array.isArray(data.rows)) planRows = data.rows;
+        if (data.stats && typeof data.stats === 'object') stats = data.stats;
+        if (Array.isArray(data.payments)) payments = data.payments;
+        if (data.paymentTotalsByMonth && typeof data.paymentTotalsByMonth === 'object') {
+            paymentTotalsByMonth = data.paymentTotalsByMonth;
+        }
+        if (Array.isArray(data.branches)) branchOptions = data.branches;
+        if (data.totalPayments !== undefined) totalPayments = Number(data.totalPayments || 0);
+        if (data.month) currentMonth = data.month;
+    }
+
+    async function load() {
+        const token = ++loadToken;
+        loading = true;
+        try {
+            const params = new URLSearchParams();
+            if (currentMonth) params.set('month', currentMonth);
+            if (currentBranch) params.set('branchId', currentBranch);
+            const qs = params.toString();
+            const data = await apiRequest('/api/boss/salary/plan' + (qs ? '?' + qs : ''));
+            if (token !== loadToken) return;   // eski so'rov javobi — tashlanadi
+            if (!data || data.status !== 'success' || !Array.isArray(data.rows)
+                || !Array.isArray(data.payments) || !data.stats) {
+                throw new Error('Maosh API javobi noto\'g\'ri formatda');
+            }
+            applyPlanResponse(data);
+            loadError = '';
+        } catch (e) {
+            if (token !== loadToken) return;
+            planRows = []; stats = {}; payments = []; totalPayments = 0;
+            paymentTotalsByMonth = {};
+            loadError = (e && e.message) ? e.message : 'Maosh ma\'lumotlarini yuklab bo\'lmadi';
+            showNotif('error', 'Maosh ma\'lumotlari yuklanmadi',
+                loadError);
+        } finally {
+            if (token === loadToken) loading = false;
+        }
+    }
+
+    function rowById(staffId) {
+        return planRows.find(r => Number(r.staffId) === Number(staffId)) || null;
+    }
+
+    // ── FILTR & QIDIRUV ────────────────────────────────────────
     function getFiltered() {
-        const monthVal = document.getElementById('salary-month-filter')?.value || '';
-        return salaryRecords.filter(rec => {
-            const s = calcStatus(rec);
-            const matchFilter = (currentFilter === 'all') || (s === currentFilter);
-            const matchSearch = !searchQuery ||
-                rec.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (ROLE_LABELS[rec.role] || '').toLowerCase().includes(searchQuery.toLowerCase());
-            const matchMonth = !monthVal || rec.nextDate.startsWith(monthVal);
-            return matchFilter && matchSearch && matchMonth;
+        const q = searchQuery.trim().toLowerCase();
+        return planRows.filter(row => {
+            const matchFilter = (currentFilter === 'all') || (row.status === currentFilter);
+            const matchSearch = !q
+                || String(row.name || '').toLowerCase().includes(q)
+                || String(ROLE_LABELS[row.role] || row.role || '').toLowerCase().includes(q)
+                || String(row.phone || '').includes(q);
+            return matchFilter && matchSearch;
         });
     }
 
     // ── RENDER STATS ───────────────────────────────────────────
     function renderStats() {
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const statuses = salaryRecords.map(r => calcStatus(r));
-        const totalMonthlyCost = salaryRecords.reduce((s, r) => s + r.salary, 0);
-        const overdueCount = statuses.filter(s => s === 'overdue').length;
-        const todayCount = statuses.filter(s => s === 'today').length;
-        const paidThisMonth = paymentHistory.filter(p => {
-            const d = new Date(p.paidAt);
-            const n = new Date();
-            return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
-        });
-        const paidTotal = paidThisMonth.reduce((s, p) => s + p.amount, 0);
-
         const el = document.getElementById('salary-stat-cards');
         if (!el) return;
+        if (loadError) {
+            el.innerHTML = `<div class="salary-stat-card salary-load-error" role="alert">
+              Maosh statistikalarini yuklab bo'lmadi: ${escapeHTML(loadError)}
+            </div>`;
+            const badge = document.getElementById('salary-urgent-badge');
+            if (badge) badge.style.display = 'none';
+            const sub = document.getElementById('salary-subtitle');
+            if (sub) sub.textContent = 'Maosh ma\'lumotlarini qayta yuklang.';
+            return;
+        }
+        const s = stats || {};
+        const planned = Number(s.plannedFund || 0);
+        const paidPeriod = Number(s.paidForPeriod || 0);
+        const paidMonth = Number(s.paidInMonth || 0);
+        const remaining = Number(s.remaining || 0);
+        const overdueCount = Number(s.overdueCount || 0);
+        const overdueAmount = Number(s.overdueAmount || 0);
+        const todayCount = Number(s.todayCount || 0);
+        const todayAmount = Number(s.todayAmount || 0);
+        const unsetCount = Number(s.unsetCount || 0);
+        const partialCount = Number(s.partialCount || 0);
+        const activeStaffCount = Number(s.activeStaffCount || 0);
+        const inactiveStaffCount = Number(s.inactiveStaffCount || 0);
+        const pctPaid = planned > 0 ? Math.min(100, Math.round((paidPeriod / planned) * 100)) : 0;
+
         el.innerHTML = `
       <div class="salary-stat-card" style="--accent-color:#f97316">
         <div class="salary-stat-icon" style="background:rgba(249,115,22,.12);color:#fb923c"><i class="fas fa-money-bill-trend-up"></i></div>
-        <div class="salary-stat-num">${formatMoney(totalMonthlyCost)}</div>
-        <div class="salary-stat-label">Umumiy oylik xarajat</div>
+        <div class="salary-stat-num">${formatMoney(planned)}</div>
+        <div class="salary-stat-label">Rejalashtirilgan fond</div>
+        <div class="salary-stat-sub">${activeStaffCount} faol xodim${unsetCount ? ` · ${unsetCount} ta maosh belgilanmagan` : ''}${inactiveStaffCount ? ` · ${inactiveStaffCount} nofaol` : ''}</div>
       </div>
       <div class="salary-stat-card" style="--accent-color:#22c55e">
         <div class="salary-stat-icon" style="background:rgba(34,197,94,.12);color:#4ade80"><i class="fas fa-check-double"></i></div>
-        <div class="salary-stat-num">${formatMoney(paidTotal)}</div>
-        <div class="salary-stat-label">Bu oy to'langan</div>
+        <div class="salary-stat-num">${formatMoney(paidPeriod)}</div>
+        <div class="salary-stat-label">Haqiqiy to'langan (davr uchun)</div>
+        <div class="salary-stat-sub">Bajarilish: ${pctPaid}% · to'lov sanasi shu oyda: ${formatMoney(paidMonth)}</div>
+      </div>
+      <div class="salary-stat-card" style="--accent-color:#8b5cf6">
+        <div class="salary-stat-icon" style="background:rgba(139,92,246,.12);color:#a78bfa"><i class="fas fa-scale-balanced"></i></div>
+        <div class="salary-stat-num">${formatMoney(remaining)}</div>
+        <div class="salary-stat-label">To'lanishi qolgan</div>
+        <div class="salary-stat-sub">${partialCount ? partialCount + ' ta qisman to\'langan' : 'Qisman to\'lov yo\'q'}</div>
       </div>
       <div class="salary-stat-card" style="--accent-color:#3b82f6">
         <div class="salary-stat-icon" style="background:rgba(59,130,246,.12);color:#60a5fa"><i class="fas fa-bell"></i></div>
         <div class="salary-stat-num">${todayCount} ta</div>
         <div class="salary-stat-label">Bugun to'lanishi kerak</div>
+        <div class="salary-stat-sub">${formatMoney(todayAmount)}</div>
       </div>
       <div class="salary-stat-card" style="--accent-color:#ef4444">
         <div class="salary-stat-icon" style="background:rgba(239,68,68,.12);color:#f87171"><i class="fas fa-triangle-exclamation"></i></div>
         <div class="salary-stat-num">${overdueCount} ta</div>
         <div class="salary-stat-label">Kechikkan to'lovlar</div>
+        <div class="salary-stat-sub">${formatMoney(overdueAmount)}</div>
       </div>
     `;
 
-        // Update urgent badge in sidebar
+        // Yon paneldagi shoshilinch hisoblagich
         const badge = document.getElementById('salary-urgent-badge');
         if (badge) {
             const urgentCount = overdueCount + todayCount;
@@ -6642,6 +7218,13 @@ const SalaryModule = (() => {
                 badge.style.display = 'none';
             }
         }
+
+        const sub = document.getElementById('salary-subtitle');
+        if (sub) {
+            sub.textContent = `Davr: ${monthValueLabel(currentMonth)} · ${activeStaffCount} faol xodim`
+                + (unsetCount ? ` · ${unsetCount} ta maosh belgilanmagan` : '')
+                + (inactiveStaffCount ? ` · ${inactiveStaffCount} nofaol` : '');
+        }
     }
 
     // ── RENDER TABLE ───────────────────────────────────────────
@@ -6650,82 +7233,100 @@ const SalaryModule = (() => {
         const tbody = document.getElementById('salaryTableBody');
         if (!tbody) return;
 
+        if (loading) {
+            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">
+        <i class="fas fa-spinner fa-spin" style="font-size:26px"></i>
+        <p style="font-weight:600;margin-top:10px">Yuklanmoqda...</p></td></tr>`;
+            return;
+        }
+
+        if (loadError) {
+            tbody.innerHTML = `<tr><td colspan="11" role="alert" style="text-align:center;padding:40px;color:var(--danger)">
+              <i class="fas fa-triangle-exclamation" style="font-size:26px"></i>
+              <p style="font-weight:700;margin-top:10px">Maosh jadvalini yuklab bo'lmadi</p>
+              <p style="font-size:12px;margin-top:6px">${escapeHTML(loadError)}</p>
+              <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="SalaryModule.render()">
+                <i class="fas fa-rotate"></i> Qayta urinish
+              </button></td></tr>`;
+            return;
+        }
+
         if (list.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">
+            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">
         <div style="font-size:40px;margin-bottom:12px;opacity:.2">💰</div>
         <p style="font-weight:600">Ma'lumot topilmadi</p>
+        <p style="font-size:12px;margin-top:6px">Tanlangan davr va holat filtrida xodim topilmadi. Filtrlarni o'zgartiring.</p>
       </td></tr>`;
             return;
         }
 
-        tbody.innerHTML = list.map((rec, idx) => {
-            const status = calcStatus(rec);
-            const days = daysUntil(rec.nextDate);
-            const rowClass = status === 'today' ? 'salary-row-today' :
-                status === 'overdue' ? 'salary-row-overdue' :
-                    status === 'paid' ? 'salary-row-paid' : '';
+        tbody.innerHTML = list.map((row, idx) => {
+            const status = row.status || 'unset';
+            const days = daysUntil(row.dueDate);
+            const rowClass = status === 'today' ? 'salary-row-today'
+                : status === 'overdue' ? 'salary-row-overdue'
+                    : status === 'paid' ? 'salary-row-paid' : '';
 
-            // Progress (days until pay out of 30)
-            const maxDays = 30;
-            const pct = status === 'paid' ? 100 :
-                status === 'overdue' ? 100 :
-                    Math.max(0, Math.round((1 - days / maxDays) * 100));
-            const progressColor = status === 'paid' ? '#22c55e' :
-                status === 'overdue' ? '#ef4444' :
-                    status === 'today' ? '#3b82f6' : 'var(--primary)';
+            const dueText = status === 'unset' ? 'Maosh belgilanmagan'
+                : status === 'paid' ? '✓ To\'landi'
+                    : days === null ? '—'
+                        : days < 0 ? `${Math.abs(days)} kun kechikdi`
+                            : days === 0 ? '⚡ Bugun'
+                                : `${days} kun qoldi`;
 
-            const daysText = status === 'paid' ? '✓ To\'landi' :
-                status === 'overdue' ? `${Math.abs(days)} kun kech` :
-                    status === 'today' ? '⚡ Bugun!' :
-                        `${days} kun qoldi`;
+            const avatarLetter = String(row.name || '?').trim()[0] || '?';
+            const avatarGrad = ROLE_COLORS[String(row.role || '').toLowerCase()]
+                || 'linear-gradient(135deg,#64748b,#475569)';
 
-            const avatarLetter = rec.name.trim()[0] || '?';
-            const avatarGrad = ROLE_COLORS[rec.role] || 'linear-gradient(135deg,#64748b,#475569)';
+            const dueHtml = row.hasSalary
+                ? `<strong>${formatMoney(row.due || 0)}</strong>`
+                : '<span style="color:var(--text-muted)">—</span>';
+            const paidHtml = Number(row.paid) > 0
+                ? `<strong style="color:#4ade80">${formatMoney(row.paid)}</strong>`
+                : '<span style="color:var(--text-muted)">0 so\'m</span>';
+            const remainingHtml = row.hasSalary
+                ? `<strong style="color:${Number(row.remaining) > 0 ? 'var(--warning)' : 'var(--success)'}">${formatMoney(row.remaining || 0)}</strong>`
+                : '<span style="color:var(--text-muted)">—</span>';
 
             return `<tr class="${rowClass}">
-        <td style="color:var(--text-muted);font-size:12px;font-weight:600">${idx + 1}</td>
-        <td>
+        <td data-label="#" style="color:var(--text-muted);font-size:12px;font-weight:600">${idx + 1}</td>
+        <td data-label="Xodim">
           <div style="display:flex;align-items:center;gap:12px">
             <div style="width:38px;height:38px;border-radius:11px;background:${avatarGrad};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:white;flex-shrink:0">${escapeHTML(avatarLetter)}</div>
             <div>
-              <div style="font-weight:700;font-size:13px">${escapeHTML(rec.name)}</div>
-              <div style="font-size:11px;color:var(--text-muted);margin-top:1px">${escapeHTML(PAY_METHOD_LABELS[rec.method] || rec.method)}</div>
+              <div style="font-weight:700;font-size:13px">${escapeHTML(row.name || '—')}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:1px">ID: ${escapeHTML(String(row.staffId))} · ${escapeHTML(PAY_METHOD_SHORT[row.method] || row.method || '')}</div>
             </div>
           </div>
         </td>
-        <td>
-          <span class="badge badge-blue" style="font-size:11px">${escapeHTML(ROLE_LABELS[rec.role] || rec.role)}</span>
+        <td data-label="Rol">
+          <span class="badge badge-blue" style="font-size:11px">${escapeHTML(ROLE_LABELS[row.role] || row.role || '—')}</span>
         </td>
-        <td>
-          <span style="font-weight:800;color:var(--primary);font-size:14px">${formatMoney(rec.salary)}</span>
+        <td data-label="Belgilangan oylik maosh">
+          ${row.hasSalary
+                    ? `<span style="font-weight:800;color:var(--primary);font-size:14px">${salaryText(row.salary)}</span>`
+                    : '<span class="boss-salary-unset">Belgilanmagan</span>'}
         </td>
-        <td>
-          <div style="font-weight:600;font-size:13px">${formatDate(rec.nextDate)}</div>
-          <div style="font-size:11px;color:${status === 'overdue' ? 'var(--danger)' : status === 'today' ? '#60a5fa' : 'var(--text-muted)'};margin-top:2px;font-weight:600">${daysText}</div>
+        <td data-label="Hisoblash davri">${escapeHTML(monthValueLabel(currentMonth))}</td>
+        <td data-label="To'lanishi kerak">${dueHtml}</td>
+        <td data-label="To'langan">${paidHtml}</td>
+        <td data-label="Qolgan">${remainingHtml}</td>
+        <td data-label="Keyingi to'lov sanasi">
+          <div style="font-weight:600;font-size:13px">${formatDate(row.nextPayDate || row.dueDate)}</div>
+          <div style="font-size:11px;color:${status === 'overdue' ? 'var(--danger)' : status === 'today' ? '#60a5fa' : 'var(--text-muted)'};margin-top:2px;font-weight:600">${dueText}</div>
         </td>
-        <td>${statusLabel(status)}</td>
-        <td style="min-width:140px">
-          <div class="salary-progress-wrap">
-            <div class="salary-progress-bar">
-              <div class="salary-progress-fill" style="width:${pct}%;background:${progressColor}"></div>
-            </div>
-            <span class="salary-progress-label" style="color:${progressColor}">${pct}%</span>
-          </div>
-        </td>
-        <td>
+        <td data-label="Holat">${statusLabel(status)}</td>
+        <td data-label="Amallar">
           <div style="display:flex;gap:6px">
-            ${status !== 'paid' ? `
-            <button class="btn btn-success btn-sm" onclick="SalaryModule.openPayModal(${rec.id})" title="To'lash">
+            ${row.active && row.hasSalary ? (status !== 'paid' ? `
+            <button class="btn btn-success btn-sm" onclick="SalaryModule.openPayModal(${row.staffId})" title="To'lash">
               <i class="fas fa-check"></i> To'lash
             </button>` : `
-            <button class="btn btn-outline btn-sm" onclick="SalaryModule.openPayModal(${rec.id})" title="Ko'rish">
+            <button class="btn btn-outline btn-sm" onclick="SalaryModule.openPayModal(${row.staffId})" title="To'lov tarixi">
               <i class="fas fa-eye"></i>
-            </button>`}
-            <button class="btn btn-outline btn-sm" onclick="SalaryModule.openEditModal(${rec.id})" title="Tahrirlash">
+            </button>`) : ''}
+            <button class="btn btn-outline btn-sm" onclick="SalaryModule.openEditModal(${row.staffId})" title="Maoshni sozlash">
               <i class="fas fa-edit"></i>
-            </button>
-            <button class="btn btn-danger btn-sm" onclick="SalaryModule.deleteRecord(${rec.id})" title="O'chirish">
-              <i class="fas fa-trash"></i>
             </button>
           </div>
         </td>
@@ -6739,10 +7340,17 @@ const SalaryModule = (() => {
         const cnt = document.getElementById('salary-recent-count');
         if (!el) return;
 
-        const recent = [...paymentHistory].reverse().slice(0, 20);
-        if (cnt) cnt.textContent = `${paymentHistory.length} ta to'lov`;
+        if (loadError) {
+            if (cnt) cnt.textContent = '';
+            el.innerHTML = `<div role="alert" style="text-align:center;padding:24px;color:var(--danger)">
+              To'lovlar tarixini yuklab bo'lmadi: ${escapeHTML(loadError)}
+            </div>`;
+            return;
+        }
 
-        if (recent.length === 0) {
+        if (cnt) cnt.textContent = `${totalPayments} ta to'lov`;
+
+        if (payments.length === 0) {
             el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted)">
         <div style="font-size:32px;margin-bottom:10px;opacity:.2">📋</div>
         <p>Hali to'lovlar amalga oshirilmagan</p>
@@ -6750,21 +7358,28 @@ const SalaryModule = (() => {
             return;
         }
 
-        el.innerHTML = recent.map(p => `
+        el.innerHTML = payments.slice(0, 20).map(p => {
+            const who = p.staffName || (p.staffId ? ('ID: ' + p.staffId) : 'Noma\'lum xodim');
+            const paidAtLabel = p.validPaidAt === false
+                ? 'sana noto\'g\'ri' : formatDate(p.paidAt);
+            const meta = `Hisob davri: ${p.periodLabel || '—'} · To\'lov sanasi: ${paidAtLabel}`
+                + (p.linked ? '' : ' · xodim IDsi bilan bog\'lanmagan');
+            return `
       <div class="salary-history-item">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
           <div style="width:32px;height:32px;border-radius:9px;background:rgba(34,197,94,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px">✓</div>
           <div style="min-width:0">
-            <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHTML(p.empName)}</div>
-            <div style="font-size:11px;color:var(--text-muted)">${escapeHTML(p.month)} · ${formatDate(p.paidAt)}</div>
+            <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHTML(who)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${escapeHTML(meta)}</div>
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-weight:800;color:#4ade80;font-size:13px">${formatMoney(p.amount)}</div>
-          <div style="font-size:10px;color:var(--text-muted)">${escapeHTML(PAY_METHOD_LABELS[p.method] || p.method)}</div>
+          <div style="font-size:10px;color:var(--text-muted)">${escapeHTML(PAY_METHOD_SHORT[p.method] || p.method || '')}</div>
         </div>
       </div>
-    `).join('');
+    `;
+        }).join('');
     }
 
     // ── RENDER SALARY CHART ────────────────────────────────────
@@ -6772,21 +7387,32 @@ const SalaryModule = (() => {
         const ctx = document.getElementById('salaryHistoryChart');
         if (!ctx) return;
         if (salaryChart) { salaryChart.destroy(); salaryChart = null; }
+        let errorEl = document.getElementById('salary-chart-load-error');
+        if (loadError) {
+            ctx.style.display = 'none';
+            if (!errorEl) {
+                errorEl = document.createElement('div');
+                errorEl.id = 'salary-chart-load-error';
+                errorEl.setAttribute('role', 'alert');
+                errorEl.style.cssText = 'padding:32px;text-align:center;color:var(--danger)';
+                ctx.parentElement?.appendChild(errorEl);
+            }
+            errorEl.textContent = 'To\'lovlar grafigini yuklab bo\'lmadi: ' + loadError;
+            return;
+        }
+        if (errorEl) errorEl.remove();
+        ctx.style.display = '';
 
-        // Group payments by month
-        const byMonth = {};
-        paymentHistory.forEach(p => {
-            const key = monthLabel(p.paidAt);
-            byMonth[key] = (byMonth[key] || 0) + p.amount;
-        });
+        // To'lovlarni TO'LOV SANASI (paidAt) oyi bo'yicha guruhlaymiz.
+        const byMonth = paymentTotalsByMonth;
 
-        // Last 6 months (fill missing with 0)
+        // Oxirgi 6 oy (yo'q oylar 0 bilan to'ldiriladi)
         const months = [];
         const now = new Date();
         for (let i = 5; i >= 0; i--) {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const m = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'][d.getMonth()];
-            months.push({ label: m + ' ' + d.getFullYear(), key: m + ' ' + d.getFullYear() });
+            const val = monthValue(d);
+            months.push({ val, label: monthValueLabel(val) });
         }
 
         salaryChart = new Chart(ctx, {
@@ -6795,7 +7421,7 @@ const SalaryModule = (() => {
                 labels: months.map(m => m.label),
                 datasets: [{
                     label: 'To\'langan maosh (so\'m)',
-                    data: months.map(m => byMonth[m.key] || 0),
+                    data: months.map(m => byMonth[m.val] || 0),
                     backgroundColor: 'rgba(34,197,94,0.65)',
                     borderColor: '#22c55e',
                     borderWidth: 1,
@@ -6819,7 +7445,7 @@ const SalaryModule = (() => {
         });
     }
 
-    // ── POPULATE MONTH FILTER ──────────────────────────────────
+    // ── OY TANLAGICHI (hisoblash davri) ────────────────────────
     function populateMonthFilter() {
         const sel = document.getElementById('salary-month-filter');
         if (!sel) return;
@@ -6827,73 +7453,123 @@ const SalaryModule = (() => {
         const now = new Date();
         for (let i = 0; i < 12; i++) {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            const labels = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
-            months.push({ val, label: labels[d.getMonth()] + ' ' + d.getFullYear() });
+            const val = monthValue(d);
+            months.push({ val, label: monthValueLabel(val) });
         }
-        sel.innerHTML = '<option value="">Barcha oylar</option>' +
-            months.map(m => `<option value="${m.val}">${m.label}</option>`).join('');
+        // Tanlangan davr ro'yxatda yo'q bo'lsa (masalan, kelasi oy uchun
+        // rejalashtirilgan avans) — boshiga qo'shamiz.
+        if (currentMonth && !months.some(m => m.val === currentMonth)) {
+            months.unshift({ val: currentMonth, label: monthValueLabel(currentMonth) });
+        }
+        sel.innerHTML = months.map(m =>
+            `<option value="${m.val}"${m.val === currentMonth ? ' selected' : ''}>${m.label}</option>`
+        ).join('');
     }
 
-    // ── FULL RE-RENDER ─────────────────────────────────────────
-    function render() {
+    function populateBranchFilter() {
+        const sel = document.getElementById('salary-branch-filter');
+        if (!sel) return;
+        const options = [{ id: '', name: 'Barcha filiallar' }, ...branchOptions];
+        sel.innerHTML = options.map(branch =>
+            `<option value="${escapeHTML(String(branch.id || ''))}">${escapeHTML(String(branch.name || branch.id || ''))}</option>`
+        ).join('');
+        sel.value = currentBranch;
+    }
+
+    // ── TO'LIQ QAYTA CHIZISH ───────────────────────────────────
+    async function render() {
+        if (!currentMonth) currentMonth = monthValue(new Date());
+        await load();
+        populateMonthFilter();
+        populateBranchFilter();
         renderStats();
         renderTable();
         renderRecentPayments();
         renderChart();
-        populateMonthFilter();
     }
 
-    // ── PAY MODAL ──────────────────────────────────────────────
-    function openPayModal(id) {
-        const rec = salaryRecords.find(r => r.id === id);
-        if (!rec) return;
-        payingId = id;
-        const status = calcStatus(rec);
-        const avatarGrad = ROLE_COLORS[rec.role] || 'linear-gradient(135deg,#64748b,#475569)';
+    // ── TO'LOV OYNASI ──────────────────────────────────────────
+    /** To'lov oynasi: `staffId` — xodimning BARQAROR ID si (backend bilan
+        bir xil ID fazosi). Ism/telefon bo'yicha moslashtirish YO'Q. */
+    function openPayModal(staffId) {
+        const row = rowById(staffId);
+        if (!row) {
+            showNotif('error', 'Xodim topilmadi', 'Ro\'yxatni yangilang va qayta urinib ko\'ring');
+            return;
+        }
+        if (!row.active) {
+            showNotif('error', 'Xodim nofaol', 'Nofaol xodimga maosh to\'lovi qayd etib bo\'lmaydi');
+            return;
+        }
+        payingStaffId = Number(row.staffId);
+        const status = row.status || 'unset';
+        const roleKey = String(row.role || '').toLowerCase();
+        const avatarGrad = ROLE_COLORS[roleKey] || 'linear-gradient(135deg,#64748b,#475569)';
 
-        // Fill employee info
         const avatarEl = document.getElementById('salary-modal-avatar');
-        if (avatarEl) { avatarEl.textContent = rec.name[0]; avatarEl.style.background = avatarGrad; }
-        setText('salary-modal-name', rec.name);
-        setText('salary-modal-role', ROLE_LABELS[rec.role] || rec.role);
+        if (avatarEl) {
+            avatarEl.textContent = String(row.name || '?').trim()[0] || '?';
+            avatarEl.style.background = avatarGrad;
+        }
+        setText('salary-modal-name', row.name || '—');
+        setText('salary-modal-role', ROLE_LABELS[roleKey] || row.role || '—');
         setHTML('salary-modal-status-badge', statusLabel(status));
-        setHTML('salary-modal-amount', formatMoney(rec.salary));
-        setText('salary-modal-cur-month', monthLabel(rec.nextDate));
-        setText('salary-modal-cur-date', formatDate(rec.nextDate));
+        setHTML('salary-modal-amount', row.hasSalary
+            ? formatMoney(row.salary)
+            : '<span class="boss-salary-unset">Belgilanmagan</span>');
+
+        // Uchta ALOHIDA tushuncha: hisoblash davri ≠ to'lov muddati ≠ to'lov sanasi.
+        setText('salary-modal-cur-month', monthValueLabel(currentMonth));
+        setText('salary-modal-cur-date', formatDate(row.dueDate));
         setHTML('salary-modal-cur-status', statusLabel(status));
-        setHTML('salary-modal-total-due', `<strong style="color:var(--primary)">${formatMoney(rec.salary)}</strong>`);
 
-        // Next date default: same day next month
-        const nextD = new Date(rec.nextDate);
-        nextD.setMonth(nextD.getMonth() + 1);
-        const nextDateInput = document.getElementById('salary-modal-next-date');
-        if (nextDateInput) nextDateInput.value = nextD.toISOString().split('T')[0];
+        const due = row.hasSalary ? Number(row.salary || 0) : 0;
+        const paid = Number(row.paid || 0);
+        const remaining = row.hasSalary ? Number(row.remaining || 0) : 0;
+        setHTML('salary-modal-total-due', row.hasSalary
+            ? `<strong style="color:var(--primary)">${formatMoney(remaining)}</strong>`
+            + (paid > 0
+                ? `<small style="display:block;color:var(--text-muted);font-size:11px">`
+                + `to'langan: ${formatMoney(paid)} / ${formatMoney(due)}</small>`
+                : '')
+            : '<span style="color:var(--text-muted)">Maosh belgilanmagan</span>');
 
-        // Pay amount default
+        // To'lov sanasi (paidAt) — standart: bugun.
+        const dateInput = document.getElementById('salary-modal-next-date');
+        if (dateInput) dateInput.value = todayValue();
+
+        // To'lov summasi — standart: qolgan summa (yoki to'liq oylik).
         const payAmtInput = document.getElementById('salary-modal-pay-amount');
-        if (payAmtInput) payAmtInput.value = '';
-
-        // Note
+        if (payAmtInput) {
+            payAmtInput.value = '';
+            const suggested = remaining > 0 ? remaining : due;
+            payAmtInput.placeholder = suggested > 0
+                ? String(Math.round(suggested)) : 'Standart maosh';
+        }
         const noteInput = document.getElementById('salary-modal-note');
         if (noteInput) noteInput.value = '';
 
-        // Modal title & pay button
-        setText('salaryModalTitle', status === 'paid' ? 'To\'lov Tarixi' : 'Maosh To\'lash');
+        const unsetHint = document.getElementById('salary-modal-unset-hint');
+        if (unsetHint) unsetHint.style.display = row.hasSalary ? 'none' : '';
+
+        setText('salaryModalTitle', (row.hasSalary && status === 'paid')
+            ? 'To\'lov Tarixi' : 'Maosh To\'lash');
         const payBtn = document.getElementById('salary-pay-btn');
         if (payBtn) {
-            payBtn.style.display = status === 'paid' ? 'none' : '';
+            payBtn.style.display = (row.hasSalary && status !== 'paid') ? '' : 'none';
+            payBtn.disabled = false;
         }
 
-        // Payment history
-        renderModalHistory(rec.id);
+        renderModalHistory(row.staffId);
         openModal('salaryPayModal');
     }
 
-    function renderModalHistory(empId) {
+    /** To'lov oynasidagi mini tarix — xodimning `staffId` si bo'yicha. */
+    function renderModalHistory(staffId) {
         const el = document.getElementById('salary-modal-history');
         if (!el) return;
-        const hist = paymentHistory.filter(p => p.empId === empId).reverse().slice(0, 8);
+        const row = rowById(staffId);
+        const hist = (row && Array.isArray(row.history)) ? row.history : [];
         if (hist.length === 0) {
             el.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px">Hali to'lovlar yo'q</div>`;
             return;
@@ -6901,163 +7577,226 @@ const SalaryModule = (() => {
         el.innerHTML = hist.map(p => `
       <div class="salary-history-item">
         <div>
-          <div style="font-weight:600;font-size:12px">${escapeHTML(p.month)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${formatDate(p.paidAt)} · ${escapeHTML(p.note || 'Izohsiz')}</div>
+          <div style="font-weight:600;font-size:12px">${escapeHTML(p.periodLabel || '—')}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${p.validPaidAt === false ? 'Sana noto\'g\'ri' : formatDate(p.paidAt)} · ${escapeHTML(p.note || 'Izohsiz')}</div>
         </div>
         <span class="salary-badge salary-badge-paid">${formatMoney(p.amount)}</span>
       </div>
     `).join('');
     }
 
-    function markPaid() {
-        const rec = salaryRecords.find(r => r.id === payingId);
-        if (!rec) return;
-
-        const nextDateVal = document.getElementById('salary-modal-next-date')?.value;
-        const payAmtVal = parseFloat(document.getElementById('salary-modal-pay-amount')?.value) || rec.salary;
+    /** To'lovni HAQIQIY tarzda qayd etadi (POST /api/boss/salary/pay).
+        Pul faqat shu yerda (backendda) hisobdan chiqadi — natijada
+        to'lov `Kirim-chiqim` modulida IKKI MARTA hisoblanmaydi. */
+    async function markPaid() {
+        const row = rowById(payingStaffId);
+        if (!row) {
+            showNotif('error', 'Xodim topilmadi', 'Oynani yopib qaytadan urinib ko\'ring');
+            return;
+        }
+        if (!row.active) {
+            showNotif('error', 'Xodim nofaol', 'Nofaol xodimga maosh to\'lovi qayd etib bo\'lmaydi');
+            return;
+        }
+        if (!row.hasSalary) {
+            showNotif('error', 'Maosh belgilanmagan', 'Avval xodimga oylik maosh belgilang');
+            return;
+        }
+        const dateVal = document.getElementById('salary-modal-next-date')?.value || todayValue();
+        const rawAmt = document.getElementById('salary-modal-pay-amount')?.value;
+        const remaining = Number(row.remaining || 0);
+        const due = Number(row.salary || 0);
+        const amount = (rawAmt === '' || rawAmt === null || rawAmt === undefined)
+            ? (remaining > 0 ? remaining : due)
+            : Number(String(rawAmt).replace(/[^\d.]/g, ''));
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showNotif('error', 'Xato!', 'To\'lov summasini kiriting');
+            return;
+        }
         const noteVal = validateSafeInput('Izoh', document.getElementById('salary-modal-note')?.value || '', 180);
         if (noteVal === null) return;
 
-        if (!nextDateVal) {
-            showNotif('error', 'Xato!', 'Keyingi to\'lov sanasini kiriting');
+        const payBtn = document.getElementById('salary-pay-btn');
+        if (payBtn) payBtn.disabled = true;
+        try {
+            const data = await apiRequest('/api/boss/salary/pay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    staffId: row.staffId,
+                    amount,
+                    period: currentMonth,
+                    paidAt: dateVal,
+                    method: row.method || 'cash',
+                    note: noteVal,
+                }),
+            });
+            applyPlanResponse(data);
+            if (typeof addLog === 'function') addLog('Maosh', `${row.name} — ${formatMoney(amount)} to'landi`);
+            if (typeof playCheckout === 'function') playCheckout();
+            showNotif('success', '✅ To\'lov amalga oshirildi!', `${row.name}: ${formatMoney(amount)}`);
+            closeModal('salaryPayModal');
+            await render();
+            if (typeof Boss !== 'undefined' && Boss && typeof Boss.loadStaff === 'function') Boss.loadStaff();
+        } catch (e) {
+            showNotif('error', 'To\'lovni saqlab bo\'lmadi', (e && e.message) || 'Server xatosi');
+            if (payBtn) payBtn.disabled = false;
+        }
+    }
+
+    // ── MAOSH SOZLAMASI OYNASI ─────────────────────────────────
+    /** Yangi xodim FAQAT xodimlar bo'limida qo'shiladi (yagona joy) —
+        bu yerda takroriy «xodim qo'shish» formasi yaratilmaydi. */
+    function openAddModal() {
+        if (typeof Boss !== 'undefined' && Boss && typeof Boss.openAddStaff === 'function') {
+            Boss.openAddStaff();
             return;
         }
-
-        const today = new Date().toISOString().split('T')[0];
-
-        // Add to payment history
-        paymentHistory.push({
-            id: Date.now(),
-            empId: rec.id,
-            empName: rec.name,
-            amount: payAmtVal,
-            month: monthLabel(rec.nextDate),
-            paidAt: today,
-            method: rec.method,
-            note: noteVal,
-        });
-
-        // Update record
-        rec.nextDate = nextDateVal;
-        rec.status = 'pending'; // reset to pending for next cycle
-
-        save();
-        if (typeof addLog === 'function') addLog('Maosh', `${rec.name} — ${formatMoney(payAmtVal)} to'landi`);
-        if (typeof playCheckout === 'function') playCheckout();
-        showNotif('success', '✅ To\'lov amalga oshirildi!', `${rec.name}: ${formatMoney(payAmtVal)}`);
-        closeModal('salaryPayModal');
-        render();
+        showNotif('info', 'Xodim qo\'shish',
+            'Boshliq → Xodimlar bo\'limidagi «Xodim qo\'shish» tugmasidan foydalaning');
     }
 
-    // ── ADD / EDIT MODAL ───────────────────────────────────────
-    function openAddModal(title = 'Yangi Xodim') {
-        editingId = null;
-        setText('salaryAddModalTitle', title);
-        ['sal-emp-name', 'sal-amount', 'sal-card'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-        const dd = document.getElementById('sal-pay-day'); if (dd) dd.value = 1;
-        const fd = document.getElementById('sal-first-date');
-        if (fd) {
-            const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1);
-            fd.value = d.toISOString().split('T')[0];
+    /** Mavjud xodimga oylik maosh / to'lov kuni / to'lov usulini belgilash. */
+    function openEditModal(staffId) {
+        const row = rowById(staffId);
+        if (!row) {
+            showNotif('error', 'Xodim topilmadi', 'Ro\'yxatni yangilang va qayta urinib ko\'ring');
+            return;
+        }
+        editingStaffId = Number(row.staffId);
+        const title = document.getElementById('salaryAddModalTitle');
+        if (title) {
+            title.innerHTML = '<i class="fas fa-money-bill-wave" '
+                + 'style="color:var(--primary);margin-right:8px"></i>Oylik maoshni sozlash';
+        }
+        setText('sal-emp-name', row.name || '—');
+        setText('sal-emp-meta', `${ROLE_LABELS[String(row.role || '').toLowerCase()] || row.role || '—'}`
+            + ` · ID: ${row.staffId}`);
+        const avatarEl = document.getElementById('sal-emp-avatar');
+        if (avatarEl) {
+            avatarEl.textContent = String(row.name || '?').trim()[0] || '?';
+            avatarEl.style.background = ROLE_COLORS[String(row.role || '').toLowerCase()]
+                || 'linear-gradient(135deg,#64748b,#475569)';
+        }
+        setVal('sal-amount', row.hasSalary ? Math.round(Number(row.salary)) : '');
+        setVal('sal-pay-day', row.payDay || 1);
+        setVal('sal-pay-method', row.method || 'cash');
+        const hint = document.getElementById('sal-amount-hint');
+        if (hint) {
+            hint.textContent = row.hasSalary
+                ? 'Hozirgi belgilangan oylik. Bo\'sh qoldirsangiz — o\'zgarmaydi.'
+                : 'Maosh kiritilmasa xodim jadvalda «Belgilanmagan» holatida qoladi.';
         }
         openModal('salaryAddModal');
     }
 
-    function openEditModal(id) {
-        const rec = salaryRecords.find(r => r.id === id);
-        if (!rec) return;
-        editingId = id;
-        setText('salaryAddModalTitle', 'Xodim Maosh Sozlamasini Tahrirlash');
-        setVal('sal-emp-name', rec.name);
-        setVal('sal-amount', rec.salary);
-        setVal('sal-pay-day', rec.payDay);
-        setVal('sal-first-date', rec.nextDate);
-        setVal('sal-card', rec.card || '');
-        setVal('sal-emp-role', rec.role);
-        setVal('sal-pay-method', rec.method);
-        openModal('salaryAddModal');
-    }
-
-    function saveEmployee() {
-        if (!requireRole('admin', 'manager')) return;
-        const name = validateSafeInput('Xodim ismi', document.getElementById('sal-emp-name')?.value || '', 120);
-        const salary = parseInt(document.getElementById('sal-amount')?.value) || 0;
-        const payDay = parseInt(document.getElementById('sal-pay-day')?.value) || 1;
-        const firstDate = document.getElementById('sal-first-date')?.value;
-        const role = cleanText(document.getElementById('sal-emp-role')?.value || 'cashier', 40);
-        const method = cleanText(document.getElementById('sal-pay-method')?.value || 'cash', 40);
-        const card = validateSafeInput('Karta raqami', document.getElementById('sal-card')?.value || '', 40);
-
-        if (name === null || card === null) return;
-        if (!name) { if (typeof playError === 'function') playError(); showNotif('error', 'Xato!', 'Ism majburiy'); return; }
-        if (!salary) { if (typeof playError === 'function') playError(); showNotif('error', 'Xato!', 'Maosh miqdorini kiriting'); return; }
-        if (!firstDate) { if (typeof playError === 'function') playError(); showNotif('error', 'Xato!', 'To\'lov sanasini kiriting'); return; }
-
-        if (editingId) {
-            const rec = salaryRecords.find(r => r.id === editingId);
-            if (rec) Object.assign(rec, { name, salary, payDay, nextDate: firstDate, role, method, card });
-            if (typeof addLog === 'function') addLog('Maosh', `"${name}" sozlamalari yangilandi`);
-            showNotif('success', 'Yangilandi!', name + ' ma\'lumotlari saqlandi');
-        } else {
-            const recordId = Date.now();
-            salaryRecords.push({
-                id: recordId, name, role, salary, payDay,
-                nextDate: firstDate, method, card,
-                status: 'pending',
-                createdAt: new Date().toISOString().split('T')[0],
+    /** Maosh sozlamalarini backendga saqlaydi (PUT /api/boss/staff/<id>).
+        Maosh, to'lov kuni va usul `staff_users` da (yagona manba) saqlanadi. */
+    async function saveEmployee() {
+        const row = rowById(editingStaffId);
+        if (!row) {
+            showNotif('error', 'Xodim topilmadi', 'Ro\'yxatni yangilang va qayta urinib ko\'ring');
+            return;
+        }
+        const rawAmount = document.getElementById('sal-amount')?.value;
+        const payDay = parseInt(document.getElementById('sal-pay-day')?.value, 10);
+        const method = String(document.getElementById('sal-pay-method')?.value || 'cash')
+            .trim().toLowerCase();
+        if (!Number.isFinite(payDay) || payDay < 1 || payDay > 28) {
+            showNotif('error', 'Xato!', 'To\'lov kuni 1 va 28 orasida bo\'lishi kerak');
+            return;
+        }
+        const body = { salaryPayDay: payDay, salaryMethod: method };
+        // Bo'sh qiymat = maoshni O'ZGARTIRMASLIK (backend maoshni null qabul qilmaydi).
+        if (!(rawAmount === '' || rawAmount === null || rawAmount === undefined)) {
+            const amount = Number(String(rawAmount).replace(/[^\d]/g, ''));
+            if (!Number.isFinite(amount) || amount <= 0) {
+                showNotif('error', 'Xato!', 'Maosh miqdori musbat son bo\'lishi kerak');
+                return;
+            }
+            body.salary = amount;
+        }
+        const btn = document.querySelector('#salaryAddModal .btn-primary');
+        if (btn) btn.disabled = true;
+        try {
+            await apiRequest('/api/boss/staff/' + encodeURIComponent(row.staffId), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
             });
-            employees.push({ id: recordId + 1, name, role, sales: 0, total: 0, login: '—', status: 'active' });
-            if (typeof addLog === 'function') addLog('Maosh', `"${name}" maosh jadvali qo'shildi`);
-            showNotif('success', 'Qo\'shildi!', name + ' maosh jadvaliga qo\'shildi');
-            if (typeof renderEmployees === 'function') renderEmployees();
+            if (typeof addLog === 'function') {
+                addLog('Maosh', `"${row.name}" maosh sozlamalari yangilandi`);
+            }
+            showNotif('success', 'Saqlandi!', `${row.name} maosh sozlamalari yangilandi`);
+            closeModal('salaryAddModal');
+            await render();
+            if (typeof Boss !== 'undefined' && Boss && typeof Boss.loadStaff === 'function') Boss.loadStaff();
+        } catch (e) {
+            showNotif('error', 'Saqlab bo\'lmadi', (e && e.message) || 'Server xatosi');
+        } finally {
+            if (btn) btn.disabled = false;
         }
-
-        save();
-        closeModal('salaryAddModal');
-        render();
     }
 
-    // ── DELETE ─────────────────────────────────────────────────
-    function deleteRecord(id) {
-        if (!requireRole('admin', 'manager')) return;
-        const rec = salaryRecords.find(r => r.id === id);
-        if (!rec) return;
-        if (!confirm(`"${rec.name}" maosh jadvalidan o'chirilsinmi?`)) return;
-        salaryRecords = salaryRecords.filter(r => r.id !== id);
-        save();
-        if (typeof addLog === 'function') addLog('Maosh', `"${rec.name}" maosh jadvalidan o'chirildi`);
-        showNotif('info', 'O\'chirildi!', rec.name + ' o\'chirildi');
-        render();
-    }
-
-    // ── FILTER BUTTON ──────────────────────────────────────────
+    // ── FILTR / QIDIRUV ────────────────────────────────────────
     function setFilter(f, btnEl) {
-        currentFilter = f;
+        currentFilter = f || 'all';
         document.querySelectorAll('.salary-filter-btn').forEach(b => b.classList.remove('active'));
         if (btnEl) btnEl.classList.add('active');
         renderTable();
     }
 
-    function applyFilter() { renderTable(); }
+    async function applyBranchFilter() {
+        const sel = document.getElementById('salary-branch-filter');
+        const val = sel ? String(sel.value || '') : '';
+        if (val !== currentBranch) {
+            currentBranch = val;
+            await render();
+        }
+    }
 
-    function search(q) {
-        searchQuery = q;
+    /** Oy tanlagichi: hisoblash davri (period) o'zgarsa — backenddan
+        qayta yuklaydi; aks holda faqat jadval qayta chiziladi. */
+    async function applyFilter() {
+        const sel = document.getElementById('salary-month-filter');
+        const val = sel ? String(sel.value || '') : '';
+        if (val && val !== currentMonth) {
+            currentMonth = val;
+            await render();
+            return;
+        }
         renderTable();
     }
 
-    // ── EXPORT CSV ─────────────────────────────────────────────
+    function search(q) {
+        searchQuery = String(q || '');
+        renderTable();
+    }
+
+    // ── EKSPORT CSV ────────────────────────────────────────────
     function exportCSV() {
-        if (!requireRole('admin', 'manager')) return;
-        const header = ['#', 'Ism', 'Rol', 'Oylik Maosh', 'Keyingi Sana', 'Holat', 'To\'lov Usuli'];
-        const rows = salaryRecords.map((rec, i) => [
-            i + 1, rec.name, ROLE_LABELS[rec.role] || rec.role, rec.salary,
-            rec.nextDate, calcStatus(rec), PAY_METHOD_LABELS[rec.method] || rec.method,
+        if (!planRows.length) {
+            showNotif('info', 'Eksport', 'Eksport uchun ma\'lumot yo\'q');
+            return;
+        }
+        const header = ['ID', 'Xodim', 'Rol', 'Oylik maosh', 'To\'lov muddati', 'Holat',
+            'To\'langan (davr uchun)', 'Qoldiq', 'To\'lov usuli'];
+        const rows = planRows.map(row => [
+            row.staffId,
+            row.name || '',
+            ROLE_LABELS[String(row.role || '').toLowerCase()] || row.role || '',
+            row.hasSalary ? Math.round(Number(row.salary)) : 'Belgilanmagan',
+            row.dueDate || '',
+            (STATUS_META[row.status] || {}).label || row.status || '',
+            Math.round(Number(row.paid || 0)),
+            row.hasSalary ? Math.round(Number(row.remaining || 0)) : '',
+            PAY_METHOD_SHORT[row.method] || row.method || '',
         ]);
         const csv = [header, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `TexnoPark_Maosh_${new Date().toLocaleDateString('uz-UZ').replace(/\//g, '-')}.csv`;
+        a.download = `TexnoPark_Maosh_${monthValueLabel(currentMonth).replace(/\s+/g, '_')}.csv`;
         a.click();
         URL.revokeObjectURL(a.href);
         showNotif('success', 'Eksport!', 'CSV fayl yuklandi');
@@ -7069,13 +7808,19 @@ const SalaryModule = (() => {
     function setVal(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
 
     // ── INIT ───────────────────────────────────────────────────
+    /** Faqat holatni tayyorlaydi — ma'lumot backenddan sahifa ochilganda
+        (`render()`) yuklanadi. Bu yerda API chaqirilmaydi (barcha rollar
+        uchun ishga tushadi, `boss` huquqi esa faqat sahifada bo'ladi). */
     function init() {
-        load();
-        render();
+        if (!currentMonth) currentMonth = monthValue(new Date());
     }
 
     // ── PUBLIC API ─────────────────────────────────────────────
-    return { init, render, openPayModal, markPaid, openAddModal, openEditModal, saveEmployee, deleteRecord, setFilter, applyFilter, search, exportCSV };
+    return {
+        init, render, applyPlanResponse,
+        openPayModal, markPaid, openAddModal, openEditModal,
+        saveEmployee, setFilter, applyFilter, applyBranchFilter, search, exportCSV,
+    };
 })();
 
 /* ============================================================
@@ -7293,6 +8038,14 @@ const Security = {
         if (Number(sess.expiresAt) <= Date.now()) {
             try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
             securityLog('session-expired', 'low', 'Saqlangan sessiya muddati tugagan — qayta kirish talab qilinadi');
+            return;
+        }
+        // Server tokeni yo'q bo'lsa lokal sessiyani TIKLAMAYMIZ: aks holda
+        // foydalanuvchi "kirgan" ko'rinadi, lekin har bir amal 401 beradi
+        // ("Avtorizatsiya talab qilinadi") — xodim qo'shish kabi amallar
+        // shu sababdan bajarilmay qolardi. Qayta kirish talab qilinadi.
+        if (!staffToken) {
+            try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
             return;
         }
         // Server sessiyasi: rol/filial token bilan tasdiqlanadi (quyida).
@@ -9767,20 +10520,33 @@ function buildContractPrintHTML(c) {
 
 applySavedTheme();
 async function bootstrapApp() {
+    // Eski sessiya belgisi bormi? (tp_session yoki server tokeni). Muddati
+    // tugagan / bekor qilingan sessiyani xavfsiz login sahifasiga yo'naltirish
+    // uchun restoreSession'dan AVVAL tekshiriladi — aks holda foydalanuvchi
+    // ommaviy onlayn do'kon (page-shop) ko'rib qolardi.
+    let hadStaleSession = false;
+    try {
+        hadStaleSession = !!(sessionStorage.getItem(SESSION_KEY) || sessionStorage.getItem('tp_token'));
+    } catch (e) { /* storage blocked */ }
     // 1) Sahifa refresh/yuklashda saqlangan sessiyani tiklash (Security.restoreSession
-    //    ichki ravishda loginWithUser → initApp ni chaqiradi). Bu yo'q bo'lsa har bir
-    //    yangilanish guest rejimga qaytadi va sidebar navigatsiyasi "Ruxsat yo'q" bo'ladi.
+    //    ichki ravishda loginWithUser → initApp → goToLandingFor ni chaqiradi).
     //    restoreSession async — server tokeni (tp_token) yaroqliligi ham tekshiriladi.
     if (!currentUser && typeof Security !== 'undefined' && typeof Security.restoreSession === 'function') {
-        try { await Security.restoreSession(); } catch (e) { /* buzilgan sessiya — guest rejimda davom */ }
+        try { await Security.restoreSession(); } catch (e) { /* buzilgan sessiya — keyingi bosqichda login */ }
     }
     if (currentUser) {
-        // Sessiya tiklandi: initApp allaqachon loginWithUser ichida ishga tushdi,
-        // Dashboard esa HTML'da default .active — qayta init qilmasdan chiqamiz.
+        // Sessiya tiklandi: loginWithUser allaqachon ro'lga mos ICHKI sahifaga
+        // o'tkazdi — bu yerda qayta navigatsiya qilmaymiz.
         renderShop();
         return;
     }
     initApp();
+    // Sessiya bor edi lekin tiklanmadi (muddati tugagan yoki server rad etdi)
+    // → xavfsiz login sahifasi. Rostdan mehmon (hech sessiya bo'lmagan) → ochiq do'kon.
+    if (hadStaleSession) {
+        showLoginScreen();
+        return;
+    }
     goTo('page-shop', document.getElementById('nav-shop'));
     renderShop();
 }
@@ -9983,14 +10749,14 @@ function deleteCategory(name) {
     showNotif('success', 'O\'chirildi', name);
 }
 
-/** Kategoriyadagi mahsulotlarni do'konda ko'rsatadi. */
+/** Kategoriyadagi mahsulotlarni ICHKI boshqaruv panelida ochadi — ommaviy
+    do'kon emas (bu amal faqat administrator/menejer boshqaruv sahifasidan
+    chaqiriladi, shuning uchun foydalanuvchi hech qachon do'kon sahifasiga
+    tashlab yuborilmaydi). */
 function viewCategoryProducts(cat) {
-    shopCat = cat;
-    goTo('page-shop', document.getElementById('nav-shop'));
-    const search = document.getElementById('shopSearch');
-    if (search) search.value = '';
-    shopFilter = '';
-    renderShop();
+    currentCategory = cat;
+    goTo('page-products', navElForPage('page-products'));
+    if (typeof renderProducts === 'function') renderProducts();
 }
 
 /* Ombor qidiruvi va holat filtri — desktop jadval va mobil kartalar uchun umumiy filtr */
@@ -10521,6 +11287,9 @@ function loginWithUser(user) {
     }
 
     initApp();
+    // Sessiya tiklash (refresh / orqaga qaytish / qayta login) da ham
+    // ro'lga mos ICHKI sahifa ochiladi — xodim tasodifan do'konni ko'rib qolmasin.
+    if (user && user.role !== 'customer') goToLandingFor(user);
     playSuccess();
 }
 
@@ -10530,6 +11299,16 @@ function toggleEmployeesDropdown(el) {
     if (sb && !sidebarIsMobile() && sb.classList.contains('collapsed')) setSidebarOpen(true);
     const submenu = document.getElementById('employees-submenu');
     const arrow = el.querySelector('.submenu-arrow');
+    // Agar submenu ichida hech qanday bo'lim (item) bo'lmasa — bo'sh dropdown
+    // ko'rsatish o'rniga Xodimlar sahifasining o'ziga o'tamiz (aks holda menyu
+    // hech qayerga olib bormaydi). Mavjud itemlar bo'lsa — avvalgidek ochiladi.
+    const hasItems = !!submenu && submenu.querySelector('a, button, [onclick], .nav-item, .submenu-item');
+    if (!hasItems) {
+        const pageId = el.getAttribute('data-page') || 'page-bossStaff';
+        const navEl = document.getElementById('nav-bossStaff');
+        goTo(pageId, navEl);
+        return;
+    }
     if (submenu) {
         const isOpen = submenu.classList.toggle('open');
         submenu.style.display = isOpen ? 'flex' : 'none';
@@ -11391,14 +12170,32 @@ const Branches = {
 // ============================================================
 // Admin asosan kirim/chiqim/harajatga qaraydi: har bir filial bo'yicha
 // pul harakati kuzatiladi, savdo tushumi esa alohida ko'rsatiladi.
+// ============================================================
+// KIRIM-CHIQIM MODULI — dizaynga mos qayta ishlangan ko'rinish
+// ============================================================
+// Mantiq o'zgartirilmadi: yozuvlar `cashFlow` kaliti ostida, POS
+// savdosi esa `sales` ro'yxatida alohida saqlanadi (takroriy
+// hisob yo'q). Sof pul oqimi = kirim − chiqim − xarajat.
+const CF_TYPE_HINTS = {
+    kirim: "Kirim: kassaga yoki hisobga pul tushgan holatlar (savdo tushumi, qarz to'lov, bankdan o'tkazma va h.k.).",
+    chiqim: "Chiqim: kassadan pul chiqqan holatlar (ta'minotchi to'lovi, maosh, ijara va h.k.).",
+    harajat: "Xarajat: do'kon operatsiyasiga tegishli sarflar (kommunal, reklama, ta'mirlash va h.k.).",
+};
+
 const CashFlow = {
     _type: 'kirim',
+    _page: 1,
+    _size: 10,
+    _open: false,
 
     init() {
+        this._wireGlobal();
         this.setType('kirim');
         const dateEl = document.getElementById('cf-date');
         if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
         try { this.fillBranchSelects(); } catch (e) { }
+        try { this.fillCategorySelects(); } catch (e) { }
+        try { this.fillCategoryFilter(); } catch (e) { }
         try { CompanyLive.fill(); } catch (e) { }
         try {
             const f = document.getElementById('cfFrom'), t = document.getElementById('cfTo');
@@ -11409,8 +12206,23 @@ const CashFlow = {
 
     onPageOpen() {
         try { this.fillBranchSelects(); } catch (e) { }
+        try { this.fillCategorySelects(); } catch (e) { }
+        try { this.fillCategoryFilter(); } catch (e) { }
         try { CompanyLive.fill(); } catch (e) { }
         this.render();
+    },
+
+    /** Esc = yopish, tashqi bosish = menyu yopish (bir marta ulanadi). */
+    _wireGlobal() {
+        if (CashFlow._wired) return;
+        CashFlow._wired = true;
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && CashFlow._open) CashFlow.closePanel();
+        });
+        document.addEventListener('click', e => {
+            const menu = e.target.closest && e.target.closest('.cf-actions');
+            if (!menu) document.querySelectorAll('.cf-actions.open').forEach(m => m.classList.remove('open'));
+        });
     },
 
     /** Yozuv formasi va filtr uchun filial tanlagichlarini to'ldiradi. */
@@ -11433,25 +12245,105 @@ const CashFlow = {
         }
     },
 
+    /** Formaning kategoriya tanlagichini ro'yxat + real yozuvlardan to'ldiradi. */
+    fillCategorySelects() {
+        const sel = document.getElementById('cf-category');
+        if (!sel) return;
+        const cur = sel.value;
+        const list = this.categoryList();
+        sel.innerHTML = list.map(c => '<option value="' + escapeHTML(c) + '">' + escapeHTML(c) + '</option>').join('');
+        if (cur && list.indexOf(cur) !== -1) sel.value = cur;
+    },
+
+    /** Filtr uchun kategoriyalar: standart ro'yxat + bazadagi real qiymatlar. */
+    fillCategoryFilter() {
+        const sel = document.getElementById('cfFilterCat');
+        if (!sel) return;
+        const cur = sel.value;
+        const list = this.categoryList();
+        sel.innerHTML = '<option value="">Barcha kategoriyalar</option>' +
+            list.map(c => '<option value="' + escapeHTML(c) + '">' + escapeHTML(c) + '</option>').join('');
+        if (cur && list.indexOf(cur) !== -1) sel.value = cur;
+    },
+
+    categoryList() {
+        const seen = new Set(CASHFLOW_CATEGORIES);
+        cashFlow.forEach(c => { const v = cleanText(c.category, 60); if (v) seen.add(v); });
+        return Array.from(seen);
+    },
+
+    /** Panel ichidagi tur tugmasi — faqat turni tanlaydi (panelni ochmaydi). */
     setType(type) {
         this._type = Object.prototype.hasOwnProperty.call(CASHFLOW_TYPES, type) ? type : 'kirim';
         document.querySelectorAll('[data-cf-type]').forEach(btn => {
             btn.classList.toggle('active', btn.getAttribute('data-cf-type') === this._type);
         });
+        const meta = CASHFLOW_TYPES[this._type];
+        const panel = document.getElementById('cfPanel');
+        if (panel) panel.setAttribute('data-type', this._type);
+        const sub = document.getElementById('cfPanelSub');
+        if (sub) sub.textContent = meta.label + " yozuvini qo'shish";
+        const hint = document.getElementById('cfHintText');
+        if (hint) hint.textContent = CF_TYPE_HINTS[this._type] || '';
+        document.querySelectorAll('.cf-op').forEach(card => {
+            card.classList.toggle('active', card.getAttribute('data-op') === this._type);
+        });
+    },
+
+    /** Kartochka bosilganda o'ng panel ochiladi va tur avtomatik tanlanadi. */
+    openPanel(type) {
+        if (typeof type === 'string') this.setType(type);
+        this._open = true;
+        const layout = document.getElementById('cfLayout');
+        const panel = document.getElementById('cfPanel');
+        const scrim = document.getElementById('cfScrim');
+        if (layout) layout.classList.add('panel-open');
+        if (panel) {
+            panel.classList.add('open');
+            panel.setAttribute('aria-hidden', 'false');
+        }
+        if (scrim) scrim.classList.add('show');
+        const amount = document.getElementById('cf-amount');
+        if (amount) setTimeout(() => { try { amount.focus(); } catch (e) { } }, 60);
+    },
+
+    closePanel() {
+        this._open = false;
+        const layout = document.getElementById('cfLayout');
+        const panel = document.getElementById('cfPanel');
+        const scrim = document.getElementById('cfScrim');
+        if (layout) layout.classList.remove('panel-open');
+        if (panel) {
+            panel.classList.remove('open');
+            panel.setAttribute('aria-hidden', 'true');
+        }
+        if (scrim) scrim.classList.remove('show');
+    },
+
+    onSearch() { this._page = 1; this.render(); },
+    onFilter() { this._page = 1; this.render(); },
+
+    /** Sana + filial filtri — ko'rsatkichlar shu bo'yicha hisoblanadi. */
+    scoped() {
+        const branch = (document.getElementById('cfFilterBranch') || {}).value || '';
+        return cashFlow.filter(c =>
+            (!branch || String(c.branchId || '') === String(branch)) && this.inRange(c.date));
     },
 
     /** Filtrlar bo'yicha yozuvlar (eng yangisi birinchi). */
     filtered() {
         const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
-        const branch = val('cfFilterBranch');
         const type = val('cfFilterType');
-        const from = val('cfFrom');
-        const to = val('cfTo');
-        return cashFlow.filter(c => {
-            if (branch && String(c.branchId || '') !== String(branch)) return false;
+        const cat = val('cfFilterCat');
+        const q = String(val('cfSearch') || '').trim().toLowerCase();
+        return this.scoped().filter(c => {
             if (type && c.type !== type) return false;
-            if (from && String(c.date) < from) return false;
-            if (to && String(c.date) > to) return false;
+            if (cat && String(c.category || '') !== cat) return false;
+            if (q) {
+                const amt = String(c.amount || '') + ' ' + fmt(Number(c.amount) || 0);
+                const hay = [c.category, c.note, c.user, amt].join(' ').toLowerCase();
+                if (hay.indexOf(q) === -1) return false;
+            }
             return true;
         }).sort((a, b) => String(b.date + ' ' + b.createdAt).localeCompare(String(a.date + ' ' + a.createdAt)));
     },
@@ -11481,9 +12373,10 @@ const CashFlow = {
         else if (p === 'year') { from = now.getFullYear() + '-01-01'; to = now.getFullYear() + '-12-31'; }
         const f = document.getElementById('cfFrom'), t = document.getElementById('cfTo'), sel = document.getElementById('cfPeriod');
         if (f) f.value = from; if (t) t.value = to; if (sel) sel.value = p;
+        this._page = 1;
         this.render();
     },
-    /** Filtrga mos to'langan savdolar tushumi (davr bo'yicha). */
+    /** Filtrga mos to'langan savdolar tushumi (filial nazorati uchun). */
     saleRevenue() {
         const el = document.getElementById('cfFilterBranch');
         const branch = el ? el.value : '';
@@ -11492,73 +12385,44 @@ const CashFlow = {
             .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
     },
 
-    /** Kirim va Chiqim alohida ustunlarda: jami, kategoriyalar bo'yicha ulush va oxirgi yozuvlar. */
-    renderSplit() {
-        const box = document.getElementById('cfSplit'); if (!box) return;
-        const val = id => (document.getElementById(id) || {}).value || '';
-        const branch = val('cfFilterBranch');
-        const list = cashFlow.filter(c => (!branch || String(c.branchId || '') === String(branch)) && this.inRange(c.date))
-            .sort((a, b) => String(b.date + ' ' + b.createdAt).localeCompare(String(a.date + ' ' + a.createdAt)));
-        const inc = list.filter(c => c.type === 'kirim');
-        const out = list.filter(c => c.type !== 'kirim');
-        const sale = this.saleRevenue();
-        const sum = a => a.reduce((t, c) => t + (Number(c.amount) || 0), 0);
-        const incTotal = sale + sum(inc), outTotal = sum(out), net = incTotal - outTotal;
-        const canDel = requireRoleSilent('admin', 'manager');
-        const cats = (arr, extra) => {
-            const m = {}; if (extra && extra[1]) m[extra[0]] = extra[1];
-            arr.forEach(c => { m[c.category || 'Boshqa'] = (m[c.category || 'Boshqa'] || 0) + (Number(c.amount) || 0); });
-            return Object.entries(m).sort((a, b) => b[1] - a[1]);
-        };
-        const panel = (title, icon, color, tint, total, catRows, rows, empty) => {
-            const max = catRows.length ? catRows[0][1] : 1;
-            return `<div class="panel" style="border-top:4px solid ${color};margin-bottom:0">
-              <div class="panel-header" style="background:${tint}"><h3 style="color:${color}"><i class="fas ${icon}"></i> ${title}</h3>
-                <div style="font-size:22px;font-weight:800;color:${color}">${fmt(total)} so'm</div></div>
-              <div class="panel-body">
-                ${catRows.length ? catRows.map(([n, v]) => `<div style="margin-bottom:10px">
-                  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${escapeHTML(n)}</span><b style="color:${color}">${fmt(v)}</b></div>
-                  <div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:${Math.max(4, Math.round(v / max * 100))}%;background:${color}"></div></div></div>`).join('')
-                : `<div style="text-align:center;color:var(--muted);padding:14px;font-size:13px">${empty}</div>`}
-                ${rows.length ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:8px;font-size:11px;color:var(--muted);font-weight:700">OXIRGI YOZUVLAR</div>` + rows.slice(0, 6).map(c => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12px">
-                  <span><b>${escapeHTML(c.category || '')}</b> <span style="color:var(--muted)">${escapeHTML(c.date)}${c.note ? ' · ' + escapeHTML(c.note) : ''}</span></span>
-                  <span style="white-space:nowrap;font-weight:800;color:${color}">${fmt(c.amount)}${canDel ? ` <button class="btn btn-outline btn-sm" style="padding:2px 7px;color:var(--danger)" onclick="CashFlow.remove('${jsStrAttr(c.id)}')"><i class="fas fa-trash"></i></button>` : ''}</span></div>`).join('') : ''}
-              </div></div>`;
-        };
-        box.innerHTML = `
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px" class="cf-split-grid">
-            ${panel('KIRIM (pul kirdi)', 'fa-arrow-down-long', '#10b981', 'rgba(16,185,129,.10)', incTotal, cats(inc, ['Savdo tushumi (kassa)', sale]), inc, "Kirim yo'q")}
-            ${panel('CHIQIM (pul chiqdi)', 'fa-arrow-up-long', '#ef4444', 'rgba(239,68,68,.10)', outTotal, cats(out), out, "Chiqim yo'q")}
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 18px;border-radius:14px;margin-bottom:20px;font-weight:800;background:${net >= 0 ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};color:${net >= 0 ? '#10b981' : '#ef4444'}">
-            <span>${net >= 0 ? '✅ Qoldiq (kirim − chiqim)' : '⚠️ Kamomad (chiqim kirimdan ko\'p)'}</span>
-            <span style="font-size:20px">${net >= 0 ? '+' : '−'} ${fmt(Math.abs(net))} so'm</span></div>
-          <style>@media(max-width:800px){.cf-split-grid{grid-template-columns:1fr!important}}</style>`;
-    },
-
     render() {
         const tbody = document.getElementById('cashFlowTableBody');
         if (!tbody) return;
-        this.fillBranchSelects();
+        try { this.fillBranchSelects(); } catch (e) { }
+        try { this.fillCategoryFilter(); } catch (e) { }
 
         const list = this.filtered();
-        const totals = cashFlowTotals(list);
-        const revenue = this.saleRevenue();
-        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        const pages = Math.max(1, Math.ceil(list.length / this._size));
+        if (this._page > pages) this._page = pages;
+        const start = (this._page - 1) * this._size;
 
-        setText('cfSaleRevenue', fmt(revenue) + " so'm");
+        this.renderMetrics();
+        const cnt = document.getElementById('cfRecordCount');
+        if (cnt) cnt.textContent = list.length + ' ta yozuv';
+
+        this.renderBranchMonitor();
+        this.renderTable(list.slice(start, start + this._size), start);
+        this.renderPager(list.length, start, pages);
+    },
+
+    /** To'rtta moliyaviy ko'rsatkich: sana va filial filtriga bog'liq. */
+    renderMetrics() {
+        const totals = cashFlowTotals(this.scoped());
+        const counts = { kirim: 0, chiqim: 0, harajat: 0 };
+        this.scoped().forEach(c => { if (counts[c.type] !== undefined) counts[c.type]++; });
+        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
         setText('cfKirim', fmt(totals.kirim) + " so'm");
         setText('cfChiqim', fmt(totals.chiqim) + " so'm");
         setText('cfHarajat', fmt(totals.harajat) + " so'm");
-        setText('cfNet', fmt(revenue + totals.kirim - totals.chiqim - totals.harajat) + " so'm");
-        setText('cfRecordCount', list.length + ' ta yozuv');
-
-        this.renderSplit();
-        this.renderBranchMonitor();
-        this.renderTable(list);
+        setText('cfNet', fmt(totals.net) + " so'm");
+        setText('cfKirimCount', counts.kirim + ' ta operatsiya');
+        setText('cfChiqimCount', counts.chiqim + ' ta operatsiya');
+        setText('cfHarajatCount', counts.harajat + ' ta operatsiya');
+        const net = document.getElementById('cfNet');
+        if (net) net.classList.toggle('neg', totals.net < 0);
     },
 
-    /** Har bir filial bo'yicha: savdo, kirim, chiqim, harajat va sof natija. */
+    /** Har bir filial bo'yicha: savdo, kirim, chiqim, xarajat va sof natija. */
     renderBranchMonitor() {
         const tbody = document.getElementById('branchMonitorTable');
         if (!tbody) return;
@@ -11580,8 +12444,8 @@ const CashFlow = {
                 '<td style="color:var(--warning);font-weight:700">' + fmt(t.harajat) + '</td>' +
                 '<td style="font-weight:800;color:' + (net >= 0 ? 'var(--success)' : 'var(--danger)') + '">' +
                 fmt(net) + '</td>' +
-                '<td><button class="btn btn-outline btn-sm" onclick="CashFlow.focusBranch(\'' +
-                escapeHTML(b.id) + '\')" title="Shu filial yozuvlarini ko\'rish">' +
+                '<td><button class="btn btn-outline btn-sm" onclick="CashFlow.focusBranch(' +
+                jsStrLiteral(b.id) + ')" title="Shu filial yozuvlarini ko\'rish">' +
                 '<i class="fas fa-filter"></i></button></td></tr>';
         });
 
@@ -11600,35 +12464,97 @@ const CashFlow = {
             '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">' +
             'Filial qo\'shilmagan — «Filiallar» bo\'limidan qo\'shing</td></tr>';
     },
-    renderTable(list) {
+
+    /** Sahifalangan jadval qatorlari. */
+    renderTable(list, offset) {
         const tbody = document.getElementById('cashFlowTableBody');
         if (!tbody) return;
         if (!list.length) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">' +
-                'Yozuv topilmadi — yuqoridagi forma orqali kirim/chiqim/harajat qo\'shing</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:34px;color:var(--muted)">' +
+                '<i class="fas fa-inbox" style="font-size:26px;display:block;margin-bottom:8px;opacity:.45"></i>' +
+                'Yozuv topilmadi — yuqoridagi kartalar orqali kirim/chiqim/xarajat qo\'shing</td></tr>';
             return;
         }
-        tbody.innerHTML = list.slice(0, 500).map(c => {
+        const canDel = requireRoleSilent('admin', 'manager');
+        tbody.innerHTML = list.map((c, i) => {
             const meta = CASHFLOW_TYPES[c.type] || CASHFLOW_TYPES.chiqim;
             const branch = getBranchById(c.branchId);
             const sign = c.type === 'kirim' ? '+' : '\u2212';
-            const color = c.type === 'kirim' ? 'var(--success)'
-                : (c.type === 'harajat' ? 'var(--warning)' : 'var(--danger)');
-            return '<tr style="box-shadow:inset 4px 0 0 ' + (c.type === 'kirim' ? '#10b981' : '#ef4444') + '">' +
-                '<td><span class="badge">' + escapeHTML(c.date) + '</span>' +
-                (c.createdAt ? '<div style="font-size:11px;color:var(--muted)">' +
-                    escapeHTML(String(c.createdAt).slice(-8)) + '</div>' : '') + '</td>' +
-                '<td><i class="fas ' + meta.icon + '" style="color:' + color + '"></i> ' +
-                escapeHTML(meta.label) + '</td>' +
+            const tone = c.type === 'kirim' ? 'kirim' : (c.type === 'harajat' ? 'harajat' : 'chiqim');
+            const createdAt = String(c.createdAt || '');
+            const time = createdAt.slice(-8).indexOf(':') > 0 ? createdAt.slice(-8) : '';
+            return '<tr>' +
+                '<td class="cf-c-num">' + (offset + i + 1) + '</td>' +
+                '<td class="cf-c-date"><b>' + escapeHTML(c.date) + '</b>' +
+                (time ? '<small>' + escapeHTML(time) + '</small>' : '') + '</td>' +
+                '<td><span class="cf-badge cf-badge-' + tone + '">' +
+                '<i class="fas ' + meta.icon + '"></i>' + escapeHTML(meta.label) + '</span></td>' +
                 '<td>' + escapeHTML(c.category) + '</td>' +
+                '<td class="cf-c-note">' + escapeHTML(c.note || '—') + '</td>' +
                 '<td>' + (branch ? escapeHTML(branch.name) : '<span style="color:var(--muted)">Umumiy</span>') + '</td>' +
-                '<td style="font-weight:800;color:' + color + '">' + sign + ' ' + fmt(c.amount) + '</td>' +
-                '<td style="font-size:12px;color:var(--text-secondary)">' + escapeHTML(c.note || '—') + '</td>' +
-                '<td>' + (requireRoleSilent('admin', 'manager')
-                    ? '<button class="btn btn-outline btn-sm" style="color:var(--danger)" ' +
-                    'onclick="CashFlow.remove(\'' + escapeHTML(c.id) + '\')" title="O\'chirish">' +
-                    '<i class="fas fa-trash"></i></button>' : '') + '</td></tr>';
+                '<td class="cf-c-amt cf-amt-' + tone + '">' + sign + ' ' + fmt(c.amount) + " so'm</td>" +
+                '<td class="cf-c-user">' + escapeHTML(c.user || '—') + '</td>' +
+                '<td class="cf-c-act">' + (canDel
+                    ? '<div class="cf-actions"><button class="cf-act-btn" title="Amallar" ' +
+                    'onclick="CashFlow.toggleActions(event)"><i class="fas fa-ellipsis"></i></button>' +
+                    '<div class="cf-actions-menu">' +
+                    '<button onclick="CashFlow.remove(' + jsStrLiteral(c.id) + ')">' +
+                    '<i class="fas fa-trash"></i> O\'chirish</button></div></div>'
+                    : '<span style="color:var(--muted);opacity:.5">—</span>') + '</td></tr>';
         }).join('');
+    },
+
+    renderPager(total, start, pages) {
+        const box = document.getElementById('cfPager');
+        if (!box) return;
+        if (!total) { box.innerHTML = ''; box.classList.remove('show'); return; }
+        box.classList.add('show');
+        const shown = Math.min(this._size, total - start);
+        const nums = [];
+        const push = p => nums.push('<button type="button" class="cf-pg' + (p === this._page ? ' active' : '') +
+            '" onclick="CashFlow.gotoPage(' + p + ')">' + p + '</button>');
+        const win = [];
+        for (let p = 1; p <= pages; p++) {
+            if (p === 1 || p === pages || Math.abs(p - this._page) <= 1) win.push(p);
+        }
+        win.forEach((p, i) => {
+            if (i && p - win[i - 1] > 1) nums.push('<span class="cf-pg-gap">…</span>');
+            push(p);
+        });
+        box.innerHTML =
+            '<div class="cf-pg-nums">' +
+            '<button type="button" class="cf-pg cf-pg-arrow" ' + (this._page <= 1 ? 'disabled' : '') +
+            ' onclick="CashFlow.gotoPage(' + (this._page - 1) + ')"><i class="fas fa-chevron-left"></i></button>' +
+            nums.join('') +
+            '<button type="button" class="cf-pg cf-pg-arrow" ' + (this._page >= pages ? 'disabled' : '') +
+            ' onclick="CashFlow.gotoPage(' + (this._page + 1) + ')"><i class="fas fa-chevron-right"></i></button>' +
+            '</div>' +
+            '<div class="cf-pg-side">' +
+            '<span class="cf-pg-info">' + (start + 1) + '–' + (start + shown) + ' / ' + total + ' ta yozuv</span>' +
+            '<select class="form-control cf-pg-size" onchange="CashFlow.setSize(this.value)">' +
+            [10, 20, 50].map(n => '<option value="' + n + '"' + (n === this._size ? ' selected' : '') + '>' +
+                n + ' ta</option>').join('') + '</select></div>';
+    },
+
+    gotoPage(p) {
+        const total = this.filtered().length;
+        const pages = Math.max(1, Math.ceil(total / this._size));
+        this._page = Math.min(Math.max(1, Number(p) || 1), pages);
+        this.render();
+    },
+    setSize(v) {
+        this._size = Math.max(10, Math.min(200, Number(v) || 10));
+        this._page = 1;
+        this.render();
+    },
+
+    toggleActions(e) {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const wrap = e && e.currentTarget ? e.currentTarget.closest('.cf-actions') : null;
+        if (!wrap) return;
+        const was = wrap.classList.contains('open');
+        document.querySelectorAll('.cf-actions.open').forEach(m => m.classList.remove('open'));
+        if (!was) wrap.classList.add('open');
     },
 
     save() {
@@ -11638,7 +12564,8 @@ const CashFlow = {
         if (!Number.isFinite(amount) || amount <= 0) {
             playError();
             showNotif('error', 'Xato!', 'Summani kiriting (0 dan katta bo\'lishi kerak)');
-            return;
+            const a = document.getElementById('cf-amount'); if (a) a.focus();
+            return; // panel yopilmaydi
         }
         const record = normalizeCashFlow({
             type: this._type,
@@ -11652,7 +12579,7 @@ const CashFlow = {
         if (!record) {
             playError();
             showNotif('error', 'Xato!', 'Ma\'lumotlar yaroqsiz — qayta tekshiring');
-            return;
+            return; // panel yopilmaydi
         }
         cashFlow.unshift(record);
         saveToStorage();
@@ -11664,6 +12591,8 @@ const CashFlow = {
         const noteEl = document.getElementById('cf-note');
         if (amountEl) amountEl.value = '';
         if (noteEl) noteEl.value = '';
+        const cnt = document.getElementById('cfNoteCount'); if (cnt) cnt.textContent = '0';
+        this.closePanel();
         this.render();
         playSuccess();
         showNotif('success', 'Saqlandi!', CASHFLOW_TYPES[record.type].label + ' — ' +
@@ -11672,6 +12601,7 @@ const CashFlow = {
 
     remove(id) {
         if (!requireRole('admin', 'manager')) return;
+        document.querySelectorAll('.cf-actions.open').forEach(m => m.classList.remove('open'));
         const rec = cashFlow.find(c => String(c.id) === String(id));
         if (!rec) return;
         if (!confirm('Bu yozuvni o\'chirasizmi? (' + fmt(rec.amount) + " so'm)")) return;
@@ -11686,17 +12616,19 @@ const CashFlow = {
     focusBranch(branchId) {
         const el = document.getElementById('cfFilterBranch');
         if (el) el.value = branchId;
+        this._page = 1;
         this.render();
         const b = getBranchById(branchId);
         showNotif('info', 'Filtr', (b ? b.name : 'Filial') + ' bo\'yicha yozuvlar ko\'rsatilmoqda');
     },
 
     clearFilters() {
-        ['cfFilterBranch', 'cfFilterType', 'cfFrom', 'cfTo'].forEach(id => {
+        ['cfFilterBranch', 'cfFilterType', 'cfFilterCat', 'cfFrom', 'cfTo', 'cfSearch'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
         const sel = document.getElementById('cfPeriod'); if (sel) sel.value = 'all';
+        this._page = 1;
         this.render();
     },
 
@@ -11707,10 +12639,11 @@ const CashFlow = {
             return;
         }
         const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-        const head = ['Sana', 'Turi', 'Kategoriya', 'Filial', 'Summa', 'Izoh', 'Xodim'].join(';');
+        const head = ['Sana', 'Vaqt', 'Turi', 'Kategoriya', 'Filial', 'Summa', 'Izoh', 'Xodim'].join(';');
         const lines = list.map(c => {
             const b = getBranchById(c.branchId);
-            return [c.date, CASHFLOW_TYPES[c.type] ? CASHFLOW_TYPES[c.type].label : c.type,
+            return [c.date, String(c.createdAt || '').slice(-8),
+            CASHFLOW_TYPES[c.type] ? CASHFLOW_TYPES[c.type].label : c.type,
             c.category, b ? b.name : 'Umumiy', c.amount, c.note, c.user].map(esc).join(';');
         });
         const csv = '\ufeff' + head + '\n' + lines.join('\n');
