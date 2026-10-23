@@ -919,6 +919,20 @@ const USERS = [
 const ROLE_RANK = { boss: 40, admin: 30, manager: 20, cashier: 10, customer: 0 };
 const ROLES = { boss: 'Boshliq', admin: 'Administrator', cashier: 'Kassa Xodimi', manager: 'Menejer', customer: 'Xaridor' };
 
+// Eski/alternativ rol nomlari (eski baza yoki bosh harfli qiymat) yagona
+// joyda kanonik kalitga keltiriladi. Server ham xuddi shunday normalizatsiya
+// qiladi — shunda RBAC, sidebar va /api/data bir xil rol bilan ishlaydi.
+const ROLE_ALIASES = {
+    rahbariyat: 'boss', boshliq: 'boss', boshlq: 'boss',
+    administrator: 'admin', menejer: 'manager', kassa: 'cashier'
+};
+
+function normalizeRole(role) {
+    const key = String(role || '').trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(ROLE_ALIASES, key)) return ROLE_ALIASES[key];
+    return Object.prototype.hasOwnProperty.call(ROLE_RANK, key) ? key : 'customer';
+}
+
 // ============================================================
 // LOGIN TELEFON MAYDONI — maska + +998 prefiksi (websayt)
 // ============================================================
@@ -1104,7 +1118,7 @@ initLoginPasswordGuard();
 
 /** Joriy roling darajasi (0 — ichki/guest rolda). */
 function currentRoleRank() {
-    return ROLE_RANK[String(currentUser?.role || '').toLowerCase()] || 0;
+    return ROLE_RANK[normalizeRole(currentUser?.role)] || 0;
 }
 
 /** Boshliq — eng yuqori rol: admin/manager/cashier imkoniyatlariga ham ega. */
@@ -1582,106 +1596,6 @@ async function serverLogin(login, password) {
     }
 }
 
-/** Standart/zaif parol aniqlanganda majburiy almashtirish oynasi.
- *  Server `mustChange=true` bo'lsa boshqa API'larni 403 bilan yopadi, shuning
- *  uchun bu oyna yopilmaguncha ilovaga o'tilmaydi. */
-function showForcedPasswordChange(user) {
-    document.getElementById('forcedPasswordOverlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'forcedPasswordOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:18px;';
-    overlay.innerHTML = `
-        <div role="dialog" aria-modal="true" aria-labelledby="forcedPwTitle"
-             style="width:100%;max-width:440px;background:#fff;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.35);font-family:inherit;">
-            <h3 id="forcedPwTitle" style="margin:0 0 6px;font-size:1.15rem;color:#0f172a;">Parolni almashtirish shart</h3>
-            <p style="margin:0 0 14px;color:#475569;font-size:.92rem;line-height:1.45;">
-                <b id="forcedPwUserName"></b>, hisobingizda standart yoki zaif parol aniqlangan.
-                Xavfsizlik uchun davom etishdan oldin yangi parol o'rnating.
-            </p>
-            <form id="forcedPwForm" autocomplete="off">
-                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Joriy parol</label>
-                <input id="forcedPwOld" type="password" required autocomplete="current-password"
-                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:10px;">
-                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Yangi parol (kamida 6 belgi)</label>
-                <input id="forcedPwNew" type="password" required minlength="6" autocomplete="new-password"
-                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:10px;">
-                <label style="display:block;font-size:.85rem;color:#334155;margin-bottom:5px;">Yangi parolni takrorlang</label>
-                <input id="forcedPwRepeat" type="password" required minlength="6" autocomplete="new-password"
-                       style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:12px;">
-                <div id="forcedPwError" style="display:none;color:#b91c1c;font-size:.86rem;margin-bottom:10px;"></div>
-                <button id="forcedPwSubmit" type="submit"
-                        style="width:100%;padding:11px 14px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;">
-                    Parolni saqlash
-                </button>
-                <button id="forcedPwLogout" type="button"
-                        style="width:100%;margin-top:8px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#475569;cursor:pointer;">
-                    Chiqish
-                </button>
-            </form>
-        </div>`;
-    document.body.appendChild(overlay);
-    const nameEl = document.getElementById('forcedPwUserName');
-    if (nameEl) nameEl.textContent = String(user?.name || user?.login || 'Xodim');
-    const oldInput = document.getElementById('forcedPwOld');
-    const newInput = document.getElementById('forcedPwNew');
-    const repeatInput = document.getElementById('forcedPwRepeat');
-    const errorEl = document.getElementById('forcedPwError');
-    const form = document.getElementById('forcedPwForm');
-    const submitBtn = document.getElementById('forcedPwSubmit');
-    const showError = (message) => {
-        if (!errorEl) return;
-        errorEl.textContent = String(message || 'Xatolik');
-        errorEl.style.display = 'block';
-    };
-    document.getElementById('forcedPwLogout')?.addEventListener('click', () => {
-        clearStaffToken();
-        location.reload();
-    });
-    form?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (!errorEl) return;
-        errorEl.style.display = 'none';
-        const currentPassword = oldInput?.value || '';
-        const newPassword = newInput?.value || '';
-        const repeatPassword = repeatInput?.value || '';
-        if (newPassword.length < 6) return showError('Yangi parol kamida 6 belgidan iborat bo\'lishi kerak');
-        if (newPassword !== repeatPassword) return showError('Yangi parollar mos kelmadi');
-        if (newPassword === currentPassword) return showError('Yangi parol joriy paroldan farq qilishi kerak');
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Saqlanmoqda...';
-        try {
-            const response = await fetch('/api/auth/change-password', {
-                method: 'POST',
-                headers: authHeaders({ 'Content-Type': 'application/json' }),
-                body: JSON.stringify({
-                    login: user?.login || '',
-                    currentPassword,
-                    newPassword
-                })
-            });
-            const data = await response.json().catch(() => null);
-            if (!response.ok || !data?.token) {
-                showError(data?.message || 'Parolni almashtirib bo\'lmadi');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Parolni saqlash';
-                return;
-            }
-            setStaffToken(data.token);
-            storeUserPassword(user?.login || '', newPassword,
-                user?.name || 'Xodim');
-            overlay.remove();
-            finishLogin(user);
-            showNotif('success', 'Parol yangilandi',
-                'Yangi parol bilan ishlashda davom eting');
-        } catch (e) {
-            showError('Serverga ulanib bo\'lmadi. Qayta urinib ko\'ring.');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Parolni saqlash';
-        }
-    });
-    setTimeout(() => oldInput?.focus(), 80);
-}
-
 /** Token eskirgan/bloklangan bo'lsa — xavfsiz tarzda sessiyani yopadi.
  *  Server 401 qaytarganda (token muddati tugagan / sessiya bekor qilingan)
  *  faqat token o'chirish YETARLI EMAS: foydalanuvchi "kirilgan" holatda
@@ -1933,17 +1847,6 @@ async function loadFromBackend() {
             return;
         }
         if (response.status === 403) {
-            const errorData = await response.json().catch(() => null);
-            if (errorData?.code === 'password_change_required') {
-                console.warn('Parol almashtirish talab qilinadi — token saqlanadi');
-                if (currentUser) {
-                    showForcedPasswordChange(currentUser);
-                } else {
-                    showNotif('warning', 'Parolni almashtiring',
-                        'Xavfsizlik uchun avval parolni yangilang');
-                }
-                return;
-            }
             console.warn('Xodim tokeni yo\'q yoki huquq yetarli emas — faqat ommaviy katalog yuklanadi');
             clearStaffToken();
             await loadPublicCatalog();
@@ -2390,8 +2293,7 @@ async function attemptLogin(u, p) {
         serverOnline = true;
         clearLoginFailures(u);
         const local = findBaseUser(u);
-        const role = ROLE_RANK[String(server.user?.role || '').toLowerCase()] > 0
-            ? server.user.role : 'customer';
+        const role = normalizeRole(server.user?.role);
         const loginUser = {
             id: local?.id || Date.now(),
             login: cleanText(server.user?.login, 120) || u,
@@ -2405,12 +2307,6 @@ async function attemptLogin(u, p) {
             branchId: cleanText(server.user?.branchId, 40) || '',
             color: local?.color || '#2563EB'
         };
-        if (server.mustChange) {
-            securityLog('weak-password', 'medium',
-                'Standart parol bilan kirildi — almashtirish majburiy');
-            showForcedPasswordChange(loginUser);
-            return;
-        }
         finishLogin(loginUser);
         return;
     }
@@ -2659,7 +2555,7 @@ function showLoginScreen() {
 // ROLE-BASED NAVIGATION
 // ============================================================
 function setupRoleBasedNav() {
-    const role = currentUser?.role || 'guest';
+    const role = currentUser ? normalizeRole(currentUser.role) : 'guest';
     document.body.setAttribute('data-role', role);
     // BOSHLIQ (boss) — eng yuqori rol, lekin sidebar'da FAQAT o'z menyusi ko'rinadi
     // (8 bo'lim: Boshliq Dashboard, Xodimlar, Xodim savdosi, Mahsulotlar,
@@ -2857,7 +2753,7 @@ function canAccessPage(pageId) {
     // ham rad etiladi, faqat menyuni yashirish bilan cheklanilmaydi.
     if (!nav) return pageId === 'page-shop';
     const roles = (nav.getAttribute('data-role') || 'admin,cashier,manager').split(',').map(r => r.trim());
-    return roles.includes(currentUser.role) || roles.includes('all');
+    return roles.includes(normalizeRole(currentUser.role)) || roles.includes('all');
 }
 
 // ============================================================
@@ -8066,7 +7962,7 @@ const Security = {
                 // huquqlar serverga mos bo'ladi.
                 if (res.ok) {
                     const data = await res.json().catch(() => null);
-                    const srvRole = String(data?.user?.role || '').trim().toLowerCase();
+                    const srvRole = normalizeRole(data?.user?.role);
                     if (srvRole && (ROLE_RANK[srvRole] || 0) > 0) serverRole = srvRole;
                     serverBranchId = String(data?.user?.branchId || '').trim().slice(0, 40);
                 }
