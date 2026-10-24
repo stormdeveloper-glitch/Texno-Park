@@ -1066,3 +1066,31 @@
     .bsm-stats-txt strong { font-size: 15.5px; }
     .bsc-name .bsc-name-txt { font-size: 13.5px; }
 }
+
+/* ── Kassa sverkasi (kunlik naqd solishtiruvi) ─────────────── */
+.boss-sverka-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.boss-sverka-grid .boss-panel { margin-bottom: 0; }
+.boss-sverka-diff {
+    display: block;
+    margin: 12px 0 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 800;
+    background: var(--warning-bg);
+    color: var(--muted);
+}
+.boss-sverka-diff.ok { background: var(--success-bg); color: var(--success); }
+.boss-sverka-diff.over { background: var(--warning-bg); color: var(--warning); }
+.boss-sverka-diff.short { background: var(--danger-bg); color: var(--danger); }
+.boss-sverka-total td { font-weight: 800; color: var(--primary); }
+.boss-table .text-danger { color: var(--danger); }
+.boss-table .text-warning { color: var(--warning); }
+@media (max-width: 900px) {
+    .boss-sverka-grid { grid-template-columns: 1fr; }
+}

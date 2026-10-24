@@ -1335,7 +1335,13 @@ MAX_AUDIT_LOG = 400
 
 
 def _next_staff_id(staff):
-    """Xodimlar ro'yxatida band bo'lmagan eng kichik id."""
+    """Xodim uchun YANGI id: mavjudlarning eng kattasi + 1.
+
+    Ilgari bo'sh (eng kichik) id qayta ishlatilardi. Natijada o'chirilgan
+    xodimning id'si yangi xodimga berilib, eski maosh tarixi/savdo
+    yozuvlari yangi xodimga "yopishib" qolardi — Boshliq panelida esa
+    ma'lumot ikki marta ko'rinardi. Endi id hech qachon qayta ishlatilmaydi.
+    """
     used = set()
     for item in staff:
         if isinstance(item, dict):
@@ -1343,10 +1349,33 @@ def _next_staff_id(staff):
                 used.add(int(item.get('id') or 0))
             except (TypeError, ValueError):
                 pass
-    nxt = 1
-    while nxt in used:
-        nxt += 1
-    return nxt
+    # Tarixiy yozuvlarda uchraydigan id'lar ham "band" — o'chirilgan
+    # xodimning id'si yangi xodimga berilmasin (eski savdo/maosh
+    # yozuvlari yangi xodimga bog'lanib qolmasligi uchun).
+    try:
+        store = db_manager.get_all() or {}
+    except Exception:
+        store = {}
+    for key, fields in (
+            ('sales', ('staffId', 'cashierId', 'employeeId')),
+            ('salaryHistory', ('staffId', 'empId', 'employeeId')),
+            ('salaryRecords', ('staffId', 'empId', 'employeeId')),
+            ('staffSalaryHistory', ('staffId', 'empId', 'employeeId')),
+    ):
+        records = store.get(key)
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            for field in fields:
+                value = int(_num(record.get(field), 0))
+                if value > 0:
+                    used.add(value)
+    # Doimiy hisoblagich: eng yuqori berilgan id saqlanadi, shunda eng katta
+    # id'li xodim o'chirilsa ham uning id'si qayta ishlatilmaydi.
+    seq = int(_num(store.get('staffIdSeq'), 0))
+    return max(max(used) if used else 0, seq) + 1
 
 
 def _boss_seeded(staff):
@@ -2374,8 +2403,12 @@ def custom_period_range(args):
     raw_to = (args.get('to') or args.get('toDate') or '').strip()
     start = parse_business_date(raw_from) if raw_from else None
     end = parse_business_date(raw_to) if raw_to else None
+    # Diqqat: sana berilmasa `None` qaytariladi (tuple EMAS). Ilgari bu yerda
+    # `(None, None)` qaytardi va `in_period` uni "aniq oraliq" deb qabul qilib
+    # HAMMA yozuvni o'tkazib yuborardi — natijada "Kun/Oy" davr filtrlari
+    # umuman ishlamasdi (sana tanlanmaguncha barcha savdo ko'rinardi).
     if not (start or end):
-        return None, None
+        return None
     if start and not end:
         end = datetime.now()
     if end and not start:
@@ -3341,6 +3374,10 @@ def _salary_plan_data(store, month, branch_filter='', query=''):
         staff_id = int(_num(user.get('id'), 0))
         if staff_id <= 0:
             continue
+        # Arxivlangan (o'chirilgan) xodim maosh rejasida ko'rinmaydi — u
+        # ro'yxatdan olib tashlangan, faqat tarixiy yozuvlari saqlangan.
+        if str(user.get('deletedAt') or '').strip():
+            continue
         name = str(user.get('name') or '')
         role = str(user.get('role') or '')
         branch_id = str(user.get('branchId') or '')
@@ -3849,46 +3886,105 @@ def boss_staff_create():
                           "kerak — xodim tizimga shu raqam bilan kiradi")
 
     # Qulf: tekshiruv + yozish bir atomar amal bo'lsin (dublikat akount yo'q).
+    restored = False
+    restored_old_salary = None
     with _STAFF_WRITE_LOCK:
         staff = load_staff()
-        if _staff_phone_in_use(staff, phone):
-            return json_error('Bu telefon raqami band', 409)
+        # ── Arxivlangan yozuvni QAYTA FAOLLASHTIRISH ─────────────────
+        # Ilgari o'chirilgan (arxivlangan) xodimni qayta qo'shish yangi
+        # yozuv yaratardi — natijada bir xil ismli xodim ro'yxatda 2 marta
+        # ko'rinardi va eski yozuv telefon raqamini "band" qilib turardi.
+        # Endi aynan shu telefonli arxiv yozuvi tiklanadi: savdo/maosh
+        # tarixi saqlanib qoladi, dublikat paydo bo'lmaydi.
+        archived = next((u for u in sorted(
+            (item for item in staff if isinstance(item, dict)),
+            key=lambda item: str(item.get('updatedAt') or item.get('createdAt') or ''),
+            reverse=True)
+            if str(u.get('status') or 'active').strip().lower() == 'inactive'
+            and canonical_role(u.get('role')) != 'boss'
+            and (phones_match(u.get('phone'), phone)
+                 or phones_match(u.get('login'), phone))), None)
+        if archived is not None:
+            stamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+            restored = True
+            restored_old_salary = archived.get('salary')
+            archived.update({
+                'name': name,
+                'phone': phone,
+                'role': role,
+                'status': status,
+                'branchId': branch_id,
+                'mustChange': False,
+                'updatedAt': stamp,
+                'updatedBy': _actor_name()[:120],
+                'recreatedAt': stamp,
+            })
+            archived.pop('deletedAt', None)
+            archived.pop('deletedBy', None)
+            if salary is not None:
+                archived['salary'] = salary
+                archived['salaryChangedAt'] = stamp
+                archived['salaryChangedBy'] = _actor_name()[:120]
+            # Parol: faqat xesh (qayta tiklanadigan nusxa saqlanmaydi).
+            apply_staff_password(archived, password, _actor_name())
+            if not str(archived.get('login') or '').strip():
+                archived['login'] = _unique_staff_login(
+                    staff, int(_num(archived.get('id'), 0)))
+            try:
+                db_manager.save_keys({'staff_users': staff})
+            except Exception as e:
+                print(f'[BOSS] Xodimni qayta faollashtirib bo\'lmadi: {e}')
+                return jsonify({'status': 'error',
+                                'message': 'Xodimni saqlab bo\'lmadi'}), 500
+            account = archived
+        else:
+            if _staff_phone_in_use(staff, phone):
+                return json_error('Bu telefon raqami band', 409)
 
-        new_id = _next_staff_id(staff)
-        account = {
-            'id': new_id,
-            'login': _unique_staff_login(staff, new_id),
-            'phone': phone,
-            'name': name,
-            'role': role,
-            'status': status,
-            'branchId': branch_id,
-            'mustChange': False,
-            'createdBy': _actor_name()[:120],
-            'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-            'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-        }
-        if salary is not None:
-            account['salary'] = salary
-            account['salaryChangedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-            account['salaryChangedBy'] = _actor_name()[:120]
-        # Parol: faqat xesh (qayta tiklanadigan nusxa saqlanmaydi).
-        apply_staff_password(account, password, _actor_name())
-        staff.append(account)
-        try:
-            db_manager.save_keys({'staff_users': staff})
-        except Exception as e:
-            print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
-            return jsonify({'status': 'error', 'message': 'Xodimni saqlab bo\'lmadi'}), 500
+            new_id = _next_staff_id(staff)
+            account = {
+                'id': new_id,
+                'login': _unique_staff_login(staff, new_id),
+                'phone': phone,
+                'name': name,
+                'role': role,
+                'status': status,
+                'branchId': branch_id,
+                'mustChange': False,
+                'createdBy': _actor_name()[:120],
+                'createdAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+                'updatedAt': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+            }
+            if salary is not None:
+                account['salary'] = salary
+                account['salaryChangedAt'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+                account['salaryChangedBy'] = _actor_name()[:120]
+            # Parol: faqat xesh (qayta tiklanadigan nusxa saqlanmaydi).
+            apply_staff_password(account, password, _actor_name())
+            staff.append(account)
+            try:
+                db_manager.save_keys({'staff_users': staff,
+                                      'staffIdSeq': new_id})
+            except Exception as e:
+                print(f'[BOSS] Xodimni saqlab bo\'lmadi: {e}')
+                return jsonify({'status': 'error', 'message': 'Xodimni saqlab bo\'lmadi'}), 500
 
     if salary is not None:
-        record_staff_salary_change(account['id'], name, None, salary, _actor_name())
-    audit_log('staff-create', name,
+        record_staff_salary_change(account['id'], name,
+                                   restored_old_salary if restored else None,
+                                   salary, _actor_name())
+    audit_log('staff-restore' if restored else 'staff-create', name,
               f'rol={role} status={status} maosh={salary}'
-              + (f' filial={branch_id}' if branch_id else ''),
+              + (f' filial={branch_id}' if branch_id else '')
+              + (' · arxivdan qayta faollashtirildi' if restored else ''),
               _actor_name())
-    return jsonify({'status': 'success', 'message': 'Xodim qo\'shildi',
-                    'staff': staff_public_view(account, include_salary=is_boss_actor)}), 201
+    return jsonify({'status': 'success',
+                    'restored': restored,
+                    'message': 'Xodim qayta faollashtirildi' if restored
+                               else 'Xodim qo\'shildi',
+                    'staff': staff_public_view(account,
+                                               include_salary=is_boss_actor)}), (
+                        200 if restored else 201)
 
 @app.route('/')
 def serve_index():
@@ -4188,11 +4284,12 @@ def _staff_has_historical_records(store, target, staff):
             {'staffLogin', 'employeeLogin'},
             {'staffName', 'empName', 'employeeName'},
         ),
-        'staffSalaryHistory': (
-            {'staffId', 'empId', 'employeeId', 'userId'},
-            {'staffLogin', 'employeeLogin'},
-            {'staffName', 'empName', 'employeeName'},
-        ),
+        # `staffSalaryHistory` ATAYLAB yo'q: bu faqat maosh o'zgarishi jurnali
+        # (yangi xodimga oylik belgilash ham shu yerga yoziladi), moliyaviy
+        # to'lov emas. Uni tarix deb hisoblash sababli yangi qo'shilgan xodimni
+        # umuman o'chirib bo'lmay, faqat arxivlash mumkin edi — Boshliq esa
+        # "o'chirish ishlamayapti" deb ko'rardi. Haqiqiy to'lovlar
+        # `salaryHistory` da yoziladi va o'sha o'chirishni bloklaydi.
         'cashFlow': (
             {'staffId', 'cashierId', 'employeeId', 'userId'},
             {'staffLogin', 'cashierLogin', 'employeeLogin'},
@@ -4254,9 +4351,6 @@ def boss_staff_delete(staff_id):
         return json_error('Xodim roli noto\'g\'ri; akountni o\'chirish mumkin emas', 409)
     if role_rank(actor_role) <= role_rank(target_role):
         return json_error('Bu akountni boshqarish uchun yetarli huquq yo\'q', 403)
-    if str(target.get('status') or 'active').strip().lower() == 'inactive':
-        return json_error('Xodim allaqachon nofaol yoki arxivlangan', 409)
-
     if target_role == 'admin' and str(target.get('status') or 'active').lower() == 'active':
         active_admins = [user for user in staff if isinstance(user, dict)
                          and canonical_role(user.get('role')) == 'admin'
@@ -4266,6 +4360,13 @@ def boss_staff_delete(staff_id):
                               'nofaol qilish mumkin emas', 409)
 
     has_history = _staff_has_historical_records(db_manager.get_all() or {}, target, staff)
+    # Tarixiy bog'lanishi bo'lmagan yozuv — holatidan qat'i nazar JISMONAN
+    # o'chiriladi (avval arxivlangan, keyin qayta qo'shilgan "dublikat"
+    # yozuvlarni Boshliq tozalab olishi uchun). Tarixi bor xodim esa
+    # arxivlanadi — ikkinchi marta arxivlash so'rovi 409 qaytaradi.
+    if has_history and str(target.get('status') or 'active').strip().lower() == 'inactive':
+        return json_error('Xodim allaqachon nofaol yoki arxivlangan', 409)
+
     if has_history:
         stamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
         target['status'] = 'inactive'
@@ -4297,8 +4398,12 @@ def boss_staff_delete(staff_id):
     remaining_staff = [user for user in staff
                        if not (isinstance(user, dict)
                                and _num(user.get('id'), -1) == staff_id)]
+    # O'chirilgan id qayta ishlatilmaydi (yangi xodim eski tarixga
+    # bog'lanib qolmasligi uchun) — hisoblagichga yozib qo'yamiz.
+    used_seq = int(_num((db_manager.get_all() or {}).get('staffIdSeq'), 0))
     try:
-        db_manager.save_keys({'staff_users': remaining_staff})
+        db_manager.save_keys({'staff_users': remaining_staff,
+                              'staffIdSeq': max(used_seq, staff_id)})
     except Exception as exc:
         print(f'[BOSS] Xodimni o\'chirishda ma\'lumotlar bazasi xatosi '
               f'({type(exc).__name__})')
@@ -4593,6 +4698,360 @@ def boss_finance():
             ),
         },
     })
+
+
+# ============================================================
+# 6.1) MIJOZLAR — haridor bazasi va xarid statistikasi
+# ============================================================
+def _customer_phone_digits(value):
+    """Mijoz telefonidan faqat raqamlarni qoldiradi (solishtirish uchun)."""
+    return re.sub(r'\D', '', str(value or ''))[:20]
+
+
+def _customer_match_index(customers):
+    """Mijozni savdo yozuvi bilan bog'lash uchun indekslar.
+
+    Savdoda `customerId`, `customerPhone` yoki faqat ism bo'lishi mumkin
+    (eski yozuvlar). Ism bo'yicha faqat ISM YAGONA bo'lsa bog'lanadi —
+    aks holda bir xil ismli ikki mijozning xaridlari aralashib ketardi.
+    """
+    by_id, by_phone, by_name = {}, {}, {}
+    for customer in customers:
+        cid = str(customer.get('id') or '').strip()
+        if cid:
+            by_id[cid] = customer
+        phone = _customer_phone_digits(customer.get('phone'))
+        if phone:
+            by_phone.setdefault(phone, []).append(customer)
+        name = str(customer.get('name') or '').strip().lower()
+        if name:
+            by_name.setdefault(name, []).append(customer)
+    return by_id, by_phone, by_name
+
+
+def _find_customer_for_sale(sale, by_id, by_phone, by_name):
+    """Savdo yozuviga tegishli mijozni topadi (id → telefon → ism)."""
+    cid = str(sale.get('customerId') or '').strip()
+    if cid and cid in by_id:
+        return by_id[cid]
+    phone = _customer_phone_digits(sale.get('customerPhone'))
+    if phone:
+        matches = by_phone.get(phone) or []
+        if len(matches) == 1:
+            return matches[0]
+    name = str(sale.get('customer') or '').strip().lower()
+    matches = by_name.get(name) or []
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+@app.route('/api/boss/customers', methods=['GET'])
+@require_staff('boss')
+def boss_customers():
+    """Haridorlar bazasi: kim, qancha xarid qilgan va oxirgi xarid qachon.
+
+    Query: period, from, to, q (ism/telefon/email), limit, offset.
+    Mijozlar soni va xarid statistikasi — haqiqiy `customers` va `sales`
+    yozuvlaridan hisoblanadi (yangi jadval yaratilmaydi).
+    """
+    store = db_manager.get_all() or {}
+    customers = [c for c in (store.get('customers') or []) if isinstance(c, dict)]
+    period = normalize_period(request.args.get('period'))
+    rng = custom_period_range(request.args)
+    scoped = completed_sales_in_period(store, period, rng)
+    by_id, by_phone, by_name = _customer_match_index(customers)
+
+    stats = {}
+    for sale in scoped:
+        customer = _find_customer_for_sale(sale, by_id, by_phone, by_name)
+        if customer is None:
+            continue
+        key = str(customer.get('id') or id(customer))
+        bucket = stats.setdefault(key, {
+            'orders': 0, 'total': 0.0, 'units': 0.0,
+            'lastDate': '', 'lastSort': '',
+        })
+        bucket['orders'] += 1
+        bucket['total'] += _num(sale.get('total'))
+        bucket['units'] += sum(_num(item.get('qty'))
+                               for item in (sale.get('items') or [])
+                               if isinstance(item, dict))
+        raw_date = str(sale.get('date') or '')
+        raw_time = str(sale.get('time') or '')
+        parsed = parse_business_date(raw_date)
+        sort_key = (parsed.isoformat() if parsed else raw_date) + ' ' + raw_time
+        if sort_key >= (bucket['lastSort'] or ''):
+            bucket['lastSort'] = sort_key
+            bucket['lastDate'] = (raw_date + (' ' + raw_time if raw_time else '')).strip()
+
+    query = str(request.args.get('q') or '').strip().lower()
+    rows = []
+    for customer in customers:
+        key = str(customer.get('id') or id(customer))
+        bucket = stats.get(key) or {}
+        name = str(customer.get('name') or '')
+        phone = str(customer.get('phone') or '')
+        email = str(customer.get('email') or '')
+        if query:
+            haystack = ' '.join([name, phone, email, str(customer.get('bdate') or '')]).lower()
+            if query not in haystack:
+                continue
+        orders = int(bucket.get('orders') or 0)
+        total = round(_num(bucket.get('total')), 2)
+        rows.append({
+            'id': customer.get('id'),
+            'name': name[:120],
+            'phone': phone[:40],
+            'email': email[:120],
+            'addr': str(customer.get('addr') or '')[:180],
+            'bdate': str(customer.get('bdate') or '')[:10],
+            'bonus': round(_num(customer.get('bonus')), 2),
+            'status': str(customer.get('status') or 'active')[:20],
+            'createdAt': str(customer.get('createdAt') or '')[:40],
+            'orders': orders,
+            'units': round(_num(bucket.get('units')), 2),
+            'total': total,
+            'avgCheck': round(total / orders, 2) if orders else 0.0,
+            'lastPurchase': str(bucket.get('lastDate') or '')[:40],
+        })
+
+    rows.sort(key=lambda row: (-row['total'], row['name'].lower(), str(row['id'])))
+    summary = {
+        'count': len(rows),
+        'active': sum(1 for row in rows if row['status'] == 'active'),
+        'vip': sum(1 for row in rows if row['status'] == 'vip'),
+        'inactive': sum(1 for row in rows if row['status'] == 'inactive'),
+        'withOrders': sum(1 for row in rows if row['orders'] > 0),
+        'orders': sum(row['orders'] for row in rows),
+        'revenue': round(sum(row['total'] for row in rows), 2),
+    }
+    try:
+        limit = max(1, min(500, int(request.args.get('limit') or 200)))
+        offset = max(0, int(request.args.get('offset') or 0))
+    except (TypeError, ValueError):
+        limit, offset = 200, 0
+
+    return jsonify({
+        'status': 'success',
+        'period': period,
+        'total': len(rows),
+        'summary': summary,
+        'offset': offset,
+        'limit': limit,
+        'customers': rows[offset:offset + limit],
+    })
+
+
+# ============================================================
+# 6.2) KASSA SVERKASI — kunlik naqd pul solishtiruvi
+# ============================================================
+CASH_SVERKA_LIMIT = 1000
+CASH_SVERKA_PAYMENTS = ('cash', 'card', 'online', 'credit', 'transfer', 'other')
+
+
+def _sale_payment_bucket(sale):
+    """Savdo to'lov usulini sverka guruhiga ajratadi (naqd/karta/...)."""
+    provider = str(sale.get('provider') or '').strip().lower()
+    pay = str(sale.get('pay') or '').strip().lower()
+    text = provider or pay
+    if provider == 'cash' or 'naqd' in text or 'нақд' in text:
+        return 'cash'
+    if provider == 'card' or 'karta' in text or 'карта' in text:
+        return 'card'
+    if provider in ('click', 'payme', 'paynet', 'uzum', 'paylov') \
+            or 'click' in text or 'payme' in text or 'uzum' in text \
+            or 'paynet' in text or 'paylov' in text:
+        return 'online'
+    if provider == 'credit' or 'kredit' in text or 'кредит' in text:
+        return 'credit'
+    if provider == 'transfer' or 'o\'tkazma' in text or 'otkazma' in text:
+        return 'transfer'
+    return 'other'
+
+
+def _flow_day(record):
+    """Kirim/chiqim yozuvining sanasi (`date` ISO yoki eski format)."""
+    parsed = parse_business_date(record.get('date'))
+    return parsed.date() if parsed else None
+
+
+def _cash_sverka_calc(store, day, branch_id=''):
+    """Tanlangan kun va filial uchun sverka raqamlarini hisoblaydi.
+
+    Naqd savdo = `provider/pay` naqd bo'lgan yakunlangan cheklar.
+    Kutilgan naqd = naqd savdo + naqd kirim − chiqim − xarajat.
+    """
+    products_by_id = products_index(store)
+    payments = {key: 0.0 for key in CASH_SVERKA_PAYMENTS}
+    orders = 0
+    units = 0.0
+    revenue = 0.0
+    for sale in completed_sales(store.get('sales') or []):
+        sale_date = parse_business_date(sale.get('date'))
+        if not sale_date or sale_date.date() != day:
+            continue
+        if branch_id and sale_branch(sale, products_by_id) != branch_id:
+            continue
+        total = _num(sale.get('total'))
+        orders += 1
+        revenue += total
+        units += sum(_num(item.get('qty')) for item in (sale.get('items') or [])
+                     if isinstance(item, dict))
+        bucket = _sale_payment_bucket(sale)
+        payments[bucket] = payments.get(bucket, 0.0) + total
+
+    flow = {'kirim': 0.0, 'chiqim': 0.0, 'harajat': 0.0}
+    flow_records = 0
+    for key in ('cashFlow', 'expenses'):
+        for record in (store.get(key) or []):
+            if not isinstance(record, dict):
+                continue
+            if _flow_day(record) != day:
+                continue
+            if branch_id and str(record.get('branchId') or '') != branch_id:
+                continue
+            kind = str(record.get('type') or 'chiqim').strip().lower()
+            if kind not in flow:
+                continue
+            flow[kind] += _num(record.get('amount'))
+            flow_records += 1
+
+    expected_cash = (payments['cash'] + flow['kirim']
+                     - flow['chiqim'] - flow['harajat'])
+    return {
+        'sales': {
+            'orders': orders,
+            'units': round(units, 2),
+            'revenue': round(revenue, 2),
+            **{key: round(value, 2) for key, value in payments.items()},
+        },
+        'flow': {key: round(value, 2) for key, value in flow.items()},
+        'flowRecords': flow_records,
+        'expectedCash': round(expected_cash, 2),
+    }
+
+
+def _cash_sverka_view(store, record):
+    """Sverka yozuvini xavfsiz (ko'rsatish uchun) ko'rinishga keltiradi."""
+    branches = branches_index(store)
+    expected = _num(record.get('expected'))
+    counted = _num(record.get('counted'))
+    return {
+        'id': str(record.get('id') or '')[:40],
+        'date': str(record.get('date') or '')[:10],
+        'branchId': str(record.get('branchId') or '')[:40],
+        'branchName': str((branches.get(str(record.get('branchId') or '')) or {})
+                          .get('name', '') or ''),
+        'expected': round(expected, 2),
+        'counted': round(counted, 2),
+        'difference': round(counted - expected, 2),
+        'note': str(record.get('note') or '')[:200],
+        'createdBy': str(record.get('createdBy') or '')[:120],
+        'createdAt': str(record.get('createdAt') or '')[:30],
+    }
+
+
+@app.route('/api/boss/cash-sverka', methods=['GET'])
+@require_staff('boss')
+def boss_cash_sverka():
+    """Kassa sverkasi: kunlik kutilgan naqd va sanab chiqilgan pul.
+
+    Query: date (YYYY-MM-DD, standart — bugun), branchId.
+    """
+    store = db_manager.get_all() or {}
+    raw_date = str(request.args.get('date') or '').strip()
+    try:
+        day = date.fromisoformat(raw_date) if raw_date else date.today()
+    except ValueError:
+        return json_error('Sana noto\'g\'ri (YYYY-MM-DD)', 400)
+    branch_id = str(request.args.get('branchId') or '').strip()[:40]
+    calc = _cash_sverka_calc(store, day, branch_id)
+    records = [r for r in (store.get('cashSverka') or []) if isinstance(r, dict)]
+    current = next((r for r in records
+                    if str(r.get('date') or '') == day.isoformat()
+                    and str(r.get('branchId') or '') == branch_id), None)
+    recent = sorted(records, key=lambda r: str(r.get('createdAt') or ''),
+                    reverse=True)[:30]
+    branches = branches_index(store)
+    return jsonify({
+        'status': 'success',
+        'date': day.isoformat(),
+        'branchId': branch_id,
+        'branchName': str((branches.get(branch_id) or {}).get('name', '') or ''),
+        **calc,
+        'record': _cash_sverka_view(store, current) if current else None,
+        'recent': [_cash_sverka_view(store, r) for r in recent],
+    })
+
+
+@app.route('/api/boss/cash-sverka', methods=['POST'])
+@require_staff('boss')
+def boss_cash_sverka_save():
+    """Sanalgan naqdni saqlaydi; farq SERVERDA qayta hisoblanadi."""
+    body = request.get_json(silent=True) or {}
+    raw_date = str(body.get('date') or '').strip()
+    try:
+        day = date.fromisoformat(raw_date) if raw_date else date.today()
+    except ValueError:
+        return json_error('Sana noto\'g\'ri (YYYY-MM-DD)', 400)
+    branch_id = str(body.get('branchId') or '').strip()[:40]
+    if branch_id and not _branch_exists(branch_id):
+        return json_error('Tanlangan filial topilmadi', 404)
+    counted = body.get('counted')
+    if isinstance(counted, bool) or not isinstance(counted, (int, float, str)):
+        return json_error('Sanalgan summani kiriting', 400)
+    try:
+        counted_value = float(str(counted).replace(' ', '').replace(',', '.'))
+    except (TypeError, ValueError):
+        return json_error('Sanalgan summa raqam bo\'lishi kerak', 400)
+    if not math.isfinite(counted_value) or counted_value < 0:
+        return json_error('Sanalgan summa manfiy bo\'lmaydi', 400)
+    note = _clean_boss_text(body.get('note'), 200)
+
+    with _store_write_lock:
+        store = db_manager.get_all() or {}
+        calc = _cash_sverka_calc(store, day, branch_id)
+        records = [r for r in (store.get('cashSverka') or []) if isinstance(r, dict)]
+        stamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        existing = next((r for r in records
+                         if str(r.get('date') or '') == day.isoformat()
+                         and str(r.get('branchId') or '') == branch_id), None)
+        record = {
+            'id': str((existing or {}).get('id') or uuid.uuid4().hex[:12]),
+            'date': day.isoformat(),
+            'branchId': branch_id,
+            'expected': calc['expectedCash'],
+            'counted': round(counted_value, 2),
+            'difference': round(counted_value - calc['expectedCash'], 2),
+            'note': note,
+            'createdBy': _actor_name()[:120],
+            'createdAt': stamp,
+        }
+        if existing is not None:
+            existing.clear()
+            existing.update(record)
+        else:
+            records.insert(0, record)
+        try:
+            db_manager.save_keys({'cashSverka': records[:CASH_SVERKA_LIMIT]})
+        except Exception as exc:
+            print(f'[BOSS] Sverkani saqlab bo\'lmadi: {exc}')
+            return json_error('Sverkani saqlashda server yoki baza xatosi yuz berdi', 500)
+
+    difference = record['difference']
+    audit_log('cash-sverka', day.isoformat(),
+              f'kutilgan={calc["expectedCash"]} sanalgan={record["counted"]} '
+              f'farq={difference}'
+              + (f' filial={branch_id}' if branch_id else ''),
+              _actor_name())
+    if difference == 0:
+        message = 'Sverka mos keldi — farq yo\'q'
+    elif difference > 0:
+        message = f'Kassada {_money_str(difference)} so\'m ortiqcha'
+    else:
+        message = f'Kassada {_money_str(abs(difference))} so\'m kam'
+    return jsonify({'status': 'success', 'message': message, 'record': record}), 200
 
 
 # ============================================================

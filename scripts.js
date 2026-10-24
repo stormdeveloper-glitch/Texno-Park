@@ -2667,6 +2667,8 @@ function goTo(pageId, el) {
         bossProducts: ['Mahsulotlar', 'Mahsulotlar, top sotuvchilar va kam qoldiqlar'],
         bossBranches: ['Filiallar', 'Filiallar holati va o\'zaro solishtirish'],
         bossFinance: ['Moliya', 'Savdo, kirim, chiqim, xarajat va sof natija'],
+        bossCustomers: ['Mijozlar', "Haridorlar bazasi va xarid tarixi"],
+        bossCashSverka: ['Kassa sverkasi', 'Kutilgan naqd va sanalgan pul solishtiruvi'],
         bossReports: ['Hisobotlar', 'Boshliq hisobotlari va CSV eksport'],
         bossAudit: ['Amallar jurnali', 'Boshliq amalari tarixi'],
         shop: ['Do\'kon', 'Mahsulot tanlang va buyurtma bering'],

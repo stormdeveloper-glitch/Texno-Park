@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
   <link rel="stylesheet" href="style.css?v=5.14.0">
-  <link rel="stylesheet" href="boss.css?v=2.3.1">
+  <link rel="stylesheet" href="boss.css?v=2.5.0">
 </head>
 
 <body>
@@ -191,6 +191,14 @@
         </div>
         <div class="nav-item boss-only" onclick="goTo('page-bossFinance',this)" id="nav-bossFinance" data-role="boss">
           <i class="fas fa-sack-dollar"></i><span>Moliya</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossCustomers',this)" id="nav-bossCustomers"
+          data-role="boss">
+          <i class="fas fa-users"></i><span>Mijozlar</span>
+        </div>
+        <div class="nav-item boss-only" onclick="goTo('page-bossCashSverka',this)" id="nav-bossCashSverka"
+          data-role="boss">
+          <i class="fas fa-scale-balanced"></i><span>Kassa sverkasi</span>
         </div>
         <div class="nav-item boss-only" onclick="goTo('page-bossReports',this)" id="nav-bossReports" data-role="boss">
           <i class="fas fa-file-invoice-dollar"></i><span>Hisobotlar</span>
@@ -1647,6 +1655,41 @@
             <div class="boss-panel-body boss-chart-body"><canvas id="bossMonthlyChart"></canvas></div>
           </div>
         </div>
+      </div>
+
+      <!-- ===== MIJOZLAR (haridorlar bazasi) ===== -->
+      <div class="page" id="page-bossCustomers">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-users"></i> Mijozlar</h2>
+            <p>Kim qancha xarid qilgan, oxirgi xarid qachon — haqiqiy mijozlar bazasi</p>
+          </div>
+          <div class="boss-period" id="boss-customers-period"></div>
+        </div>
+        <div class="boss-toolbar">
+          <input type="search" class="form-control boss-search" id="boss-customers-search"
+            placeholder="🔍 Ism, telefon yoki email bo'yicha qidirish..." autocomplete="off">
+          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i> Yangilash</button>
+        </div>
+        <div id="boss-customers-box"></div>
+      </div>
+
+      <!-- ===== KASSA SVERKASI (kunlik naqd solishtiruvi) ===== -->
+      <div class="page" id="page-bossCashSverka">
+        <div class="boss-page-head">
+          <div>
+            <h2><i class="fas fa-scale-balanced"></i> Kassa sverkasi</h2>
+            <p>Kutilgan naqd va kassada sanab chiqilgan pul — kunlik solishtirish</p>
+          </div>
+          <button class="btn btn-outline" data-boss-refresh><i class="fas fa-rotate"></i> Yangilash</button>
+        </div>
+        <div class="boss-toolbar">
+          <input type="date" class="form-control boss-date" id="boss-sverka-date" aria-label="Sverka sanasi">
+          <select class="form-control" id="boss-sverka-branch" aria-label="Filial">
+            <option value="">Barcha filiallar</option>
+          </select>
+        </div>
+        <div id="boss-sverka-box"></div>
       </div>
 
       <div class="page" id="page-bossReports">
@@ -4211,8 +4254,8 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.7.0"></script>
-  <script src="boss.js?v=2.4.1"></script>
+  <script src="scripts.js?v=1.8.0"></script>
+  <script src="boss.js?v=2.5.0"></script>
     <script>
       /* Header: surilganda ixchamlashadi */
       (function () {

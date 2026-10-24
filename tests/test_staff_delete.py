@@ -90,7 +90,6 @@ class StaffDeleteTests(unittest.TestCase):
             ('sales', [{'cashierId': 4, 'cashier': 'Test Cashier'}]),
             ('salaryHistory', [{'staffId': 4, 'amount': 500000}]),
             ('salaryRecords', [{'empId': 4, 'amount': 500000}]),
-            ('staffSalaryHistory', [{'staffId': 4, 'newSalary': 500000}]),
             ('cashFlow', [{'staffId': 4, 'amount': 500000}]),
             ('expenses', [{'employeeId': 4, 'amount': 500000}]),
             ('contracts', [{'createdByStaffId': 4, 'number': 'TEST-1'}]),
@@ -150,6 +149,18 @@ class StaffDeleteTests(unittest.TestCase):
         for event in security_rows:
             self.assertIn(event, stored['serverSecurityLog'])
 
+    def test_staff_id_is_not_reused_after_deletion(self):
+        """O'chirilgan eng katta id yangi xodimga berilmasin (tarix aralashmasin)."""
+        self.assertEqual(self.delete_cashier().status_code, 200)
+        response = self.client.post('/api/boss/staff', headers=self.headers('boss'), json={
+            'name': 'Yangi Xodim', 'phone': '+998901119999', 'role': 'cashier',
+            'status': 'active', 'password': 'newpass123', 'salary': 3000000,
+        })
+        self.assertEqual(response.status_code, 201)
+        created = response.get_json()['staff']
+        self.assertGreater(created['id'], 4)
+        self.assertNotIn(4, [user['id'] for user in tp.load_staff()])
+
     def test_role_authentication_and_target_guards(self):
         self.assertEqual(self.delete_cashier('manager').status_code, 403)
         self.assertEqual(self.delete_cashier('cashier').status_code, 403)
@@ -177,6 +188,62 @@ class StaffDeleteTests(unittest.TestCase):
         repeated = self.delete_cashier()
         self.assertEqual(repeated.status_code, 409)
         self.assertEqual(tp.db_manager.get_all()['sales'], [{'staffId': 4}])
+
+    def test_salary_history_alone_does_not_block_deletion(self):
+        """Yangi xodimga oylik belgilash (staffSalaryHistory) o'chirishga to'sqinlik qilmaydi."""
+        salary_rows = [{'staffId': 4, 'staffName': 'Test Cashier', 'newSalary': 500000}]
+        tp.db_manager.save_keys({'staffSalaryHistory': salary_rows})
+
+        response = self.delete_cashier()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['action'], 'deleted')
+        self.assertNotIn(4, [user['id'] for user in tp.load_staff()])
+        # Maosh o'zgarishlari tarixi yo'qolmaydi.
+        self.assertEqual(tp.db_manager.get_all()['staffSalaryHistory'], salary_rows)
+
+    def test_inactive_record_without_history_can_still_be_deleted(self):
+        """Avval arxivlangan, tarixi yo'q (dublikat) yozuvni butunlay o'chirish mumkin."""
+        staff = tp.load_staff()
+        for user in staff:
+            if user['id'] == 4:
+                user['status'] = 'inactive'
+                user['deletedAt'] = '01.10.2026 10:00:00'
+        tp.db_manager.save_keys({'staff_users': staff})
+
+        response = self.delete_cashier()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['action'], 'deleted')
+        self.assertNotIn(4, [user['id'] for user in tp.load_staff()])
+
+    def test_archived_employee_is_restored_instead_of_duplicated(self):
+        """O'sha telefon bilan qayta qo'shilsa yangi yozuv emas, arxiv tiklanadi."""
+        phone = '+998901112233'
+        staff = tp.load_staff()
+        for user in staff:
+            if user['id'] == 4:
+                user['phone'] = phone
+                user['status'] = 'inactive'
+                user['deletedAt'] = '01.10.2026 10:00:00'
+        tp.db_manager.save_keys({'staff_users': staff})
+        before = len(tp.load_staff())
+
+        response = self.client.post('/api/boss/staff', headers=self.headers('boss'), json={
+            'name': 'Test Cashier', 'phone': phone, 'role': 'cashier',
+            'status': 'active', 'password': 'newpass123', 'salary': 4000000,
+        })
+        body = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(body.get('restored'))
+        self.assertEqual(body['staff']['id'], 4)
+        self.assertEqual(len(tp.load_staff()), before)
+        restored = next(u for u in tp.load_staff() if u['id'] == 4)
+        self.assertEqual(restored['status'], 'active')
+        self.assertEqual(restored['salary'], 4000000)
+        self.assertNotIn('deletedAt', restored)
+        self.assertEqual(response.status_code, 200)
+        # Tarix (maosh o'zgarishi) yozuvi ham yangilangan qiymat bilan qo'shiladi.
+        self.assertEqual(tp.db_manager.get_all()['staffSalaryHistory'][0]['newSalary'],
+                         4000000)
 
 
 if __name__ == '__main__':

@@ -23,6 +23,8 @@ const Boss = (() => {
         salesBranch: '', salesQuery: '', salesFrom: '', salesTo: '',
         financeBranch: '', financeFrom: '', financeTo: '',
         auditQuery: '', auditSource: '',
+        customersQuery: '',
+        sverkaDate: '', sverkaBranch: '',
         activeStaffId: null,
         passSubmitting: false,     // parol modalida takroriy so'rovdan himoya
         passWasGenerated: false,   // parol «Vaqtinchalik parol» tugmasi bilan yaratildi
@@ -193,6 +195,12 @@ function setPeriod(value) {
         if (key === 'bossProducts') loadProducts();
         if (key === 'bossBranches') loadBranches();
         if (key === 'bossFinance') { loadBranchOptions(); loadFinance(); }
+        if (key === 'bossCustomers') loadCustomers();
+        if (key === 'bossCashSverka') {
+            initSverkaDate();
+            loadBranchOptions();
+            loadSverka();
+        }
         if (key === 'bossReports') { loadBranchOptions(); loadReportOptions(); loadReports(); }
         if (key === 'bossAudit') loadAudit();
     }
@@ -219,6 +227,7 @@ function setPeriod(value) {
         fill('boss-finance-branch', 'Barcha filiallar');
         fill('boss-staff-branch', 'Barcha filiallar');
         fill('boss-staff-branch-m', 'Barcha filiallar');
+        fill('boss-sverka-branch', 'Barcha filiallar');
         fill('boss-new-branch', 'Filialsiz');
         if (isManagerStaffView()) {
             const branchSelect = document.getElementById('boss-new-branch');
@@ -283,7 +292,8 @@ function setPeriod(value) {
      */
     function paintPeriodChips() {
         ['boss-staff-period', 'boss-products-period', 'boss-branches-period',
-            'boss-finance-period', 'boss-reports-period', 'boss-sales-period'].forEach(id => {
+            'boss-finance-period', 'boss-reports-period', 'boss-sales-period',
+            'boss-customers-period'].forEach(id => {
             const box = document.getElementById(id);
             if (box) box.innerHTML = periodChips();
         });
@@ -1297,6 +1307,222 @@ function setPeriod(value) {
         loadFinanceCharts();
     }
 
+    /* ── 6.1) Mijozlar — haridorlar bazasi ───────────── */
+
+    /** Mijozlarni davr bo'yicha yuklaydi (qidiruv serverda filtrlanadi). */
+    async function loadCustomers() {
+        const box = document.getElementById('boss-customers-box');
+        if (!box) return;
+        box.innerHTML = '<div class="boss-loading"><i class="fas fa-spinner fa-spin"></i></div>';
+        const p = new URLSearchParams();
+        p.set('period', state.period);
+        p.set('limit', '300');
+        if (state.customersQuery) p.set('q', state.customersQuery);
+        const data = await api('/api/boss/customers?' + p.toString());
+        if (!data) { box.innerHTML = emptyState('Mijozlar ma\'lumotini olib bo\'lmadi'); return; }
+        const s = data.summary || {};
+        const rows = data.customers || [];
+        const statusLabel = {
+            active: ['Faol', 'success'], vip: ['VIP', 'warning'],
+            inactive: ['Nofaol', 'muted']
+        };
+        box.innerHTML = `
+            <div class="boss-kpi-grid">
+                ${kpiCard('Jami mijozlar', String(s.count || 0), '', 'fa-users', 'primary')}
+                ${kpiCard('Xarid qilganlar', String(s.withOrders || 0), '', 'fa-user-check', 'success')}
+                ${kpiCard('Xaridlar', String(s.orders || 0), "chek soni", 'fa-receipt', 'info')}
+                ${kpiCard('Mijozlar tushumi', fmt(s.revenue || 0) + " so'm", '', 'fa-cash-register', 'success')}
+            </div>
+            <div class="table-wrap"><table class="boss-table"><thead><tr>
+                <th>#</th><th>Mijoz</th><th>Telefon</th><th>Xaridlar</th>
+                <th>Jami summa</th><th>O'rtacha chek</th><th>Oxirgi xarid</th><th>Holat</th>
+            </tr></thead><tbody>${rows.length ? rows.map((c, i) => {
+                const st = statusLabel[String(c.status || '').toLowerCase()]
+                    || [String(c.status || '—'), 'muted'];
+                return `<tr>
+                    <td data-label="#">${i + 1}</td>
+                    <td data-label="Mijoz"><div class="boss-who">
+                        <div class="boss-avatar">${escapeHTML((c.name || '?')[0])}</div>
+                        <div class="boss-staff-name"><strong>${escapeHTML(c.name || '—')}</strong>
+                            <small>ID: ${escapeHTML(String(c.id || '—'))}${c.email ? ' · ' + escapeHTML(c.email) : ''}</small></div>
+                    </div></td>
+                    <td data-label="Telefon"><code>${escapeHTML(c.phone || '—')}</code></td>
+                    <td data-label="Xaridlar"><strong>${Number(c.orders || 0)}</strong> ta
+                        <small>${Number(c.units || 0)} dona</small></td>
+                    <td data-label="Jami summa"><strong class="boss-money">${fmt(c.total || 0)}</strong> so'm</td>
+                    <td data-label="O'rtacha chek">${fmt(c.avgCheck || 0)} so'm</td>
+                    <td data-label="Oxirgi xarid">${escapeHTML(c.lastPurchase || '—')}</td>
+                    <td data-label="Holat">${escapeHTML(st[0])}</td>
+                </tr>`;
+            }).join('')
+                : `<tr><td colspan="8">${emptyState('Mijoz topilmadi — bazaga mijoz qo\'shilmagan')}</td></tr>`}
+            </tbody></table></div>`;
+    }
+
+    /* ── 6.2) Kassa sverkasi ─────────────────────────── */
+
+    /** Bugungi sanani input formatiga (YYYY-MM-DD) qo'yadi. */
+    function initSverkaDate() {
+        const input = document.getElementById('boss-sverka-date');
+        if (!input) return;
+        if (!state.sverkaDate) {
+            const now = new Date();
+            const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+            state.sverkaDate = local.toISOString().slice(0, 10);
+        }
+        if (!input.value) input.value = state.sverkaDate;
+    }
+
+    /** Sanalgan naqd kiritilganda farqni darhol ko'rsatadi. */
+    function updateSverkaDiff() {
+        const input = document.getElementById('boss-sverka-counted');
+        const label = document.getElementById('boss-sverka-diff');
+        if (!input || !label) return;
+        const expected = Number(state.cache.sverkaExpected || 0);
+        const raw = String(input.value || '').replace(/[^\d.]/g, '');
+        const counted = raw === '' ? null : Number(raw);
+        if (counted === null || !Number.isFinite(counted)) {
+            label.textContent = 'Farq: —';
+            label.className = 'boss-sverka-diff';
+            return;
+        }
+        const diff = counted - expected;
+        label.textContent = 'Farq: ' + fmt(Math.abs(diff)) + " so'm "
+            + (diff === 0 ? '(mos)' : diff > 0 ? '(ortiqcha)' : '(kam)');
+        label.className = 'boss-sverka-diff '
+            + (diff === 0 ? 'ok' : diff > 0 ? 'over' : 'short');
+    }
+
+    async function loadSverka() {
+        const box = document.getElementById('boss-sverka-box');
+        if (!box) return;
+        initSverkaDate();
+        box.innerHTML = '<div class="boss-loading"><i class="fas fa-spinner fa-spin"></i></div>';
+        const p = new URLSearchParams();
+        p.set('date', state.sverkaDate || '');
+        if (state.sverkaBranch) p.set('branchId', state.sverkaBranch);
+        const data = await api('/api/boss/cash-sverka?' + p.toString());
+        if (!data) { box.innerHTML = emptyState('Sverka ma\'lumotini olib bo\'lmadi'); return; }
+        state.cache.sverkaExpected = Number(data.expectedCash || 0);
+        const sales = data.sales || {};
+        const flow = data.flow || {};
+        const record = data.record;
+        const recent = data.recent || [];
+        const line = (label, value, cls) => `<tr>
+            <td>${escapeHTML(label)}</td>
+            <td class="boss-money ${cls || ''}"><strong>${fmt(value || 0)}</strong> so'm</td></tr>`;
+        const diffText = record
+            ? (record.difference === 0 ? 'mos' : record.difference > 0 ? 'ortiqcha' : 'kam')
+            : '';
+        box.innerHTML = `
+            <div class="boss-kpi-grid">
+                ${kpiCard('Kutilgan naqd', fmt(data.expectedCash || 0) + " so'm",
+                    'Naqd savdo + kirim − chiqim', 'fa-money-bill-wave', 'primary')}
+                ${kpiCard('Naqd savdo', fmt(sales.cash || 0) + " so'm",
+                    (sales.orders || 0) + ' chek', 'fa-cash-register', 'success')}
+                ${kpiCard('Karta', fmt(sales.card || 0) + " so'm", 'terminal', 'fa-credit-card', 'info')}
+                ${kpiCard('Onlayn / boshqa', fmt((sales.online || 0) + (sales.credit || 0)
+                    + (sales.transfer || 0) + (sales.other || 0)) + " so'm", '', 'fa-globe', 'info')}
+            </div>
+            <div class="boss-sverka-grid">
+                <div class="boss-panel">
+                    <div class="boss-panel-head"><h3><i class="fas fa-calculator"></i> Naqd hisob-kitobi</h3></div>
+                    <div class="boss-panel-body">
+                        <div class="table-wrap"><table class="boss-table"><tbody>
+                            ${line('Naqd savdo', sales.cash)}
+                            ${line('Naqd kirim', flow.kirim)}
+                            ${line('Chiqim', -flow.chiqim, 'text-danger')}
+                            ${line('Xarajat', -flow.harajat, 'text-danger')}
+                            ${line('Kutilgan naqd', data.expectedCash, 'boss-sverka-total')}
+                        </tbody></table></div>
+                        <p class="boss-hint"><i class="fas fa-circle-info"></i>
+                            Karta va onlayn to'lovlar kassadagi naqdga kirmaydi — ular alohida hisoblanadi.
+                            Sana: <strong>${escapeHTML(data.date)}</strong>${data.branchName
+                                ? ' · ' + escapeHTML(data.branchName) : ' · barcha filiallar'}.</p>
+                    </div>
+                </div>
+                <div class="boss-panel">
+                    <div class="boss-panel-head"><h3><i class="fas fa-hand-holding-dollar"></i> Sverkani kiritish</h3></div>
+                    <div class="boss-panel-body">
+                        <label class="form-group"><span>Sanalgan naqd (so'm)</span>
+                            <input type="text" class="form-control" id="boss-sverka-counted"
+                                inputmode="numeric" autocomplete="off"
+                                placeholder="Kassadagi naqdni sanab yozing"
+                                value="${record ? escapeHTML(String(record.counted)) : ''}"></label>
+                        <label class="form-group"><span>Izoh (ixtiyoriy)</span>
+                            <input type="text" class="form-control" id="boss-sverka-note"
+                                maxlength="200" autocomplete="off"
+                                value="${record ? escapeHTML(record.note || '') : ''}"></label>
+                        <div class="boss-sverka-diff" id="boss-sverka-diff">Farq: —</div>
+                        <button type="button" class="btn btn-primary" data-boss-sverka-save>
+                            <i class="fas fa-floppy-disk"></i> Sverkani saqlash</button>
+                        ${record ? `<p class="boss-hint"><i class="fas fa-clock"></i>
+                            Oxirgi sverka: ${escapeHTML(record.createdAt)}
+                            (${escapeHTML(record.createdBy || '—')}) — ${escapeHTML(diffText)}</p>` : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="boss-panel">
+                <div class="boss-panel-head"><h3><i class="fas fa-clock-rotate-left"></i> Oxirgi sverkalar</h3></div>
+                <div class="boss-panel-body">
+                    <div class="table-wrap"><table class="boss-table"><thead><tr>
+                        <th>Sana</th><th>Filial</th><th>Kutilgan</th><th>Sanalgan</th>
+                        <th>Farq</th><th>Kim</th><th>Izoh</th></tr></thead><tbody>
+                        ${recent.length ? recent.map(r => `<tr>
+                            <td data-label="Sana">${escapeHTML(r.date)}</td>
+                            <td data-label="Filial">${escapeHTML(r.branchName || 'Barchasi')}</td>
+                            <td data-label="Kutilgan">${fmt(r.expected)} so'm</td>
+                            <td data-label="Sanalgan">${fmt(r.counted)} so'm</td>
+                            <td data-label="Farq" class="boss-money ${r.difference === 0 ? ''
+                                : r.difference > 0 ? 'text-warning' : 'text-danger'}">
+                                ${r.difference > 0 ? '+' : ''}${fmt(r.difference)} so'm</td>
+                            <td data-label="Kim">${escapeHTML(r.createdBy || '—')}</td>
+                            <td data-label="Izoh">${escapeHTML(r.note || '—')}</td></tr>`).join('')
+                            : `<tr><td colspan="7">${emptyState('Hali sverka kiritilmagan')}</td></tr>`}
+                    </tbody></table></div>
+                </div>
+            </div>`;
+        updateSverkaDiff();
+    }
+
+    async function saveSverka() {
+        const input = document.getElementById('boss-sverka-counted');
+        if (!input) return;
+        const raw = String(input.value || '').replace(/[^\d.]/g, '');
+        const counted = Number(raw);
+        if (raw === '' || !Number.isFinite(counted) || counted < 0) {
+            showNotif('error', 'Xatolik', 'Sanalgan naqd summasini kiriting (0 dan katta yoki teng)');
+            input.focus();
+            return;
+        }
+        initSverkaDate();
+        const button = document.querySelector('[data-boss-sverka-save]');
+        if (button) button.disabled = true;
+        try {
+            const res = await fetch('/api/boss/cash-sverka', {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({
+                    date: state.sverkaDate,
+                    branchId: state.sverkaBranch,
+                    counted: counted,
+                    note: document.getElementById('boss-sverka-note')?.value || ''
+                })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || body.status !== 'success') {
+                showNotif('error', 'Sverka saqlanmadi', body.message || 'Qayta urinib ko\'ring');
+                return;
+            }
+            showNotif('success', 'Sverka saqlandi', body.message || 'Sanalgan summa saqlandi');
+            await loadSverka();
+        } catch (err) {
+            showNotif('error', 'Serverga ulanib bo\'lmadi', 'Sverka saqlanmadi — qayta urinib ko\'ring');
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
+
     /* ── 7) Hisobotlar + CSV eksport ──────────────────── */
 
     function reportParams() {
@@ -2036,9 +2262,11 @@ function setPeriod(value) {
             // Xodim allaqachon saqlangan — xato xabarini «saqlanmadi» deb bermaymiz.
             console.warn('Xodim saqlandi, lekin jadvalni yangilab bo\'lmadi:', refreshError);
         }
-        showNotif('success', 'Xodim qo\'shildi',
-            (created.name || name) + ' ro\'yxatga qo\'shildi. Login: '
-            + (created.phone || phone));
+        showNotif('success', body.restored ? 'Xodim qayta faollashtirildi'
+            : 'Xodim qo\'shildi',
+            (created.name || name) + (body.restored
+                ? ' arxivdan tiklandi (dublikat yaratilmadi). Login: '
+                : ' ro\'yxatga qo\'shildi. Login: ') + (created.phone || phone));
         refreshSalaryPlan();
     }
 
@@ -2881,6 +3109,7 @@ function setPeriod(value) {
                 return;
             }
 
+            if (ev.target.closest('[data-boss-sverka-save]')) { await saveSverka(); return; }
             if (ev.target.closest('[data-boss-export]')) { await exportReportsCsv(); return; }
             if (ev.target.closest('[data-boss-add]')) { openAddStaff(); return; }
             if (ev.target.closest('[data-boss-ownpass]')) { openOwnPasswordModal(); return; }
@@ -2938,6 +3167,12 @@ function setPeriod(value) {
                 clearTimeout(bind.t6);
                 bind.t6 = setTimeout(loadReports, 350);
             }
+            if (ev.target.id === 'boss-customers-search') {
+                state.customersQuery = ev.target.value || '';
+                clearTimeout(bind.t7);
+                bind.t7 = setTimeout(loadCustomers, 300);
+            }
+            if (ev.target.id === 'boss-sverka-counted') updateSverkaDiff();
         });
 
         document.addEventListener('change', (ev) => {
@@ -2972,6 +3207,14 @@ function setPeriod(value) {
             if (id === 'boss-report-cat') { state.reportCat = ev.target.value; loadReports(); }
             if (id === 'boss-sales-branch') { state.salesBranch = ev.target.value; loadStaffSalesOverview(); }
             if (id === 'boss-finance-branch') { state.financeBranch = ev.target.value; loadFinance(); }
+            if (id === 'boss-sverka-date') {
+                state.sverkaDate = ev.target.value || '';
+                loadSverka();
+            }
+            if (id === 'boss-sverka-branch') {
+                state.sverkaBranch = ev.target.value || '';
+                loadSverka();
+            }
 
             // Maxsus sana filtrlari (dan–gacha): chip'lar befaol bo'ladi.
             if (id === 'boss-sales-from' || id === 'boss-sales-to'
@@ -3053,7 +3296,7 @@ function setPeriod(value) {
         state, api, onPageOpen, load, render, setPeriod, refreshCurrent,
         loadStaff, renderRankingPanel, openStaffSales, loadStaffSales,
         loadStaffSalesOverview, showSalesOverview, showSalesDetail,
-        loadProducts, loadBranches, loadFinance, loadReports, loadAudit,
+        loadProducts, loadBranches,        loadFinance, loadReports, loadAudit, loadCustomers, loadSverka, saveSverka,
         loadFinanceCharts, renderCharts, paintCharts,
         openReceiptModal, openProductModal, openBranchModal,
         createStaff, deleteStaff, toggleBlock, submitStaffPassword, openPassModal,
