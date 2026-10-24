@@ -16,7 +16,7 @@ const Boss = (() => {
     const state = {
         period: 'all',
         customActive: false,
-        staffQuery: '', staffRole: '', staffSort: 'total', staffBranch: '', staffStatus: '',
+        staffQuery: '', staffRole: '', staffSort: 'total', staffBranch: '', staffStatus: 'active',
         productView: 'all', productQuery: '', productCat: '',
         reportBranch: '', reportStaff: '', reportProduct: '', reportCat: '',
         reportFrom: '', reportTo: '',
@@ -30,6 +30,7 @@ const Boss = (() => {
         editingStaffId: null,      // tahrir rejimi (bossStaffModal)
         editingStaffOrig: null,    // tahrir ochilgandagi asl qiymatlar
         staffSaving: false,        // takroriy yuborishdan himoya (dublikat yo'q)
+        deletingStaffIds: new Set(),
         staffMenuId: null,         // ochiq uch nuqtali menyu (mobil)
         staffMenuBtn: null,
         staffMode: null,           // oxirgi chizilgan rejim: 'card' | 'table'
@@ -410,7 +411,7 @@ function setPeriod(value) {
         if (state.staffQuery) p.set('q', state.staffQuery);
         if (state.staffRole) p.set('role', state.staffRole);
         if (state.staffBranch) p.set('branchId', state.staffBranch);
-        if (state.staffStatus) p.set('status', state.staffStatus);
+        p.set('status', state.staffStatus || 'all');
         return p.toString();
     }
 
@@ -420,7 +421,7 @@ function setPeriod(value) {
      */
     function clearStaffFilters() {
         state.staffQuery = ''; state.staffRole = '';
-        state.staffStatus = ''; state.staffBranch = '';
+        state.staffStatus = 'active'; state.staffBranch = '';
         const setVal = (id, value) => {
             const el = document.getElementById(id);
             if (el) el.value = value;
@@ -431,9 +432,9 @@ function setPeriod(value) {
         setVal('boss-staff-role-m', '');
         setVal('boss-staff-branch', '');
         setVal('boss-staff-branch-m', '');
-        setVal('boss-staff-status', '');
+        setVal('boss-staff-status', 'active');
         document.querySelectorAll('[data-staff-status]').forEach(p =>
-            p.classList.toggle('active', (p.dataset.staffStatus || '') === ''));
+            p.classList.toggle('active', p.dataset.staffStatus === 'active'));
     }
 
     async function loadStaff() {
@@ -442,6 +443,11 @@ function setPeriod(value) {
         if (!data) return;
         state.cache.staff = data;
         renderStaffList();
+        document.querySelectorAll('[data-staff-status]').forEach(p =>
+            p.classList.toggle('active',
+                (p.dataset.staffStatus || '') === (state.staffStatus || '')));
+        const statusSelect = document.getElementById('boss-staff-status');
+        if (statusSelect) statusSelect.value = state.staffStatus || '';
         const head = document.getElementById('boss-staff-count');
         if (head) head.textContent = `${data.total || 0} ta xodim`;
         // Sidebar'dagi xodimlar badge'i ham shu ma'lumotdan yangilanadi
@@ -657,9 +663,9 @@ function setPeriod(value) {
                         <i class="fas ${blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban'}" aria-hidden="true"></i></button>` : ''}
                     ${canManage ? `<button type="button" class="boss-action-btn danger"
                         data-boss-del="${escapeHTML(String(s.id))}"
-                        title="Arxivlash (savdo tarixi saqlanadi)"
-                        aria-label="Arxivlash: ${escapeHTML(s.name || '')}">
-                        <i class="fas fa-box-archive" aria-hidden="true"></i></button>` : ''}
+                        title="Xodimni o'chirish yoki nofaol qilish"
+                        aria-label="Xodimni o'chirish: ${escapeHTML(s.name || '')}">
+                        <i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
                     </div>
                 </td></tr>`;
         }).join('');
@@ -1379,7 +1385,8 @@ function setPeriod(value) {
             'staff-create': "Xodim qo'shildi", 'staff-update': 'Xodim yangilandi',
             'staff-phone-change': "Login (telefon) o'zgartirildi",
             'phone-changed': "Login (telefon) o'zgartirildi",
-            'staff-delete': "Xodim o'chirildi", 'password-change-own': 'Parol yangilandi',
+            'staff-delete': "Xodim o'chirildi", 'staff-archive': 'Xodim nofaol qilindi',
+            'password-change-own': 'Parol yangilandi',
             'password-change': 'Parol almashtirildi', 'login': 'Tizimga kirildi',
             'login-failed': 'Muvaffaqiyatsiz kirish', 'logout': 'Chiqildi',
             'logout-all': 'Barcha sessiyalar yopildi',
@@ -2087,26 +2094,66 @@ function setPeriod(value) {
                     : 'Xodim blokdan chiqarildi');
     }
 
-    /** ArxIVLASH (soft delete) — tasdiqlash va server himoyasi. */
+    /** Tarix bo'lsa nofaol qiladi, aks holda o'chiradi; server ruxsatni qayta tekshiradi. */
     async function deleteStaff(id) {
-        const row = findStaffRow(id);
+        const staffId = String(id || '').trim();
+        if (!/^\d+$/.test(staffId) || state.deletingStaffIds.has(staffId)) return;
+        const row = findStaffRow(staffId);
         if (!row) return;
+        state.deletingStaffIds.add(staffId);
         const isBossRow = String(row.role || '').toLowerCase() === 'boss';
         const me = !!(currentUser && (String(row.id) === String(currentUser.id)
             || row.login === currentUser.login));
         if (isBossRow || me) {
-            showNotif('error', "Ruxsat yo'q", "O'z yoki Boshliq akountini arxivlab bo'lmaydi");
+            showNotif('error', "Ruxsat yo'q",
+                "O'z yoki Boshliq akountini o'chirish yoki nofaol qilish mumkin emas");
+            state.deletingStaffIds.delete(staffId);
             return;
         }
-        if (!confirm(`"${row.name}" xodimini arxivlashni tasdiqlaysizmi?\n\n`
-            + 'Xodim tizimga kira olmaydi va ro\'yxatda «Nofaol» bo\'lib qoladi.\n'
-            + 'Savdo tarixi, moliya va audit jurnali SAQLANADI.')) return;
-        const res = await fetch('/api/boss/staff/' + encodeURIComponent(id),
-            { method: 'DELETE', headers: authHeaders() });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) { showNotif('error', 'Xatolik', body.message || "Arxivlab bo'lmadi"); return; }
-        showNotif('success', 'Arxivlandi', body.message || 'Xodim nofaol qilindi');
-        await loadStaff();
+        const confirmed = confirm(`"${row.name}" (ID: ${staffId}) xodimini olib tashlashni tasdiqlaysizmi?\n\n`
+            + 'Savdo, maosh, moliya yoki audit tarixi bo\'lsa, hisob butunlay o\'chmaydi — '
+            + 'xodim nofaol qilinadi va sessiyalari yopiladi. Tarixiy bog\'lanishlar bo\'lmasa, '
+            + 'hisob o\'chiriladi. Barcha tarixiy yozuvlar saqlanadi.');
+        if (!confirmed) {
+            state.deletingStaffIds.delete(staffId);
+            return;
+        }
+        document.querySelectorAll('[data-boss-del]').forEach(button => {
+            if (button.dataset.bossDel === staffId) button.disabled = true;
+        });
+        try {
+            const res = await fetch('/api/boss/staff/' + encodeURIComponent(staffId),
+                { method: 'DELETE', headers: authHeaders() });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || body.status !== 'success') {
+                const title = res.status === 403 ? "Ruxsat yo'q"
+                    : res.status === 404 ? 'Xodim topilmadi'
+                    : res.status >= 500 ? 'Server yoki baza xatosi' : 'O\'chirib bo\'lmadi';
+                showNotif('error', title, body.message || 'Amalni bajarib bo\'lmadi');
+                return;
+            }
+            if (!['archived', 'deleted'].includes(body.action)) {
+                await loadStaff();
+                showNotif('error', 'Serverni yangilang',
+                    'Server javobi amal turini tasdiqlamadi. Ilovani qayta ishga tushiring.');
+                return;
+            }
+            showNotif('success', body.action === 'archived' ? 'Xodim nofaol qilindi'
+                : 'Xodim o\'chirildi', body.message || 'Amal muvaffaqiyatli bajarildi');
+            state.staffStatus = 'active';
+            const statusSelect = document.getElementById('boss-staff-status');
+            if (statusSelect) statusSelect.value = 'active';
+            await loadStaff();
+        } catch (error) {
+            console.warn('[Boss] Xodimni o\'chirish so\'rovi bajarilmadi:', error);
+            showNotif('error', 'Serverga ulanib bo\'lmadi',
+                'Xodim holati o\'zgarmagan bo\'lishi mumkin. Ro\'yxatni yangilab tekshiring.');
+        } finally {
+            document.querySelectorAll('[data-boss-del]').forEach(button => {
+                if (button.dataset.bossDel === staffId) button.disabled = false;
+            });
+            state.deletingStaffIds.delete(staffId);
+        }
     }
 /* ── 10) Parol modallari ─────────────────────────── */
 
@@ -2513,7 +2560,7 @@ function setPeriod(value) {
             items.push(['data-boss-block', blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban',
                 blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash',
                 blocked || inactive ? 'ok' : 'warn']);
-            items.push(['data-boss-del', 'fa-box-archive', 'Arxivlash', 'danger']);
+            items.push(['data-boss-del', 'fa-trash', "O'chirish / nofaol qilish", 'danger']);
         }
         menu.innerHTML = items.map(([attr, icon, label, cls]) =>
             `<button type="button" role="menuitem" class="${cls}" ${attr}="${escapeHTML(String(id))}">`

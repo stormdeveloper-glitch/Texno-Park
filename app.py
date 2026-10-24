@@ -3123,9 +3123,9 @@ def boss_staff_list():
     branch_filter = str(request.args.get('branchId') or '').strip()
     if is_manager_actor and branch_filter and branch_filter != manager_branch_id:
         return json_error('Menejer faqat o\'z filialidagi xodimlarni ko\'ra oladi', 403)
-    status_filter = str(request.args.get('status') or '').strip().lower()
-    if status_filter not in STAFF_STATUSES:
-        status_filter = ''
+    status_filter = str(request.args.get('status', 'active') or '').strip().lower()
+    if status_filter not in STAFF_STATUSES and status_filter != 'all':
+        status_filter = 'active'
 
     # Mobil paneldagi umumiy ko'rsatkichlar — barcha xodimlar bo'yicha
     # (qidiruv/filtrdan qat'i nazar), shunda raqamlar "sakrab" ketmaydi.
@@ -3155,7 +3155,7 @@ def boss_staff_list():
         if branch_filter and str(user.get('branchId') or '') != branch_filter:
             continue
         status = str(user.get('status') or 'active').strip().lower()
-        if status_filter and status != status_filter:
+        if status_filter != 'all' and status != status_filter:
             continue
         view = staff_public_view(
             user,
@@ -4143,77 +4143,178 @@ def serve_robots():
             'Crawl-delay: 10\n')
     return body
 
+def _record_references_staff(record, target, id_fields, login_fields, name_fields):
+    """Tarix yozuvidagi ma'lum xodim identifikatorlarini rekursiv tekshiradi."""
+    if isinstance(record, list):
+        return any(_record_references_staff(item, target, id_fields, login_fields,
+                                            name_fields) for item in record)
+    if not isinstance(record, dict):
+        return False
+
+    staff_id = str(target.get('id') or '').strip()
+    login = str(target.get('login') or '').strip().lower()
+    name = str(target.get('name') or '').strip().lower()
+    for field in id_fields:
+        value = record.get(field)
+        if value not in (None, '') and str(value).strip() == staff_id:
+            return True
+    for field in login_fields:
+        value = str(record.get(field) or '').strip().lower()
+        if login and value == login:
+            return True
+    for field in name_fields:
+        value = str(record.get(field) or '').strip().lower()
+        if name and value == name:
+            return True
+    return any(_record_references_staff(value, target, id_fields, login_fields,
+                                        name_fields) for value in record.values())
+
+
+def _staff_has_historical_records(store, target, staff):
+    """Moliyaviy, savdo yoki audit tarixi bor xodimni jismonan o'chirmaydi."""
+    history_fields = {
+        'sales': (
+            {'staffId', 'cashierId', 'employeeId', 'userId'},
+            {'cashierLogin', 'staffLogin', 'employeeLogin'},
+            {'cashier', 'staffName', 'employeeName'},
+        ),
+        'salaryHistory': (
+            {'staffId', 'empId', 'employeeId', 'userId'},
+            {'staffLogin', 'employeeLogin'},
+            {'staffName', 'empName', 'employeeName'},
+        ),
+        'salaryRecords': (
+            {'staffId', 'empId', 'employeeId', 'userId'},
+            {'staffLogin', 'employeeLogin'},
+            {'staffName', 'empName', 'employeeName'},
+        ),
+        'staffSalaryHistory': (
+            {'staffId', 'empId', 'employeeId', 'userId'},
+            {'staffLogin', 'employeeLogin'},
+            {'staffName', 'empName', 'employeeName'},
+        ),
+        'cashFlow': (
+            {'staffId', 'cashierId', 'employeeId', 'userId'},
+            {'staffLogin', 'cashierLogin', 'employeeLogin'},
+            {'staffName', 'cashier', 'employeeName'},
+        ),
+        'expenses': (
+            {'staffId', 'cashierId', 'employeeId', 'userId'},
+            {'staffLogin', 'cashierLogin', 'employeeLogin'},
+            {'staffName', 'cashier', 'employeeName'},
+        ),
+        'contracts': (
+            {'staffId', 'employeeId', 'userId', 'createdByStaffId'},
+            {'staffLogin', 'employeeLogin', 'createdByLogin'},
+            {'staffName', 'employeeName', 'employee'},
+        ),
+    }
+    name_counts = staff_name_counts(staff)
+    for key, (id_fields, login_fields, name_fields) in history_fields.items():
+        records = store.get(key)
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if key == 'sales' and isinstance(record, dict) \
+                    and sale_belongs_to_staff(record, target, name_counts):
+                return True
+            if _record_references_staff(record, target, id_fields,
+                                        login_fields, name_fields):
+                return True
+    return False
+
+
 @app.route('/api/boss/staff/<int:staff_id>', methods=['DELETE'])
 @require_staff('admin')
+@_serialize_staff_write
 def boss_staff_delete(staff_id):
-    """Xodimni ARXIVLASH (soft delete) — savdo tarixi yo'qolmaydi.
-
-    Yozuv `staff_users` dan O'CHIRILMAYDI: status `inactive` bo'ladi va
-    `deletedAt/deletedBy` belgilanadi. Shu sababli eski savdolar, audit
-    jurnali va hisobotlar o'sha xodimga bog'langan holda qoladi.
-
-    Rad etiladi:
-      • o'z akountini arxivlash;
-      • Boshliq akountini arxivlash (oxirgi boshliq himoyasi);
-      • o'zidan yuqori yoki teng roldagi akountni arxivlash.
-
-    Frontend tasdiqlash oynasini ko'rsatadi, lekin qaror QAYTADA serverda
-    tekshiriladi — frontend tekshiruvi ishlatilmaydi.
-    """
+    """Tarixi bo'lmagan xodimni o'chiradi, tarixlisini xavfsiz arxivlaydi."""
+    if staff_id <= 0:
+        return json_error('Xodim ID noto\'g\'ri', 400)
     staff = load_staff()
     target = next((u for u in staff
                    if isinstance(u, dict) and _num(u.get('id'), -1) == staff_id), None)
     if not target:
-        return json_error('Xodim topilmadi', 404)
+        return json_error('Xodim topilmadi yoki allaqachon o\'chirilgan', 404)
 
     actor = getattr(request, 'staff', {}) or {}
     actor_login = str(actor.get('sub', '') or '').strip().lower()
     actor_id = _num(actor.get('id'), -1)
-    actor_role = str(actor.get('role') or '').strip().lower()
+    actor_role = canonical_role(actor.get('role'))
     target_login = str(target.get('login', '') or '').strip().lower()
     target_id = _num(target.get('id'), -1)
+    target_role = canonical_role(target.get('role'))
 
-    if target_login and target_login == actor_login:
-        return json_error('O\'z akountingizni arxivlay olmaysiz', 403)
-    if actor_id > 0 and target_id == actor_id:
-        return json_error('O\'z akountingizni arxivlay olmaysiz', 403)
-
-    target_role = str(target.get('role', '')).strip().lower()
+    if (target_login and target_login == actor_login) or (
+            actor_id > 0 and target_id == actor_id):
+        return json_error('O\'z akountingizni o\'chira yoki arxivlay olmaysiz', 403)
     if target_role == 'boss':
-        return json_error('Boshliq akountini arxivlab bo\'lmaydi', 403)
+        return json_error('Boshliq akountini o\'chirish yoki arxivlash mumkin emas', 403)
+    if role_rank(target_role) <= 0:
+        return json_error('Xodim roli noto\'g\'ri; akountni o\'chirish mumkin emas', 409)
     if role_rank(actor_role) <= role_rank(target_role):
-        return json_error('Bu akountni arxivlash uchun yetarli huquq yo\'q', 403)
-
+        return json_error('Bu akountni boshqarish uchun yetarli huquq yo\'q', 403)
     if str(target.get('status') or 'active').strip().lower() == 'inactive':
-        return jsonify({'status': 'success',
-                        'message': f'"{target.get("name")}" allaqachon arxivlangan',
-                        'staff': staff_public_view(
-                            target, include_salary=actor_role == 'boss')})
+        return json_error('Xodim allaqachon nofaol yoki arxivlangan', 409)
 
-    stamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-    target['status'] = 'inactive'
-    target['deletedAt'] = stamp
-    target['deletedBy'] = _actor_name()[:120]
-    target['updatedAt'] = stamp
-    target['updatedBy'] = _actor_name()[:120]
+    if target_role == 'admin' and str(target.get('status') or 'active').lower() == 'active':
+        active_admins = [user for user in staff if isinstance(user, dict)
+                         and canonical_role(user.get('role')) == 'admin'
+                         and str(user.get('status') or 'active').strip().lower() == 'active']
+        if len(active_admins) <= 1:
+            return json_error('Yagona faol administrator akountini o\'chirish yoki '
+                              'nofaol qilish mumkin emas', 409)
+
+    has_history = _staff_has_historical_records(db_manager.get_all() or {}, target, staff)
+    if has_history:
+        stamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        target['status'] = 'inactive'
+        target['deletedAt'] = stamp
+        target['deletedBy'] = _actor_name()[:120]
+        target['updatedAt'] = stamp
+        target['updatedBy'] = _actor_name()[:120]
+        try:
+            db_manager.save_keys({'staff_users': staff})
+        except Exception as exc:
+            print(f'[BOSS] Xodimni nofaol qilishda ma\'lumotlar bazasi xatosi '
+                  f'({type(exc).__name__})')
+            return json_error('Xodimni nofaol qilishda server yoki baza xatosi yuz berdi', 500)
+
+        revoke_login_sessions(target_login)
+        audit_log('staff-archive', str(target.get('name', '')),
+                  f'rol={target_role} · tarix saqlangan holda nofaol qilindi', _actor_name())
+        server_security_log('staff-archived', 'medium',
+                            f'Akount nofaol qilindi, tarix saqlandi '
+                            f'({target_role}; ID={staff_id})', _actor_name())
+        return jsonify({
+            'status': 'success',
+            'action': 'archived',
+            'message': f'"{target.get("name")}" tarixiy yozuvlari saqlangan holda '
+                       f'nofaol qilindi.',
+            'staff': staff_public_view(target, include_salary=actor_role == 'boss'),
+        })
+
+    remaining_staff = [user for user in staff
+                       if not (isinstance(user, dict)
+                               and _num(user.get('id'), -1) == staff_id)]
     try:
-        db_manager.save_keys({'staff_users': staff})
-    except Exception as e:
-        print(f'[BOSS] Xodimni arxivlab bo\'lmadi: {e}')
-        return json_error('Arxivlab bo\'lmadi', 500)
+        db_manager.save_keys({'staff_users': remaining_staff})
+    except Exception as exc:
+        print(f'[BOSS] Xodimni o\'chirishda ma\'lumotlar bazasi xatosi '
+              f'({type(exc).__name__})')
+        return json_error('Xodimni o\'chirishda server yoki baza xatosi yuz berdi', 500)
 
-    # Arxivlangan akountning sessiyalari darhol bekor qilinadi.
     revoke_login_sessions(target_login)
-    audit_log('staff-archive', str(target.get('name', '')),
-              f'rol={target_role} · nofaol qilindi', _actor_name())
-    server_security_log('staff-archived', 'medium',
-                        f'Akount arxivlandi: {target.get("name")} ({target_role})',
+    audit_log('staff-delete', str(target.get('name', '')),
+              f'rol={target_role} · tarixiy bog\'lanishlar topilmadi', _actor_name())
+    server_security_log('staff-deleted', 'medium',
+                        f'Akount o\'chirildi (rol={target_role}; ID={staff_id})',
                         _actor_name())
-    return jsonify({'status': 'success',
-                    'message': f'"{target.get("name")}" arxivlandi (nofaol). '
-                               f'Savdo tarixi saqlandi.',
-                    'staff': staff_public_view(
-                        target, include_salary=actor_role == 'boss')})
+    return jsonify({
+        'status': 'success',
+        'action': 'deleted',
+        'message': f'"{target.get("name")}" xodimi o\'chirildi.',
+    })
 
 
 # ============================================================
