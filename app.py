@@ -3203,7 +3203,6 @@ def boss_staff_list():
         if status_filter != 'all' and status != status_filter:
 =======
         if status_filter and status != status_filter:
->>>>>>> 63b5a6cb3fec4c3db77987c8d960c30e7cc95233
             continue
         view = staff_public_view(
             user,
