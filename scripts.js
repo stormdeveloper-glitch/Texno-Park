@@ -9443,6 +9443,36 @@ const CONTRACT_STATUS = {
     cancelled: { label: 'Bekor qilingan', badge: 'badge-gray' }
 };
 
+/**
+ * Shartnoma shablonlari — «Shartnomalar» bo'limida shartnoma yaratishda
+ * tanlanadi. Standart shablon avvalgidek to'lovlar jadvali + hisob-faktura
+ * chiqaradi; qolgan ikkitasi to'liq matnli, real ma'lumotlar bilan
+ * to'ldiriladigan yuridik hujjat shablonlari.
+ *
+ * DIQQAT: bu blok `contracts` massivi o'qilishidan OLDIN turishi shart —
+ * normalizeContract() shu yerdagi normalizeContractTemplate() ni chaqiradi
+ * (aks holda TDZ xatosi: «Cannot access before initialization»).
+ */
+const CONTRACT_TEMPLATES = {
+    standard: {
+        label: 'Standart',
+        hint: "Standart shablon: to'lovlar jadvali va hisob-faktura bitta hujjatda chiqadi."
+    },
+    installment: {
+        label: "Muddatli to'lov",
+        hint: "To'liq muddatli to'lov shartnomasi: tomonlar, tovar, ustama, oylik to'lov jadvali va imzolar."
+    },
+    partnership: {
+        label: 'Hamkorlik',
+        hint: "Hamkorlik shartnomasi: hamkor rekvizitlari, majburiyatlar, komissiya va hisob-kitob tartibi."
+    }
+};
+
+function normalizeContractTemplate(value) {
+    const v = String(value || '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(CONTRACT_TEMPLATES, v) ? v : 'standard';
+}
+
 let contracts = safeJsonParse(localStorage.getItem('tp_contracts') || 'null', null);
 if (!Array.isArray(contracts)) contracts = [];
 try {
@@ -9460,8 +9490,73 @@ const CONTRACT_TYPES = [
     'Xizmat ko\'rsatish shartnomasi',
     'Kafolat shartnomasi',
     'Muddatli to\'lov shartnomasi',
+    'Hamkorlik shartnomasi',
     'Yetkazib berish shartnomasi'
 ];
+
+/** Shablon maydonlarini ko'rsatadi/yashiradi (kiritilgan qiymatlarga tegmaydi) */
+function syncContractTemplateFields(template) {
+    const t = normalizeContractTemplate(template || document.getElementById('ct-template')?.value);
+    const inst = document.getElementById('ct-fields-installment');
+    const part = document.getElementById('ct-fields-partnership');
+    const instBlock = document.getElementById('ct-inst-block');
+    if (inst) inst.style.display = t === 'installment' ? '' : 'none';
+    if (part) part.style.display = t === 'partnership' ? '' : 'none';
+    // Hamkorlik shartnomasida bo'lib to'lash jadvali yo'q — blokni yashiramiz
+    if (instBlock) instBlock.style.display = t === 'partnership' ? 'none' : '';
+    const hint = document.getElementById('ct-template-hint');
+    if (hint) hint.textContent = (CONTRACT_TEMPLATES[t] || CONTRACT_TEMPLATES.standard).hint;
+    // Hamkorlik shartnomasida bu maydon mijoz emas, hamkorning mas'ul shaxsi
+    const customerLabel = document.getElementById('ct-customer')?.closest('.form-col')?.querySelector('label');
+    if (customerLabel) {
+        customerLabel.textContent = t === 'partnership'
+            ? "Hamkor mas'ul shaxsi (F.I.Sh) *"
+            : 'Mijoz F.I.Sh *';
+    }
+    return t;
+}
+
+/**
+ * Foydalanuvchi shablonni almashtirganda chaqiriladi: tur, bo'lib to'lash
+ * qiymatlari va maydonlari shablonga moslanadi (mavjud kiritilganlar
+ * o'chirilmaydi — faqat bo'sh maydonlar to'ldiriladi).
+ */
+function applyContractTemplate() {
+    const t = syncContractTemplateFields();
+    const typeSel = document.getElementById('ct-type');
+    if (typeSel) {
+        if (t === 'installment') typeSel.value = "Muddatli to'lov shartnomasi";
+        if (t === 'partnership') typeSel.value = 'Hamkorlik shartnomasi';
+    }
+    const monthsEl = document.getElementById('ct-months');
+    if (t === 'partnership' && monthsEl) monthsEl.value = '0';
+    if (t === 'installment') {
+        if (monthsEl && !Number(monthsEl.value)) monthsEl.value = '12';
+        const baseEl = document.getElementById('ct-base');
+        const amount = Number(document.getElementById('ct-amount')?.value) || 0;
+        if (baseEl && !Number(baseEl.value) && amount) baseEl.value = String(amount);
+        const paydayEl = document.getElementById('ct-payday');
+        if (paydayEl && !Number(paydayEl.value)) {
+            const start = document.getElementById('ct-start')?.value || isoDate();
+            paydayEl.value = String(Math.min(28, Number(start.slice(8, 10)) || 1));
+        }
+    }
+    updateContractInstCalc();
+    updateContractPartnerCalc();
+}
+
+/** Hamkorlik shartnomasi uchun komissiya/hisob-kitob hisobi (forma izohi) */
+function updateContractPartnerCalc() {
+    const el = document.getElementById('ct-partner-calc');
+    if (!el) return;
+    const amount = Math.max(0, Number(document.getElementById('ct-amount')?.value) || 0);
+    const pct = Math.min(100, Math.max(0, Number(document.getElementById('ct-commission')?.value) || 0));
+    const days = Math.min(90, Math.max(1, Math.floor(Number(document.getElementById('ct-settle')?.value) || 0) || 10));
+    const term = Math.min(60, Math.max(0, Math.floor(Number(document.getElementById('ct-term')?.value) || 0)));
+    const reward = Math.round(amount * pct / 100);
+    el.textContent = `Shartnoma summasi: ${fmt(amount)} so'm · Komissiya: ${pct}% = ${fmt(reward)} so'm · `
+        + `Hisob-kitob: har ${days} kunda · Muddat: ${term ? term + ' oy' : 'cheklanmagan'}`;
+}
 
 function isoDate(date = new Date()) {
     const d = new Date(date);
@@ -9549,7 +9644,18 @@ function normalizeContract(c) {
         baseAmount: Math.max(0, Number(c.baseAmount) || 0),
         prepay: Math.max(0, Number(c.prepay) || 0),
         months: Math.min(36, Math.max(0, Math.floor(Number(c.months) || 0))),
-        payDay: Math.min(28, Math.max(1, Math.floor(Number(c.payDay) || 0) || new Date(start + 'T00:00:00').getDate() || 1))
+        payDay: Math.min(28, Math.max(1, Math.floor(Number(c.payDay) || 0) || new Date(start + 'T00:00:00').getDate() || 1)),
+        // ---- Shablon va shablonga xos rekvizitlar (eski yozuvlarda bo'sh) ----
+        template: normalizeContractTemplate(c.template),
+        passport: cleanText(c.passport, 40),
+        address: cleanText(c.address, 160),
+        partner: cleanText(c.partner, 120),
+        partnerPhone: cleanText(c.partnerPhone, 40),
+        partnerAddress: cleanText(c.partnerAddress, 160),
+        partnerTin: cleanText(c.partnerTin, 20),
+        commissionPct: Math.min(100, Math.max(0, Number(c.commissionPct) || 0)),
+        settleDays: Math.min(90, Math.max(1, Math.floor(Number(c.settleDays) || 0) || 10)),
+        termMonths: Math.min(60, Math.max(0, Math.floor(Number(c.termMonths) || 0)))
     };
 }
 
@@ -9659,6 +9765,29 @@ function applyContractSaleSelection() {
     if (phone) set('ct-phone', phone);
     set('ct-amount', String(Number(sale.total) || 0));
     set('ct-base', String(Number(sale.total) || 0));
+    // Muddatli to'lov shabloni tanlangan bo'lsa — kassadagi kredit shartlarini olib kelamiz
+    if (normalizeContractTemplate(document.getElementById('ct-template')?.value) === 'installment') {
+        const creditInfo = sale.credit && typeof sale.credit === 'object' ? sale.credit : null;
+        if (creditInfo) {
+            set('ct-prepay', String(Math.max(0, Number(creditInfo.down) || 0)));
+            const monthsSel = document.getElementById('ct-months');
+            const m = Math.min(36, Math.max(0, Math.floor(Number(creditInfo.months) || 0)));
+            if (monthsSel && m) {
+                if (!Array.from(monthsSel.options).some(o => Number(o.value) === m)) {
+                    const opt = document.createElement('option');
+                    opt.value = String(m);
+                    opt.textContent = m + ' oy';
+                    monthsSel.appendChild(opt);
+                }
+                monthsSel.value = String(m);
+            }
+            const paydayEl = document.getElementById('ct-payday');
+            if (paydayEl && !Number(paydayEl.value)) {
+                const startIso = document.getElementById('ct-start')?.value || isoDate();
+                paydayEl.value = String(Math.min(28, Number(startIso.slice(8, 10)) || 1));
+            }
+        }
+    }
     updateContractInstCalc();
     const summary = contractItemsSummary(sale.items);
     if (summary) set('ct-subject', summary);
@@ -9872,7 +10001,9 @@ const Contracts = {
       <td><span class="badge badge-blue">${escapeHTML(c.type)}</span></td>
       <td style="font-weight:700;color:var(--primary)">${fmt(c.amount)} so'm</td>
       <td style="font-size:12px">${fmtDateISO(c.startDate)} → ${fmtDateISO(c.endDate)}
-        <div style="font-size:11px;color:var(--muted)">${c.warrantyMonths} oy kafolat</div>
+        <div style="font-size:11px;color:var(--muted)">${c.template === 'partnership'
+            ? (Number(c.termMonths) ? Number(c.termMonths) + ' oy muddat' : 'Muddat cheklanmagan')
+            : c.warrantyMonths + ' oy kafolat'}</div>
       </td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
       <td>
@@ -9881,6 +10012,8 @@ const Contracts = {
               class="fas fa-eye"></i></button>
           <button class="btn btn-outline btn-sm" onclick="Contracts.print(${c.id})" title="Chop etish"><i
               class="fas fa-print"></i></button>
+          <button class="btn btn-outline btn-sm" onclick="Contracts.previewDoc(${c.id})" title="Hujjat dizayni"><i
+              class="fas fa-file-lines"></i></button>
           ${canManage ? `<button class="btn btn-outline btn-sm" onclick="Contracts.edit(${c.id})" title="Tahrirlash"><i
               class="fas fa-pen"></i></button>` : ''}
           ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="Contracts.remove(${c.id})" title="O'chirish"><i
@@ -9912,6 +10045,18 @@ const Contracts = {
         set('ct-prepay', '0');
         set('ct-months', '0');
         set('ct-payday', '');
+        set('ct-template', 'standard');
+        set('ct-passport', '');
+        set('ct-address', '');
+        set('ct-partner', '');
+        set('ct-partner-phone', '');
+        set('ct-partner-address', '');
+        set('ct-partner-tin', '');
+        set('ct-commission', '5');
+        set('ct-settle', '10');
+        set('ct-term', '12');
+        syncContractTemplateFields('standard');
+        updateContractPartnerCalc();
         try { ensureContractPhotoField(); setContractPhoto(''); } catch (e) { console.warn('Shartnoma rasm maydoni:', e); }
         updateContractInstCalc();
         const typeSel = document.getElementById('ct-type');
@@ -9948,8 +10093,20 @@ const Contracts = {
         set('ct-prepay', String(c.prepay || 0));
         set('ct-months', String(c.months || 0));
         set('ct-payday', c.months ? String(c.payDay || '') : '');
+        set('ct-template', normalizeContractTemplate(c.template));
+        set('ct-passport', c.passport || '');
+        set('ct-address', c.address || '');
+        set('ct-partner', c.partner || '');
+        set('ct-partner-phone', c.partnerPhone || '');
+        set('ct-partner-address', c.partnerAddress || '');
+        set('ct-partner-tin', c.partnerTin || '');
+        set('ct-commission', String(Number(c.commissionPct) || 0));
+        set('ct-settle', String(Number(c.settleDays) || 10));
+        set('ct-term', String(Number(c.termMonths) || 0));
+        syncContractTemplateFields(c.template);
         try { ensureContractPhotoField(); setContractPhoto(c.photo || ''); } catch (e) { console.warn('Shartnoma rasm maydoni:', e); }
         updateContractInstCalc();
+        updateContractPartnerCalc();
         openModal('contractModal');
     },
     /** Qo'lda kiritilgan shartnomani saqlaydi (faqat administrator) */
@@ -9963,6 +10120,17 @@ const Contracts = {
         const phone = validateSafeInput('Telefon', document.getElementById('ct-phone')?.value, 40);
         if (phone === null) return;
         const saleId = Number(document.getElementById('ct-sale')?.value) || null;
+        // Chek tanlangan bo'lsa — hujjatdagi tovar jadvali real chek qatorlaridan tuziladi
+        const pickedSale = saleId
+            ? (salesHistory || []).find(s => Number(s.id) === Number(saleId))
+            : null;
+        const saleItems = pickedSale && Array.isArray(pickedSale.items)
+            ? pickedSale.items.slice(0, 50).map(i => ({
+                name: cleanText(i?.name, 120),
+                qty: Math.max(1, Number(i?.qty) || 1),
+                price: Math.max(0, Number(i?.price) || 0)
+            })).filter(i => i.name)
+            : [];
         const subject = validateSafeInput('Shartnoma predmeti', document.getElementById('ct-subject')?.value, 300);
         if (subject === null) return;
         const note = validateSafeInput('Izoh', document.getElementById('ct-note')?.value, 300);
@@ -9973,13 +10141,38 @@ const Contracts = {
         const startInput = document.getElementById('ct-start')?.value || '';
         const start = /^\d{4}-\d{2}-\d{2}$/.test(startInput) ? startInput : isoDate();
         const warranty = Math.min(120, Math.max(1, Number(document.getElementById('ct-warranty')?.value) || 12));
-        const endDate = addMonthsISO(start, warranty);
+        const template = normalizeContractTemplate(document.getElementById('ct-template')?.value);
+        const passport = validateSafeInput('Xaridor pasporti', document.getElementById('ct-passport')?.value, 40);
+        if (passport === null) return;
+        const address = validateSafeInput('Xaridor manzili', document.getElementById('ct-address')?.value, 160);
+        if (address === null) return;
+        const partner = validateSafeInput('Hamkor nomi', document.getElementById('ct-partner')?.value, 120);
+        if (partner === null) return;
+        const partnerPhone = validateSafeInput('Hamkor telefoni', document.getElementById('ct-partner-phone')?.value, 40);
+        if (partnerPhone === null) return;
+        const partnerAddress = validateSafeInput('Hamkor manzili', document.getElementById('ct-partner-address')?.value, 160);
+        if (partnerAddress === null) return;
+        const partnerTin = validateSafeInput('Hamkor STIR', document.getElementById('ct-partner-tin')?.value, 20);
+        if (partnerTin === null) return;
+        if (template === 'partnership' && !partner.trim()) {
+            playError(); showNotif('error', 'Xato!', 'Hamkorlik shartnomasi uchun hamkor nomini kiriting'); return;
+        }
+        const commissionPct = Math.min(100, Math.max(0, Number(document.getElementById('ct-commission')?.value) || 0));
+        const settleDays = Math.min(90, Math.max(1, Math.floor(Number(document.getElementById('ct-settle')?.value) || 0) || 10));
+        const termMonths = Math.min(60, Math.max(0, Math.floor(Number(document.getElementById('ct-term')?.value) || 0)));
+        const endDate = (template === 'partnership' && termMonths > 0)
+            ? addMonthsISO(start, termMonths)
+            : addMonthsISO(start, warranty);
         const baseAmount = Math.max(0, Number(document.getElementById('ct-base')?.value) || 0) || amount;
         const prepay = Math.min(amount, Math.max(0, Number(document.getElementById('ct-prepay')?.value) || 0));
-        const months = Math.min(36, Math.max(0, Math.floor(Number(document.getElementById('ct-months')?.value) || 0)));
+        const months = template === 'partnership'
+            ? 0
+            : Math.min(36, Math.max(0, Math.floor(Number(document.getElementById('ct-months')?.value) || 0)));
         const payDay = Math.min(28, Math.max(1, Math.floor(Number(document.getElementById('ct-payday')?.value) || 0) || Number(start.slice(8, 10)) || 1));
         const photo = safeImageUrl(document.getElementById('ct-photo')?.value || '');
-        const finalType = months > 0 ? 'Muddatli to\'lov shartnomasi' : type;
+        const finalType = template === 'partnership'
+            ? 'Hamkorlik shartnomasi'
+            : (months > 0 ? 'Muddatli to\'lov shartnomasi' : type);
 
         if (editingContractId) {
             const c = contracts.find(x => Number(x.id) === Number(editingContractId));
@@ -9987,6 +10180,9 @@ const Contracts = {
             Object.assign(c, {
                 customer, phone, type: finalType, amount, subject, note, photo,
                 baseAmount, prepay, months, payDay,
+                template, passport, address, partner, partnerPhone, partnerAddress, partnerTin,
+                commissionPct, settleDays, termMonths,
+                items: (Array.isArray(c.items) && c.items.length) ? c.items : saleItems,
                 warrantyMonths: warranty, startDate: start, endDate,
                 status: c.status === 'cancelled' ? 'cancelled' : contractStatusFor(endDate)
             });
@@ -9998,6 +10194,9 @@ const Contracts = {
                 number: nextContractNumber(),
                 type: finalType, customer, phone, subject, amount, photo,
                 baseAmount, prepay, months, payDay,
+                template, passport, address, partner, partnerPhone, partnerAddress, partnerTin,
+                commissionPct, settleDays, termMonths,
+                items: saleItems,
                 warrantyMonths: warranty, startDate: start, endDate,
                 status: contractStatusFor(endDate),
                 saleId: saleId,
@@ -10050,12 +10249,21 @@ const Contracts = {
         <div><span class="cv-label">Shartnoma turi</span><b>${escapeHTML(c.type)}</b></div>
         <div><span class="cv-label">Summa</span><b>${fmt(c.amount)} so'm</b></div>
         <div><span class="cv-label">To'lov usuli</span><b>${escapeHTML(c.payType || '—')}</b></div>
-        <div><span class="cv-label">Kafolat muddati</span><b>${c.warrantyMonths} oy</b></div>
+        ${c.template === 'partnership'
+            ? `<div><span class="cv-label">Shartnoma muddati</span><b>${Number(c.termMonths) ? Number(c.termMonths) + ' oy' : 'Cheklanmagan'}</b></div>`
+            : `<div><span class="cv-label">Kafolat muddati</span><b>${c.warrantyMonths} oy</b></div>`}
         <div><span class="cv-label">Boshlanish</span><b>${fmtDateISO(c.startDate)}</b></div>
         <div><span class="cv-label">Tugash</span><b>${fmtDateISO(c.endDate)}</b></div>
         ${c.months ? `<div><span class="cv-label">Ustamasiz narx</span><b>${fmt(c.baseAmount || c.amount)} so'm</b></div>
         <div><span class="cv-label">Bo'lib to'lash</span><b>${c.months} oy × ${fmt(contractSchedule(c).monthly)} so'm</b></div>
         <div><span class="cv-label">To'lov kuni</span><b>Har oyning ${contractSchedule(c).payDay}-kuni</b></div>` : ''}
+        <div><span class="cv-label">Shablon</span><b>${escapeHTML((CONTRACT_TEMPLATES[c.template] || CONTRACT_TEMPLATES.standard).label)}</b></div>
+        ${c.template === 'installment' && c.passport ? `<div><span class="cv-label">Xaridor pasporti</span><b>${escapeHTML(c.passport)}</b></div>` : ''}
+        ${c.template === 'installment' && c.address ? `<div><span class="cv-label">Xaridor manzili</span><b>${escapeHTML(c.address)}</b></div>` : ''}
+        ${c.template === 'partnership' ? `<div><span class="cv-label">Hamkor</span><b>${escapeHTML(c.partner || '—')}</b></div>
+        <div><span class="cv-label">Hamkor telefoni</span><b>${escapeHTML(c.partnerPhone || '—')}</b></div>
+        <div><span class="cv-label">Komissiya</span><b>${Number(c.commissionPct) || 0}% — ${fmt(Math.round(c.amount * (Number(c.commissionPct) || 0) / 100))} so'm</b></div>
+        <div><span class="cv-label">Hisob-kitob davri</span><b>Har ${Number(c.settleDays) || 10} kunda</b></div>` : ''}
         <div><span class="cv-label">Yaratgan</span><b>${escapeHTML(c.createdBy || '—')}</b></div>
         <div><span class="cv-label">Yaratilgan vaqt</span><b>${escapeHTML(c.createdAt)}</b></div>
       </div>
@@ -10064,6 +10272,7 @@ const Contracts = {
       ${c.note ? `<div class="contract-note"><i class="fas fa-circle-info"></i> ${escapeHTML(c.note)}</div>` : ''}
       <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" onclick="Contracts.print(${c.id})"><i class="fas fa-print"></i> Chop etish</button>
+        <button class="btn btn-outline btn-sm" onclick="closeModal('contractViewModal');Contracts.previewDoc(${c.id})"><i class="fas fa-file-lines"></i> Hujjat dizayni</button>
         ${canManage ? `<button class="btn btn-outline btn-sm" onclick="closeModal('contractViewModal');Contracts.edit(${c.id})"><i class="fas fa-pen"></i> Tahrirlash</button>` : ''}
         ${canManage && c.status !== 'cancelled' ? `<button class="btn btn-outline btn-sm" onclick="Contracts.extend(${c.id})"><i class="fas fa-calendar-plus"></i> Kafolatni uzaytirish</button>` : ''}
         ${isAdmin && c.status !== 'cancelled' ? `<button class="btn btn-danger btn-sm" onclick="Contracts.cancelContract(${c.id})"><i class="fas fa-ban"></i> Bekor qilish</button>` : ''}
@@ -10071,6 +10280,21 @@ const Contracts = {
         }
         openModal('contractViewModal');
     },
+    /** Hujjat dizaynini modalda ko'rsatadi (chop etishdan oldin ko'rish) */
+    previewDoc(id) {
+        const c = contracts.find(x => Number(x.id) === Number(id));
+        if (!c) return;
+        const body = document.getElementById('contractDocBody');
+        if (!body) { this.print(id); return; }
+        body.innerHTML = buildContractPrintHTML(c);
+        const title = document.getElementById('contractDocTitle');
+        if (title) title.innerHTML = `<i class="fas fa-file-lines" style="color:var(--primary);margin-right:8px"></i>${escapeHTML(c.number)} — hujjat ko'rinishi`;
+        const printBtn = document.getElementById('contractDocPrintBtn');
+        if (printBtn) printBtn.setAttribute('onclick', `Contracts.print(${c.id})`);
+        body.scrollTop = 0;
+        openModal('contractDocModal');
+    },
+
     /** Shartnomani chop etish uchun tayyorlaydi (A4 print) */
     print(id) {
         const c = contracts.find(x => Number(x.id) === Number(id));
@@ -10082,6 +10306,15 @@ const Contracts = {
         // Chek (80mm) o'rniga A4 hujjat rejimi
         area.classList.add('contract-mode');
         area.style.display = 'block';
+        // Shartnoma A4 varag'ida chiqadi: termal chek uchun belgilangan
+        // 80mm @page qoidasi faqat chop etish paytida A4 ga almashtiriladi.
+        let pageStyle = document.getElementById('contractPageStyle');
+        if (!pageStyle) {
+            pageStyle = document.createElement('style');
+            pageStyle.id = 'contractPageStyle';
+            pageStyle.textContent = '@media print{@page{size:A4;margin:0}}';
+            document.head.appendChild(pageStyle);
+        }
         c.printed = (c.printed || 0) + 1;
         saveContracts();
         addLog('Shartnoma', `${c.number} chop etishga yuborildi`);
@@ -10091,6 +10324,7 @@ const Contracts = {
                 area.style.display = 'none';
                 area.innerHTML = '';
                 area.classList.remove('contract-mode');
+                document.getElementById('contractPageStyle')?.remove();
             }, 600);
         }, 200);
     },
@@ -10356,14 +10590,19 @@ function updateContractInstCalc() {
     el.textContent = `Majburiyat: ${fmt(fin)} so'm · Oylik: ${fmt(Math.round(fin / months))} so'm × ${months} oy · Ustama: ${pct}`;
 }
 
-/** Chop etish uchun yagona hujjat (A4): To'lovlar jadvali + Hisob-faktura */
+/**
+ * Chop etish shabloni tanlovi: standart hujjat (to'lovlar jadvali +
+ * hisob-faktura) yoki to'liq matnli shablonlar.
+ */
 function buildContractPrintHTML(c) {
+    if (c.template === 'installment') return buildInstallmentContractHTML(c);
+    if (c.template === 'partnership') return buildPartnershipContractHTML(c);
     const esc = escapeHTML;
+    const co = contractCompanyInfo();   // rekvizitlar Sozlamalardan (real ma'lumot)
     const S = contractSchedule(c);
     const dateStr = fmtDateISO(c.startDate);
-    const val = id => cleanText(document.getElementById(id)?.value, 200);
-    const addr = val('companyAddress'), tin = val('companyTin'), phone = val('companyPhone');
-    const vatRate = Number(document.getElementById('taxRate')?.value) || 12;
+    const addr = co.address, tin = co.tin, phone = co.phone;
+    const vatRate = Number(systemSettings?.taxRate) || Number(document.getElementById('taxRate')?.value) || 12;
     const base = Number(c.baseAmount) > 0 ? Number(c.baseAmount) : (Number(c.amount) || 0);
 
     // Tovarlar ro'yxati (chekdan yoki qo'lda kiritilgan predmet)
@@ -10378,54 +10617,77 @@ function buildContractPrintHTML(c) {
     const half = Math.ceil(S.rows.length / 2);
     const schedTable = rows => rows.length ? `
       <table class="tp-ct-t">
-        <thead><tr><th>№</th><th>To'lov sanasi</th><th>To'lov summasi, so'm</th><th>Qoldiq qarz</th></tr></thead>
+        <thead><tr><th style="width:12%">№</th><th>To'lov sanasi</th><th class="n">To'lov summasi</th><th class="n">Qoldiq qarz</th></tr></thead>
         <tbody>${rows.map(r => `<tr><td>${r.n}</td><td>${fmtDateISO(r.date)}</td>
           <td class="n">${fmtDoc(r.pay)}</td><td class="n">${fmtDoc(r.left)}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td colspan="2"><b>JAMI</b></td><td colspan="2" class="n"><b>${fmtDoc(S.total)}</b></td></tr></tfoot>
       </table>` : '';
 
+    const stats = [
+        { label: 'Shartnoma summasi', value: `${fmtDoc(S.total)} so'm` },
+        ...(S.months
+            ? [
+                { label: 'Boshlang\'ich to\'lov', value: `${fmtDoc(S.prepay)} so'm` },
+                { label: 'Oylik to\'lov', value: `${fmtDoc(S.monthly)} so'm`, sub: `${S.months} oy · har oyning ${S.payDay}-kuni` }
+            ]
+            : [{ label: 'To\'lov usuli', value: String(c.payType || 'To\'liq to\'lov') }]),
+        { label: 'Kafolat muddati', value: `${c.warrantyMonths} oy`, sub: `${fmtDateISO(c.endDate)} gacha` }
+    ];
+
+    // Summa kartalarida ko'rsatilgan raqamlar bu jadvalda takrorlanmaydi —
+    // faqat qo'shimcha (huquqiy) ma'lumot qoladi, varaq to'liq sig'adi.
     const calcRows = [
         ['Shartnoma turi', esc(c.type)],
         ['Tovar summasi (ustamasiz)', `${fmtDoc(base)} so'm`],
-        ['Bo\'lib to\'lash bilan xarid summasi', `${fmtDoc(S.total)} so'm`],
-        ...(S.months ? [
-            ['O\'z mablag\'i hisobidan (boshlang\'ich to\'lov)', `${fmtDoc(S.prepay)} so'm`],
-            ['Bo\'lib to\'lash bo\'yicha majburiyat summasi (ustama bilan)', `${fmtDoc(S.financed)} so'm`],
-            ['Maksimal oylik to\'lov', `${fmtDoc(S.monthly)} so'm`],
-            ['Bo\'lib to\'lash muddati', `${S.months} oy`],
-            ['Oylik to\'lov kuni', `Har oyning ${S.payDay}-kuni`]
-        ] : [['To\'lov usuli', esc(c.payType || 'To\'liq to\'lov')]]),
+        S.months
+            ? ['Bo\'lib to\'lash bo\'yicha majburiyat summasi (ustama bilan)', `${fmtDoc(S.financed)} so'm`]
+            : ['To\'lov usuli', esc(c.payType || 'To\'liq to\'lov')],
+        ...(S.months ? [['Oylik to\'lov kuni', `Har oyning ${S.payDay}-kuni`]] : []),
         ['Kafolat muddati', `${c.warrantyMonths} oy (${fmtDateISO(c.endDate)} gacha)`]
     ];
 
     const page1 = `
     <section class="tp-ct-page">
-      <div class="tp-ct-appx">2-ilova<br>Ommaviy oferta ga<br>${esc(CONTRACT_COMPANY_LEGAL)}<br>tovarlarni sotish bo'yicha<br>${dateStr} dan</div>
-      <h2>To'lovlar jadvali<br>№ ${esc(c.number)} — ${dateStr}</h2>
+      ${contractDocHead(co, c, dateStr, c.type)}
+      <div class="tp-ct-appx"><b>2-ilova</b>Ommaviy oferta ga<br>${esc(CONTRACT_COMPANY_LEGAL)}<br>tovarlarni sotish bo'yicha<br>${dateStr} dan</div>
+      <h2>To'lovlar jadvali</h2>
+      <div class="tp-ct-sub">№ ${esc(c.number)} · ${dateStr}</div>
       <p>Men, <b>${esc(c.customer)}</b> (keyingi o'rinlarda — «Xaridor»), quyidagi To'lovlar jadvali bilan tanishdim,
          unga rozilik bildiraman va Shartnoma bo'yicha Sotuvchiga tegishli summalarni ko'rsatilgan muddatlarda to'lash majburiyatini olaman.</p>
 
-      <h4>Xarid haqida ma'lumot</h4>
+      <h4>1. Xarid haqida ma'lumot</h4>
       <table class="tp-ct-t">
-        <thead><tr><th>№</th><th>Do'kon</th><th>Tovar nomi</th><th>Soni</th></tr></thead>
-        <tbody>${goods.map((g, i) => `<tr><td>${i + 1}</td><td>${esc(CONTRACT_COMPANY)}</td><td>${esc(g.name)}</td><td>${g.qty}</td></tr>`).join('')}</tbody>
+        <thead><tr><th style="width:8%">№</th><th>Do'kon</th><th>Tovar nomi</th><th class="n" style="width:12%">Soni</th></tr></thead>
+        <tbody>${goods.map((g, i) => `<tr><td>${i + 1}</td><td>${esc(CONTRACT_COMPANY)}</td><td>${esc(g.name)}</td><td class="n">${g.qty}</td></tr>`).join('')}</tbody>
       </table>
 
-      <h4>Hisob-kitob ma'lumotlari</h4>
-      <table class="tp-ct-t">
-        <tbody>${calcRows.map(r => `<tr><td style="width:62%">${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</tbody>
+      <h4>2. Hisob-kitob ma'lumotlari</h4>
+      ${contractStatCards(stats)}
+      <table class="tp-ct-t tp-ct-lv">
+        <tbody>${calcRows.map(r => `<tr><td class="k">${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</tbody>
       </table>
 
-      <h4>${S.months ? 'Bo\'lib to\'lash jadvali' : 'To\'lov jadvali'}</h4>
-      <div class="tp-ct-cols"><div>${schedTable(S.rows.slice(0, half))}</div>${S.rows.length > 1 ? `<div>${schedTable(S.rows.slice(half))}</div>` : ''}</div>
+      <h4>3. ${S.months ? 'Bo\'lib to\'lash jadvali' : 'To\'lov jadvali'}</h4>
+      <div class="tp-ct-cols${S.rows.length > 14 ? ' tp-ct-mini' : ''}"><div>${schedTable(S.rows.slice(0, half))}</div>${S.rows.length > 1 ? `<div>${schedTable(S.rows.slice(half))}</div>` : ''}</div>
+      <p class="tp-ct-note">0-qator — boshlang'ich to'lov; qolgan qatorlar — oylik to'lovlar. Jadval Xaridor uchun
+         majburiy hisoblanadi. To'lovni Payme, Paynet, Click va Uzum ilovalari orqali ham amalga oshirish mumkin.</p>
 
-      <table class="tp-ct-t" style="margin-top:10px"><tbody>
-        <tr><td style="width:22%"><b>Xaridor</b></td><td>${esc(c.customer)}</td></tr>
-        <tr><td><b>Telefon</b></td><td>${esc(c.phone || '—')}</td></tr>
-        <tr><td><b>Imzo</b></td><td>&nbsp;</td></tr>
-        <tr><td><b>Do'kon aloqa telefoni</b></td><td>${esc(phone || '—')}</td></tr>
-      </tbody></table>
-      <p class="tp-ct-note">To'lovni Payme, Paynet, Click va Uzum ilovalari orqali amalga oshirishingiz mumkin.</p>
+      <div class="tp-ct-sign">
+        <div>
+          <b>Xaridor</b>
+          <div>${esc(c.customer)}</div>
+          <div class="tp-ct-sm">Tel.: ${esc(c.phone || '—')}</div>
+          <div class="ln">imzo</div>
+        </div>
+        <div>
+          <b>Sotuvchi</b>
+          <div>${esc(co.legal)}</div>
+          <div class="tp-ct-sm">Tel.: ${esc(phone || '—')}</div>
+          <div class="ln">imzo / M.O'.</div>
+          <div class="tp-ct-stamp">M.O'.<br>joyi</div>
+        </div>
+      </div>
+      ${contractDocFoot(c, 1, 2)}
     </section>`;
 
     // ---- 2-bet: Hisob-faktura (yuk xati) ----
@@ -10440,59 +10702,527 @@ function buildContractPrintHTML(c) {
 
     const page2 = `
     <section class="tp-ct-page">
-      <div class="tp-ct-appx">3-ilova<br>Ommaviy oferta ga<br>${esc(CONTRACT_COMPANY_LEGAL)}<br>tovarlarni sotish bo'yicha<br>${dateStr} dan</div>
-      <h2>Hisob-faktura (yuk xati) № ${esc(c.number)} — ${dateStr}</h2>
-      <table class="tp-ct-t"><tbody>
-        <tr><td style="width:22%"><b>Ta'minotchi / Sotuvchi</b></td><td>${esc(CONTRACT_COMPANY_LEGAL)}</td></tr>
-        <tr><td><b>Manzil</b></td><td>${esc(addr || '—')}</td></tr>
-        <tr><td><b>STIR (INN)</b></td><td>${esc(tin || '—')}</td></tr>
-        <tr><td><b>Oxirgi xaridor</b></td><td>${esc(c.customer)}</td></tr>
-      </tbody></table>
+      ${contractDocHead(co, c, dateStr, 'Hisob-faktura')}
+      <div class="tp-ct-appx"><b>3-ilova</b>Ommaviy oferta ga<br>${esc(CONTRACT_COMPANY_LEGAL)}<br>tovarlarni sotish bo'yicha<br>${dateStr} dan</div>
+      <h2>Hisob-faktura (yuk xati)</h2>
+      <div class="tp-ct-sub">№ ${esc(c.number)} · ${dateStr}</div>
 
-      <table class="tp-ct-t">
-        <thead><tr><th rowspan="2">№</th><th rowspan="2">Tovar (xizmat, ish) nomi</th><th rowspan="2">Birl.</th><th rowspan="2">Soni</th>
-          <th rowspan="2">Narxi (QQS siz)</th><th rowspan="2">Yetkazib berish qiymati</th><th colspan="2">QQS</th><th rowspan="2">QQS bilan qiymat</th></tr>
-          <tr><th>Stavka</th><th>Summa</th></tr></thead>
-        <tbody>${inv.map(r => `<tr><td>${r.n}</td><td>${esc(r.name)}</td><td>dona</td><td>${r.qty}</td>
-          <td class="n">${fmtDoc(r.unit)}</td><td class="n">${fmtDoc(r.net)}</td><td>${vatRate}%</td>
+      <h4>1. Tomonlar rekvizitlari</h4>
+      <table class="tp-ct-t tp-ct-req">
+        <thead><tr><th style="width:24%">Rekvizitlar</th><th>Sotuvchi</th><th>Oxirgi xaridor</th></tr></thead>
+        <tbody>
+          <tr><td>Tashkilot nomi</td><td><b>${esc(co.legal)}</b></td><td>${esc(c.customer)}</td></tr>
+          <tr><td>Manzil</td><td>${esc(addr || '—')}</td><td>${esc(c.address || '—')}</td></tr>
+          <tr><td>STIR (INN)</td><td>${esc(tin || '—')}</td><td>${esc(c.passport || '—')}</td></tr>
+          <tr><td>Telefon</td><td>${esc(phone || '—')}</td><td>${esc(c.phone || '—')}</td></tr>
+          <tr><td>Mas'ul shaxs</td><td>${esc(c.createdBy || '—')}</td><td>${esc(c.customer)}</td></tr>
+        </tbody>
+      </table>
+
+      <h4>2. Tovar (xizmat, ish) ro'yxati</h4>
+      <table class="tp-ct-t tp-ct-inv">
+        <thead><tr><th rowspan="2" style="width:6%">№</th><th rowspan="2">Tovar (xizmat, ish) nomi</th><th rowspan="2">Birl.</th><th rowspan="2" class="n">Soni</th>
+          <th rowspan="2" class="n">Narxi (QQS siz)</th><th rowspan="2" class="n">Yetkazib berish qiymati</th><th colspan="2" class="n">QQS</th><th rowspan="2" class="n">QQS bilan qiymat</th></tr>
+          <tr><th class="n">Stavka</th><th class="n">Summa</th></tr></thead>
+        <tbody>${inv.map(r => `<tr><td>${r.n}</td><td>${esc(r.name)}</td><td>dona</td><td class="n">${r.qty}</td>
+          <td class="n">${fmtDoc(r.unit)}</td><td class="n">${fmtDoc(r.net)}</td><td class="n">${vatRate}%</td>
           <td class="n">${fmtDoc(r.vat)}</td><td class="n">${fmtDoc(r.gross)}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td colspan="5"><b>Jami:</b></td><td class="n"><b>${fmtDoc(T.net)}</b></td><td></td>
           <td class="n"><b>${fmtDoc(T.vat)}</b></td><td class="n"><b>${fmtDoc(T.gross)}</b></td></tr></tfoot>
       </table>
-      <p><b>Jami to'lovga:</b> ${esc(wordsCap)} so'm ${String(tiyin).padStart(2, '0')} tiyin, shu jumladan QQS: ${fmtDoc(T.vat)} so'm.</p>
+      <p class="tp-ct-total"><b>Jami to'lovga:</b> ${esc(wordsCap)} so'm ${String(tiyin).padStart(2, '0')} tiyin,
+         shu jumladan QQS: ${fmtDoc(T.vat)} so'm.</p>
+
+      <h4>3. Topshirish shartlari</h4>
       <p class="tp-ct-note">Topshirilgan tovarlar Xaridor tomonidan ko'zdan kechirilgan, hech qanday nuqson va kamchiliklarga ega emas,
          sifati va xususiyatlari Xaridor talablariga mos. Xaridorning qabul qilingan tovarga nisbatan hech qanday da'vosi yo'q.</p>
+
       <div class="tp-ct-sign">
-        <div>Rahbar: ____________________</div>
-        <div>Bosh hisobchi: ____________________</div>
+        <div>
+          <b>Tovarni topshirdi</b>
+          <div>${esc(c.createdBy || '—')}</div>
+          <div class="tp-ct-sm">${esc(CONTRACT_COMPANY)}</div>
+          <div class="ln">imzo</div>
+        </div>
+        <div>
+          <b>Tovarni qabul qildi</b>
+          <div>${esc(c.customer)}</div>
+          <div class="tp-ct-sm">Sana: ${dateStr}</div>
+          <div class="ln">imzo</div>
+        </div>
       </div>
-      <div class="tp-ct-sign">
-        <div>Tovarni topshirdi: ${esc(c.createdBy || '____________________')}</div>
-        <div>Qabul qildi: ____________________ / ${esc(c.customer)} /</div>
+      <div class="tp-ct-signtop">
+        <div class="tp-ct-signbox"><b>Rahbar</b>____________________</div>
+        <div class="tp-ct-signbox"><b>Bosh hisobchi</b>____________________</div>
       </div>
+      ${contractDocFoot(c, 2, 2)}
     </section>`;
 
-    const css = `<style>
-      .tp-ct{font:12px/1.45 Arial,Helvetica,sans-serif;color:#000;background:#fff}
-      .tp-ct *{box-sizing:border-box}
-      .tp-ct-page{page-break-after:always;break-after:page}
-      .tp-ct-page:last-child{page-break-after:auto;break-after:auto}
-      .tp-ct-appx{text-align:right;line-height:1.5;margin-bottom:12px}
-      .tp-ct h2{text-align:center;font-size:14px;margin:10px 0 12px}
-      .tp-ct h4{margin:12px 0 4px;font-size:12px}
-      .tp-ct p{margin:8px 0;text-align:justify}
-      .tp-ct-t{width:100%;border-collapse:collapse;margin:4px 0 8px;font-size:11px}
-      .tp-ct-t th,.tp-ct-t td{border:1px solid #000;padding:3px 6px;text-align:left;vertical-align:top}
-      .tp-ct-t th{background:#f0f0f0}
-      .tp-ct-t .n{text-align:right;white-space:nowrap}
-      .tp-ct-cols{display:flex;gap:10px;align-items:flex-start}
-      .tp-ct-cols>div{flex:1;min-width:0}
-      .tp-ct-sign{display:flex;gap:30px;margin-top:22px}
-      .tp-ct-sign>div{flex:1;border-top:1px solid #000;padding-top:4px;font-size:11px}
-      .tp-ct-note{font-size:11px}
-    </style>`;
-    return `${css}<div class="tp-ct">${page1}${page2}</div>`;
+    return `${contractDocCSS()}<div class="tp-ct">${page1}${page2}</div>`;
 }
+/* ============================================================
+ * CHOP ETILADIGAN HUJJAT DIZAYNI (barcha shablonlar uchun yagona)
+ * Varaq: A4 (210×297mm), chekka 12/14/16mm. Ranglar poligrafiyaga
+ * mos: to'q ko'k sarlavha, och kulrang fon — oq-qora printerda ham
+ * o'qiladi. Ma'lumotlar 100% real: Sozlamalar rekvizitlari, chek,
+ * summa, ustama, jadval va sanalar.
+ * ============================================================ */
+/**
+ * Hujjatdagi kompaniya rekvizitlari. Avvalo saqlangan Sozlamalardan olinadi
+ * (Sozlamalar sahifasi ochilmagan bo'lsa ham forma maydonlari bo'sh bo'ladi —
+ * hujjat esa baribir to'liq chiqishi kerak), bo'sh bo'lsa formadan.
+ */
+function contractCompanyInfo() {
+    const dom = id => cleanText(document.getElementById(id)?.value, 200);
+    const pick = (key, id) => cleanText(systemSettings?.[key], 200) || dom(id);
+    const name = pick('companyName', 'companyName');
+    return {
+        name: name || CONTRACT_COMPANY,
+        legal: name || CONTRACT_COMPANY_LEGAL,
+        address: pick('companyAddress', 'companyAddress'),
+        tin: pick('companyTin', 'companyTin') || pick('companyInn', 'companyInn'),
+        phone: pick('companyPhone', 'companyPhone')
+    };
+}
+
+const CONTRACT_DOC_CSS = `<style>
+  .tp-ct{font:10.5px/1.42 Arial,Helvetica,sans-serif;color:#0f172a;background:#fff}
+  .tp-ct *{box-sizing:border-box}
+  .tp-ct-page{position:relative;padding:12mm 14mm 16mm;min-height:296mm;
+    page-break-after:always;break-after:page}
+  .tp-ct-page:last-child{page-break-after:auto;break-after:auto}
+
+  /* ── Sarlavha bloki (brend + hujjat raqami) ── */
+  .tp-ct-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;
+    border-bottom:2px solid #14315e;padding-bottom:6px;margin-bottom:9px}
+  .tp-ct-brand{display:flex;gap:9px;align-items:center;min-width:0}
+  .tp-ct-mono{width:34px;height:34px;flex:0 0 34px;border-radius:8px;background:#14315e;color:#fff;
+    font-weight:700;font-size:13px;letter-spacing:.5px;display:flex;align-items:center;justify-content:center;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-brand-name{font-weight:700;font-size:13px;color:#14315e;line-height:1.25}
+  .tp-ct-brand-meta{font-size:9px;color:#475569;line-height:1.4}
+  .tp-ct-meta{text-align:right;white-space:nowrap;font-size:9px;color:#334155}
+  .tp-ct-no{font-weight:700;font-size:12px;color:#14315e}
+  .tp-ct-tag{display:inline-block;margin-top:4px;padding:2px 9px;border-radius:20px;
+    border:1px solid #14315e;background:#eef3fb;color:#14315e;font-size:8.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+  /* ── Ilova belgisi (2-ilova / 3-ilova) ── */
+  .tp-ct-appx{margin:0 0 8px auto;width:58mm;border:1px solid #c7d2e2;border-left:3px solid #14315e;
+    border-radius:6px;background:#f7f9fd;padding:5px 8px;font-size:8.5px;line-height:1.4;color:#334155;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-appx b{display:block;font-size:10px;color:#14315e;text-transform:uppercase;letter-spacing:.4px}
+
+  /* ── Hujjat sarlavhasi ── */
+  .tp-ct h2{text-align:center;font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#14315e;
+    margin:0 0 2px;padding:6px 0;background:#f4f7fc;border-top:1px solid #dbe3ef;border-bottom:1px solid #dbe3ef;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct .tp-ct-sub{text-align:center;font-size:10px;color:#475569;margin:5px 0 9px}
+
+  /* ── Bo'lim sarlavhalari ── */
+  .tp-ct h4{margin:10px 0 5px;padding-left:8px;border-left:3px solid #14315e;font-size:11px;
+    text-transform:uppercase;letter-spacing:.4px;color:#14315e;line-height:1.25}
+
+  /* ── Matn ── */
+  .tp-ct p{margin:5px 0;text-align:justify}
+  .tp-ct .tp-ct-cl{margin:4px 0 4px 14px;text-indent:-14px}
+  .tp-ct .tp-ct-sm{font-size:9px;color:#475569}
+
+  /* ── Jadval ── */
+  .tp-ct-t{width:100%;border-collapse:collapse;margin:5px 0 8px;font-size:10px}
+  .tp-ct-t th,.tp-ct-t td{border:1px solid #c7d2e2;padding:4px 6px;text-align:left;vertical-align:top}
+  .tp-ct-t thead th{background:#14315e;color:#fff;font-size:9px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.3px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-t tbody tr:nth-child(even) td{background:#f7f9fd;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-t tfoot td{background:#eef3fb;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-t .n{text-align:right;white-space:nowrap}
+  .tp-ct-t td.k{width:62%;color:#334155}
+  .tp-ct-req td:first-child{width:26%;background:#f1f5fb;font-weight:600;color:#334155;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-req tbody tr:nth-child(even) td:first-child{background:#f1f5fb}
+  .tp-ct-lv td{font-size:10px}
+
+  /* ── Ikki ustunli joylashuv (to'lov jadvali) ── */
+  .tp-ct-cols{display:flex;gap:8px;align-items:flex-start}
+  .tp-ct-cols>div{flex:1 1 0;min-width:0}
+  /* Uzun jadval (15+ qator): qatorlar zichroq — varaq A4 da qoladi */
+  .tp-ct-mini .tp-ct-t{font-size:8.5px;line-height:1.25}
+  .tp-ct-mini .tp-ct-t th,.tp-ct-mini .tp-ct-t td{padding:2px 4px}
+  /* Davomi varaqda sarlavha tasmasi o'rniga ingichka satr (joy tejaydi) */
+  .tp-ct-cont{text-align:center;font-size:10px;color:#475569;margin:3px 0 7px}
+  .tp-ct-jami{margin:3px 0 4px}
+
+  /* ── Summa kartalari ── */
+  .tp-ct-stats{display:flex;gap:7px;margin:6px 0 8px}
+  .tp-ct-stat{flex:1 1 0;min-width:0;border:1px solid #c7d2e2;border-radius:8px;background:#f7f9fd;
+    padding:6px 8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-stat .l{font-size:8.5px;text-transform:uppercase;letter-spacing:.4px;color:#64748b}
+  .tp-ct-stat .v{font-size:12px;font-weight:700;color:#14315e;line-height:1.3}
+  .tp-ct-stat .s{font-size:8.5px;color:#64748b}
+
+  /* ── Belgilar ── */
+  .tp-ct-note{margin:6px 0;padding:5px 8px;border-left:3px solid #14315e;background:#f7f9fd;
+    font-size:9.5px;color:#334155;text-align:justify;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tp-ct-total{margin:6px 0;padding:6px 9px;border:1px solid #c7d2e2;border-radius:6px;background:#eef3fb;
+    font-size:10.5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+  /* ── Imzo bloklari ── */
+  .tp-ct-sign{display:flex;gap:10px;margin-top:13px}
+  .tp-ct-sign>div{position:relative;flex:1 1 0;min-width:0;border:1px solid #c7d2e2;border-radius:8px;
+    padding:8px 10px;font-size:10px;min-height:58px}
+  .tp-ct-sign>div>b{display:block;margin-bottom:4px;font-size:10px;color:#14315e;text-transform:uppercase;letter-spacing:.4px}
+  .tp-ct-sign .ln{margin-top:14px;padding-top:3px;border-top:1px solid #94a3b8;font-size:8.5px;color:#64748b}
+  .tp-ct-stamp{position:absolute;right:8px;bottom:7px;width:50px;height:50px;border:1px dashed #94a3b8;
+    border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;
+    font-size:8px;line-height:1.2;color:#94a3b8}
+  .tp-ct-signtop{display:flex;gap:10px;margin-top:10px;font-size:10px}
+  .tp-ct-signbox{flex:1 1 0;border:1px solid #c7d2e2;border-radius:8px;padding:8px 10px}
+  .tp-ct-signbox b{display:block;margin-bottom:12px;font-size:10px;color:#14315e;text-transform:uppercase;letter-spacing:.4px}
+
+  /* ── Varaq kolontituli ── */
+  .tp-ct-foot{position:absolute;left:14mm;right:14mm;bottom:8mm;display:flex;justify-content:space-between;
+    gap:10px;border-top:1px dashed #c7d2e2;padding-top:5px;font-size:8.5px;color:#64748b}
+</style>`;
+
+function contractDocCSS() {
+    return CONTRACT_DOC_CSS;
+}
+
+/** Kompaniya nomidan monogram (masalan «TEXNO PARK №1» -> «TP») */
+function contractDocMonogram(name) {
+    const letters = String(name || '')
+        .replace(/[^0-9A-Za-z\u0400-\u04FF\s]/g, ' ')
+        .split(/\s+/).filter(Boolean).map(w => w.charAt(0)).join('').toUpperCase();
+    return letters.slice(0, 3) || 'TP';
+}
+
+/** Hujjat sarlavhasi: kompaniya rekvizitlari + shartnoma raqami/sanasi */
+function contractDocHead(co, c, dateStr, kind) {
+    const esc = escapeHTML;
+    const meta = [
+        co.address ? `Manzil: ${esc(co.address)}` : '',
+        co.tin ? `STIR: ${esc(co.tin)}` : '',
+        co.phone ? `Tel.: ${esc(co.phone)}` : ''
+    ].filter(Boolean).join(' · ');
+    return `<header class="tp-ct-head">
+      <div class="tp-ct-brand">
+        <div class="tp-ct-mono">${esc(contractDocMonogram(co.name))}</div>
+        <div>
+          <div class="tp-ct-brand-name">${esc(co.legal)}</div>
+          ${meta ? `<div class="tp-ct-brand-meta">${meta}</div>` : ''}
+        </div>
+      </div>
+      <div class="tp-ct-meta">
+        <div class="tp-ct-no">№ ${esc(c.number)}</div>
+        <div class="tp-ct-date">${esc(dateStr)}</div>
+        ${kind ? `<div class="tp-ct-tag">${esc(kind)}</div>` : ''}
+      </div>
+    </header>`;
+}
+
+/** Varaq kolontituli (shartnoma raqami va bet raqami) */
+function contractDocFoot(c, page, total) {
+    const esc = escapeHTML;
+    return `<footer class="tp-ct-foot">
+      <span>${esc(c.number)} · ${esc(c.customer)}</span>
+      <span>${esc(CONTRACT_COMPANY)} · Bet ${page}/${total}</span>
+    </footer>`;
+}
+
+/** Summa kartalari qatori (label / qiymat / izoh) */
+function contractStatCards(cards) {
+    return `<div class="tp-ct-stats">${cards.map(card => `<div class="tp-ct-stat">
+      <div class="l">${card.label}</div><div class="v">${card.value}</div>
+      ${card.sub ? `<div class="s">${card.sub}</div>` : ''}</div>`).join('')}</div>`;
+}
+
+/** Muddatli to'lov shartnomasi — 2 varaq: shartlar + to'lov jadvali va imzolar */
+function buildInstallmentContractHTML(c) {
+    const esc = escapeHTML;
+    const co = contractCompanyInfo();
+    const S = contractSchedule(c);
+    const dateStr = fmtDateISO(c.startDate);
+    const total = Number(c.amount) || 0;
+    const base = Number(c.baseAmount) > 0 ? Number(c.baseAmount) : total;
+    const markup = Math.max(0, total - base);
+    const markupPct = base > 0 ? (markup / base * 100) : 0;
+    const months = Math.max(0, Math.floor(Number(c.months) || 0));
+    const warranty = Math.max(1, Number(c.warrantyMonths) || 12);
+
+    // Tovar qatorlari: chekdagi mahsulotlar (bo'lsa) yoki predmet matni.
+    // Ustamasiz narx ustunlari jami `base` ga teng bo'lishi uchun koeffitsient bilan tekislanadi.
+    const items = (c.items || []).filter(i => i && i.name);
+    const raw = items.length
+        ? items.map(i => ({ name: i.name, qty: i.qty, sum: Number(i.price) * Number(i.qty) }))
+        : [{ name: c.subject || c.type || 'Tovar', qty: 1, sum: base }];
+    const rawSum = raw.reduce((s, g) => s + g.sum, 0);
+    const k = rawSum > 0 ? base / rawSum : 1;
+    const goods = raw.map(g => ({
+        name: g.name, qty: g.qty,
+        unit: (g.sum / (g.qty || 1)) * k,
+        sum: g.sum * k
+    }));
+
+    const so = Math.floor(total), tiyin = Math.round((total - so) * 100);
+    const words = numToWordsUz(so);
+    const wordsCap = words.charAt(0).toUpperCase() + words.slice(1);
+    const firstPay = S.rows.length > 1 ? fmtDateISO(S.rows[1].date) : dateStr;
+
+    const goodsTable = goods.map((g, i) => `<tr><td>${i + 1}</td><td>${esc(g.name)}</td><td class="n">${g.qty}</td>
+        <td class="n">${fmtDoc(g.unit)}</td><td class="n">${fmtDoc(g.sum)}</td></tr>`).join('');
+
+    // Jadval ikki ustunda (namunadagi kabi) — A4 varag'iga bemalol sig'adi
+    const schedTable = rows => `<table class="tp-ct-t">
+        <thead><tr><th style="width:14%">№</th><th>To'lov sanasi</th><th class="n">Summa, so'm</th><th class="n">Qoldiq, so'm</th></tr></thead>
+        <tbody>${rows.map(r => `<tr><td class="n">${r.n}</td><td>${fmtDateISO(r.date)}</td>
+          <td class="n">${fmtDoc(r.pay)}</td><td class="n">${fmtDoc(r.left)}</td></tr>`).join('')}</tbody>
+      </table>`;
+    const half = Math.ceil(S.rows.length / 2);
+    // Uzun jadval (21+ qator, masalan 24 oy): davomi varaqda sarlavha
+    // tasmasi qisqartiriladi — hujjat ikki varaqda qoladi.
+    const longSchedule = S.rows.length > 20;
+
+    const page1 = `
+    <section class="tp-ct-page">
+      ${contractDocHead(co, c, dateStr, 'Muddatli to\'lov')}
+      <h2>Muddatli to'lov shartnomasi</h2>
+      <div class="tp-ct-sub">№ ${esc(c.number)} · ${dateStr} · Toshkent sh.</div>
+
+      <h4>Tomonlar</h4>
+      <table class="tp-ct-t tp-ct-req">
+        <thead><tr><th style="width:24%">Rekvizitlar</th><th>Sotuvchi</th><th>Xaridor</th></tr></thead>
+        <tbody>
+          <tr><td>Tashkilot / F.I.Sh</td><td><b>${esc(co.legal)}</b></td><td><b>${esc(c.customer)}</b></td></tr>
+          <tr><td>Manzil</td><td>${esc(co.address || '—')}</td><td>${esc(c.address || '—')}</td></tr>
+          <tr><td>STIR / pasport</td><td>${esc(co.tin || '—')}</td><td>${esc(c.passport || '—')}</td></tr>
+          <tr><td>Telefon</td><td>${esc(co.phone || '—')}</td><td>${esc(c.phone || '—')}</td></tr>
+          <tr><td>Rahbar / mas'ul shaxs</td><td>_______________</td><td>${esc(c.customer)}</td></tr>
+        </tbody>
+      </table>
+      <p><b>${esc(co.legal)}</b>, keyingi o'rinlarda «Sotuvchi» deb ataladi, bir tomondan, va
+         <b>${esc(c.customer)}</b>, keyingi o'rinlarda «Xaridor» deb ataladi, ikkinchi tomondan,
+         quyidagilar to'g'risida ushbu Shartnomani tuzdilar:</p>
+
+      <h4>1. Shartnoma predmeti</h4>
+      <p class="tp-ct-cl">1.1. Sotuvchi Xaridorga quyida ko'rsatilgan Tovarni topshirish, Xaridor esa Tovarni qabul qilib olib, uning qiymatini ushbu Shartnomada belgilangan muddatlarda bo'lib to'lash majburiyatini oladi.</p>
+      <p class="tp-ct-cl">1.2. Tovar nomi, soni va ustamasiz narxi:</p>
+      <table class="tp-ct-t">
+        <thead><tr><th style="width:6%">№</th><th>Tovar (xizmat) nomi</th><th class="n">Soni</th><th class="n">Ustamasiz narx, so'm</th><th class="n">Jami, so'm</th></tr></thead>
+        <tbody>${goodsTable}</tbody>
+        <tfoot><tr><td colspan="4"><b>Ustamasiz jami</b></td><td class="n"><b>${fmtDoc(base)}</b></td></tr></tfoot>
+      </table>
+      <p class="tp-ct-cl">1.3. Tovar Xaridorga topshirilgan kundan boshlab uning foydalanishiga o'tadi. Tovar qiymati to'liq to'lanmaguncha Tovar garov predmeti hisoblanadi.</p>
+
+      <h4>2. Tovar qiymati va to'lov shartlari</h4>
+      ${contractStatCards([
+        { label: 'Shartnoma summasi', value: `${fmtDoc(total)} so'm` },
+        { label: `Boshlang'ich to'lov`, value: `${fmtDoc(S.prepay)} so'm` },
+        { label: `Oylik to'lov`, value: `${fmtDoc(S.monthly)} so'm`, sub: `${months} oy` },
+        { label: 'Kafolat muddati', value: `${warranty} oy`, sub: `${fmtDateISO(c.endDate)} gacha` }
+      ])}
+      <table class="tp-ct-t tp-ct-lv">
+        <tbody>
+          <tr><td class="k">Ustamasiz tovar summasi</td><td class="n">${fmtDoc(base)} so'm</td></tr>
+          <tr><td class="k">Ustama (bo'lib to'lash xizmati uchun)</td><td class="n">${fmtDoc(markup)} so'm (${markupPct.toFixed(1)}%)</td></tr>
+          <tr><td class="k">Bo'lib to'lash summasi (majburiyat)</td><td class="n">${fmtDoc(S.financed)} so'm</td></tr>
+          <tr><td class="k">To'lov kuni</td><td class="n">Har oyning ${S.payDay}-kuni</td></tr>
+          <tr><td class="k">Birinchi to'lov sanasi</td><td class="n">${firstPay}</td></tr>
+        </tbody>
+      </table>
+      <p class="tp-ct-cl">2.1. Shartnoma summasi: <b>${esc(wordsCap)} so'm ${String(tiyin).padStart(2, '0')} tiyin</b>, shu jumladan ustama ${fmtDoc(markup)} so'm.</p>
+      <p class="tp-ct-cl">2.2. Xaridor to'lovlarni naqd pul yoki Payme, Click, Paynet, Uzum ilovalari orqali amalga oshiradi. To'lov kuni dam olish yoki bayram kuniga to'g'ri kelsa, to'lov keyingi ish kunida amalga oshiriladi.</p>
+      <p class="tp-ct-cl">2.3. Muddatidan oldin to'lashga yo'l qo'yiladi; bunda ustama tomonlarning yozma kelishuvi asosida qayta hisoblanishi mumkin.</p>
+      <p class="tp-ct-cl">2.4. Shartnomaning ajralmas qismi — 3-bo'limdagi To'lovlar jadvali.</p>
+      ${contractDocFoot(c, 1, 2)}
+    </section>`;
+
+    const page2 = `
+    <section class="tp-ct-page">
+      ${contractDocHead(co, c, dateStr, 'Muddatli to\'lov')}
+      ${longSchedule
+            ? `<div class="tp-ct-cont">№ ${esc(c.number)} — muddatli to'lov shartnomasi (davomi)</div>`
+            : `<h2>To'lov jadvali va majburiyatlar</h2>
+      <div class="tp-ct-sub">№ ${esc(c.number)} — muddatli to'lov shartnomasi (davomi)</div>`}
+
+      <h4>3. To'lov jadvali</h4>
+      <div class="tp-ct-cols${S.rows.length > 14 ? ' tp-ct-mini' : ''}">
+        <div>${schedTable(S.rows.slice(0, half))}</div>
+        <div>${schedTable(S.rows.slice(half))}</div>
+      </div>
+      <table class="tp-ct-t${longSchedule ? ' tp-ct-jami' : ''}"><tbody><tr><td><b>JAMI</b></td><td class="n"><b>${fmtDoc(total)} so'm</b></td>
+        <td><b>Qoldiq</b></td><td class="n"><b>0.00</b></td></tr></tbody></table>
+      <p class="tp-ct-note">0-qator — boshlang'ich to'lov; qolgan qatorlar — oylik to'lovlar. Jadval Xaridor uchun majburiy hisoblanadi.</p>
+
+      <h4>4. Tomonlarning majburiyatlari</h4>
+      <p class="tp-ct-cl">4.1. Sotuvchi Tovarni Shartnoma shartlariga mos holda, to'liq va sifatli yetkazib berishni ta'minlaydi.</p>
+      <p class="tp-ct-cl">4.2. Sotuvchi Tovarga ${warranty} oy kafolat beradi (${fmtDateISO(c.endDate)} gacha). Kafolat xizmati Kompaniyaning servis markazi orqali amalga oshiriladi.</p>
+      <p class="tp-ct-cl">4.3. Xaridor Tovar qiymatini Shartnomada belgilangan summada va muddatlarda to'laydi.</p>
+      <p class="tp-ct-cl">4.4. Xaridor Tovardan belgilangan maqsadda foydalanadi va uni saqlash shartlariga rioya qiladi.</p>
+      <p class="tp-ct-cl">4.5. Xaridor yashash manzili yoki telefon raqami o'zgargan taqdirda 3 (uch) kun ichida Sotuvchini xabardor qiladi.</p>
+      <p class="tp-ct-cl">4.6. Tovar qiymati to'liq to'lanmaguncha Xaridor Tovarni Sotuvchining yozma roziligisiz uchinchi shaxsga garovga qo'yishga yoki sotishga haqli emas.</p>
+
+      <h4>5. Tomonlarning javobgarligi</h4>
+      <p class="tp-ct-cl">5.1. To'lov kechiktirilganda Xaridor har bir kechiktirilgan kun uchun to'lanmagan summaning 0,1% miqdorida penya to'laydi.</p>
+      <p class="tp-ct-cl">5.2. Kechikish 30 (o'ttiz) kalendar kundan oshsa, Sotuvchi Shartnomani bir tomonlama bekor qilish va Tovarni qaytarib olishni talab qilish huquqiga ega; qaytarish tartibi qonunchilikka muvofiq hal qilinadi.</p>
+      <p class="tp-ct-cl">5.3. Tomonlar yetkazilgan zararni O'zbekiston Respublikasi qonunchiligida belgilangan tartibda qoplaydi.</p>
+      <p class="tp-ct-cl">5.4. Yengib bo'lmaydigan kuch (fors-major) holatlari tomonlarni majburiyatlardan ozod qiladi, agar ular shartnoma shartlarini bajarishga to'sqinlik qilsa.</p>
+
+      <h4>6. Nizolarni hal qilish</h4>
+      <p class="tp-ct-cl">6.1. Tomonlar nizolarni muzokaralar yo'li bilan hal qilishga harakat qiladilar.</p>
+      <p class="tp-ct-cl">6.2. Kelishuvga erishilmasa, nizo O'zbekiston Respublikasi qonunchiligiga muvofiq sud tartibida ko'rib chiqiladi.</p>
+
+      <h4>7. Yakuniy qoidalar</h4>
+      <p class="tp-ct-cl">7.1. Shartnoma imzolangan kundan kuchga kiradi va tomonlar majburiyatlarini to'liq bajargunga qadar amal qiladi.</p>
+      <p class="tp-ct-cl">7.2. Shartnoma 2 (ikki) nusxada tuziladi, har bir nusxa yuridik kuchga ega.</p>
+      <p class="tp-ct-cl">7.3. Shartnomaga o'zgartirishlar faqat tomonlarning yozma kelishuvi asosida kiritiladi.</p>
+
+      <div class="tp-ct-sign">
+        <div>
+          <b>Sotuvchi</b>
+          <div>${esc(co.legal)}</div>
+          <div class="tp-ct-sm">Rahbar: _______________</div>
+          <div class="ln">imzo</div>
+          <div class="tp-ct-stamp">M.O'.<br>joyi</div>
+        </div>
+        <div>
+          <b>Xaridor</b>
+          <div>${esc(c.customer)}</div>
+          <div class="tp-ct-sm">Sana: ${dateStr}</div>
+          <div class="ln">imzo</div>
+        </div>
+      </div>
+      <p class="tp-ct-note">To'lovni Payme, Paynet, Click va Uzum ilovalari orqali amalga oshirishingiz mumkin.${co.phone ? ` Savdo bo'yicha aloqa: ${esc(co.phone)}.` : ''}</p>
+      ${contractDocFoot(c, 2, 2)}
+    </section>`;
+
+    return `${contractDocCSS()}<div class="tp-ct">${page1}${page2}</div>`;
+}
+
+/** Hamkorlik shartnomasi — 2 varaq: majburiyatlar + hisob-kitob, muddat, imzolar */
+function buildPartnershipContractHTML(c) {
+    const esc = escapeHTML;
+    const co = contractCompanyInfo();
+    const dateStr = fmtDateISO(c.startDate);
+    const total = Number(c.amount) || 0;
+    const pct = Math.min(100, Math.max(0, Number(c.commissionPct) || 0));
+    const settleDays = Math.min(90, Math.max(1, Math.floor(Number(c.settleDays) || 0) || 10));
+    const term = Math.min(60, Math.max(0, Math.floor(Number(c.termMonths) || 0)));
+    const reward = Math.round(total * pct / 100);
+
+    const sal = v => v ? esc(v) : '—';
+    const reqTable = `
+      <table class="tp-ct-t tp-ct-req">
+        <thead><tr><th style="width:24%">Rekvizitlar</th><th>Kompaniya</th><th>Hamkor</th></tr></thead>
+        <tbody>
+          <tr><td>Nomi</td><td><b>${esc(co.legal)}</b></td><td><b>${esc(c.partner || '—')}</b></td></tr>
+          <tr><td>Manzil</td><td>${sal(co.address)}</td><td>${sal(c.partnerAddress)}</td></tr>
+          <tr><td>STIR (INN)</td><td>${sal(co.tin)}</td><td>${sal(c.partnerTin)}</td></tr>
+          <tr><td>Telefon</td><td>${sal(co.phone)}</td><td>${sal(c.partnerPhone)}</td></tr>
+          <tr><td>Rahbar / mas'ul shaxs</td><td>_______________</td><td>${esc(c.customer)}</td></tr>
+          <tr><td>M.O'.</td><td>bor</td><td>—</td></tr>
+        </tbody>
+      </table>`;
+
+    const page1 = `
+    <section class="tp-ct-page">
+      ${contractDocHead(co, c, dateStr, 'Hamkorlik')}
+      <h2>Hamkorlik shartnomasi</h2>
+      <div class="tp-ct-sub">№ ${esc(c.number)} · ${dateStr} · Toshkent sh.</div>
+
+      <h4>Tomonlar</h4>
+      <table class="tp-ct-t tp-ct-req">
+        <thead><tr><th style="width:24%">Rekvizitlar</th><th>Kompaniya</th><th>Hamkor</th></tr></thead>
+        <tbody>
+          <tr><td>Nomi</td><td><b>${esc(co.legal)}</b></td><td><b>${esc(c.partner || '—')}</b></td></tr>
+          <tr><td>Manzil</td><td>${sal(co.address)}</td><td>${sal(c.partnerAddress)}</td></tr>
+          <tr><td>STIR (INN)</td><td>${sal(co.tin)}</td><td>${sal(c.partnerTin)}</td></tr>
+          <tr><td>Telefon</td><td>${sal(co.phone)}</td><td>${sal(c.partnerPhone)}</td></tr>
+          <tr><td>Mas'ul shaxs</td><td>_______________</td><td>${esc(c.customer)}</td></tr>
+        </tbody>
+      </table>
+      <p><b>${esc(co.legal)}</b>, keyingi o'rinlarda «Kompaniya» deb ataladi, bir tomondan, va
+         <b>${esc(c.partner || '—')}</b>, keyingi o'rinlarda «Hamkor» deb ataladi, mas'ul shaxs
+         ${esc(c.customer)}, ikkinchi tomondan, quyidagilar to'g'risida ushbu Shartnomani tuzdilar:</p>
+
+      <h4>1. Shartnoma predmeti</h4>
+      <p class="tp-ct-cl">1.1. Kompaniya Hamkorga o'z Tovar va xizmatlarini sotish bo'yicha hamkorlik qiladi, Hamkor esa Kompaniya Tovarlarini targ'ib qilish, mijozlarga taqdim etish va sotishni tashkil etish majburiyatini oladi.</p>
+      <p class="tp-ct-cl">1.2. Hamkorlik doirasi: Tovarlarni savdo maydonida namoyish etish; mijozlarga maslahat berish va buyurtmalarni qabul qilish; Kompaniya tomonidan tasdiqlangan narx siyosatiga rioya qilish.</p>
+      <p class="tp-ct-cl">1.3. Hamkor Kompaniya nomidan vakil sifatida harakat qilmaydi va Kompaniya nomidan majburiyat olmaydi.</p>
+      <p class="tp-ct-cl">1.4. Shartnoma summasi (tomonlar kelishuviga ko'ra): <b>${fmtDoc(total)} so'm</b>.</p>
+
+      <h4>2. Hamkorning majburiyatlari</h4>
+      <p class="tp-ct-cl">2.1. Tovarlarni saqlash shartlariga rioya qilish, ularning shikastlanishiga yo'l qo'ymaslik.</p>
+      <p class="tp-ct-cl">2.2. Har oyning 5-kuniga qadar o'tgan oy bo'yicha sotuvlar hisobotini Kompaniyaga taqdim etish.</p>
+      <p class="tp-ct-cl">2.3. Kompaniya brendi va logotipidan faqat ushbu Shartnoma doirasida foydalanish.</p>
+      <p class="tp-ct-cl">2.4. Tovarlarni Kompaniyaning yozma roziligisiz uchinchi shaxslarga o'tkazmaslik yoki garovga qo'ymaslik.</p>
+      <p class="tp-ct-cl">2.5. Mijozlarning shikoyatlarini 3 (uch) ish kuni ichida Kompaniyaga yetkazish va hal etishda ko'maklashish.</p>
+
+      <h4>3. Kompaniyaning majburiyatlari</h4>
+      <p class="tp-ct-cl">3.1. Tovarlarni kelishilgan narx va muddatlarda yetkazib berish.</p>
+      <p class="tp-ct-cl">3.2. Kafolat va servis xizmatini ta'minlash.</p>
+      <p class="tp-ct-cl">3.3. Hamkorni marketing materiallari va amaldagi narx ro'yxati bilan ta'minlash.</p>
+      <p class="tp-ct-cl">3.4. Hisob-kitobni ushbu Shartnomada belgilangan muddatda amalga oshirish.</p>
+      <p class="tp-ct-note">Hamkorlik komissiyasi: sotilgan Tovar summasining ${pct}% miqdorida. Hisob-kitob davri — ${settleDays} kun.</p>
+      ${contractDocFoot(c, 1, 2)}
+    </section>`;
+
+    const page2 = `
+    <section class="tp-ct-page">
+      ${contractDocHead(co, c, dateStr, 'Hamkorlik')}
+      <h2>Hisob-kitob, muddat va imzolar</h2>
+      <div class="tp-ct-sub">№ ${esc(c.number)} — hamkorlik shartnomasi (davomi)</div>
+
+      <h4>4. Hisob-kitob tartibi</h4>
+      ${contractStatCards([
+        { label: 'Komissiya', value: `${pct}%`, sub: 'sotilgan summa hisobidan' },
+        { label: 'Shartnoma summasi', value: `${fmtDoc(total)} so'm` },
+        { label: 'Komissiya (ma\'lumot uchun)', value: `${fmtDoc(reward)} so'm` },
+        { label: 'Hisob-kitob davri', value: `${settleDays} kun` },
+        { label: 'Shartnoma muddati', value: term ? `${term} oy` : 'Cheklanmagan', sub: `${dateStr} → ${fmtDateISO(c.endDate)}` }
+      ])}
+      <p class="tp-ct-cl">4.1. Hamkorning haqi sotilgan Tovar summasining <b>${pct}%</b> miqdoridagi komissiya sifatida belgilanadi.</p>
+      <p class="tp-ct-cl">4.2. Hisob-kitob davri — <b>${settleDays} kun</b>. Tomonlar hisobotni tasdiqlagach, Kompaniya komissiyani o'tkazadi.</p>
+      <p class="tp-ct-cl">4.3. Shartnoma summasi ${fmtDoc(total)} so'm bo'yicha komissiya (ma'lumot uchun): <b>${fmtDoc(reward)} so'm</b>.</p>
+      <p class="tp-ct-cl">4.4. To'lov bank o'tkazmasi yo'li bilan, hisob-faktura asosida amalga oshiriladi.</p>
+      <p class="tp-ct-cl">4.5. Soliqlar va majburiy to'lovlar O'zbekiston Respublikasi qonunchiligiga muvofiq har bir tomon tomonidan mustaqil to'lanadi.</p>
+
+      <h4>5. Javobgarlik</h4>
+      <p class="tp-ct-cl">5.1. Majburiyatlar bajarilmaganda aybdor tomon yetkazilgan zararni qonunchilikda belgilangan tartibda qoplaydi.</p>
+      <p class="tp-ct-cl">5.2. Kompaniya Tovar sifati uchun, Hamkor esa Tovarni saqlash va sotish qoidalariga rioya etilishi uchun javobgar.</p>
+      <p class="tp-ct-cl">5.3. Yengib bo'lmaydigan kuch (fors-major) holatlari tomonlarni majburiyatlardan ozod qiladi.</p>
+
+      <h4>6. Shartnoma muddati</h4>
+      <p class="tp-ct-cl">6.1. Shartnoma ${term ? `${term} oy muddatga, ${dateStr} dan ${fmtDateISO(c.endDate)} gacha` : 'cheklanmagan muddatga'} tuziladi va imzolangan kundan kuchga kiradi.</p>
+      <p class="tp-ct-cl">6.2. Muddat tugashidan 15 kun oldin tomonlar yozma ravishda uzaytirish to'g'risida kelishishlari mumkin.</p>
+      <p class="tp-ct-cl">6.3. Har bir tomon ikkinchi tomonni 15 kun oldin yozma xabardor qilib, Shartnomani bekor qilishi mumkin; yakuniy hisob-kitob 10 kun ichida amalga oshiriladi.</p>
+      <p class="tp-ct-cl">6.4. Shartnoma 2 (ikki) nusxada tuziladi, har bir nusxa yuridik kuchga ega.</p>
+
+      <h4>7. Nizolarni hal qilish</h4>
+      <p class="tp-ct-cl">7.1. Nizolar muzokaralar yo'li bilan hal qilinadi.</p>
+      <p class="tp-ct-cl">7.2. Kelishuvga erishilmasa, nizo O'zbekiston Respublikasi qonunchiligiga muvofiq sud tartibida ko'rib chiqiladi.</p>
+
+      <h4>8. Tomonlarning rekvizitlari va imzolari</h4>
+      ${reqTable}
+      <div class="tp-ct-sign">
+        <div>
+          <b>Kompaniya</b>
+          <div>${esc(co.legal)}</div>
+          <div class="tp-ct-sm">Rahbar: _______________</div>
+          <div class="ln">imzo</div>
+          <div class="tp-ct-stamp">M.O'.<br>joyi</div>
+        </div>
+        <div>
+          <b>Hamkor</b>
+          <div>${esc(c.partner || '—')}</div>
+          <div class="tp-ct-sm">Mas'ul shaxs: ${esc(c.customer)}</div>
+          <div class="ln">imzo · Sana: ${dateStr}</div>
+        </div>
+      </div>
+      ${contractDocFoot(c, 2, 2)}
+    </section>`;
+
+    return `${contractDocCSS()}<div class="tp-ct">${page1}${page2}</div>`;
+}
+
 /* [CONTRACTS-MODULE-END] */
 
 applySavedTheme();

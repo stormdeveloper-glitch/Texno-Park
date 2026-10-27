@@ -15,7 +15,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.14.0">
+  <link rel="stylesheet" href="style.css?v=5.16.0">
   <link rel="stylesheet" href="boss.css?v=2.5.0">
 </head>
 
@@ -3669,11 +3669,24 @@
 
   <!-- ===== SHARTNOMA MODAL (qo'lda) ===== -->
   <div class="modal-overlay" id="contractModal">
-    <div class="modal" style="max-width:620px">
+    <div class="modal" style="max-width:720px">
       <div class="modal-header">
         <h3 id="contractModalTitle"><i class="fas fa-file-signature"
             style="color:var(--primary);margin-right:8px"></i>Yangi shartnoma</h3>
         <button class="modal-close" onclick="closeModal('contractModal')">✕</button>
+      </div>
+      <div class="form-row">
+        <div class="form-col">
+          <label>Shartnoma shabloni</label>
+          <select class="form-control" id="ct-template" onchange="applyContractTemplate()">
+            <option value="standard">Standart — to'lovlar jadvali + hisob-faktura</option>
+            <option value="installment">Muddatli to'lov shartnomasi (bo'lib to'lash)</option>
+            <option value="partnership">Hamkorlik shartnomasi</option>
+          </select>
+          <small id="ct-template-hint" style="color:var(--text-muted);font-size:11px">
+            Standart shablon: to'lovlar jadvali va hisob-faktura bitta hujjatda chiqadi.
+          </small>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-col">
@@ -3719,6 +3732,54 @@
         <textarea class="form-control" id="ct-subject" rows="2"
           placeholder="Masalan: Samsung No Frost 350L x1"></textarea>
       </div>
+      <!-- Muddatli to'lov shabloni: xaridor rekvizitlari -->
+      <div id="ct-fields-installment" style="display:none">
+        <div class="form-row">
+          <div class="form-col"><label>Xaridor pasporti / JSHSHIR</label>
+            <input class="form-control" id="ct-passport" placeholder="AD1234567 / 12345678901234" maxlength="40">
+          </div>
+          <div class="form-col"><label>Xaridor manzili</label>
+            <input class="form-control" id="ct-address" placeholder="Viloyat, tuman, ko'cha, uy" maxlength="160">
+          </div>
+        </div>
+        <small style="display:block;color:var(--text-muted);font-size:11px;margin-bottom:12px">
+          Pasport va manzil chop etiladigan shartnomada xaridor rekvizitlari sifatida chiqadi (ixtiyoriy).
+        </small>
+      </div>
+
+      <!-- Hamkorlik shabloni: hamkor rekvizitlari -->
+      <div id="ct-fields-partnership" style="display:none">
+        <div class="form-row">
+          <div class="form-col"><label>Hamkor nomi *</label>
+            <input class="form-control" id="ct-partner" placeholder="«...» MChJ yoki F.I.Sh" maxlength="120">
+          </div>
+          <div class="form-col"><label>Hamkor telefoni</label>
+            <input class="form-control" id="ct-partner-phone" placeholder="+998..." maxlength="40">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-col"><label>Hamkor manzili</label>
+            <input class="form-control" id="ct-partner-address" placeholder="Shahar, tuman, ko'cha" maxlength="160">
+          </div>
+          <div class="form-col"><label>Hamkor STIR (INN)</label>
+            <input class="form-control" id="ct-partner-tin" placeholder="9 xonali" maxlength="20">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-col"><label>Komissiya (%)</label>
+            <input type="number" class="form-control" id="ct-commission" min="0" max="100" step="0.1" value="5"
+              oninput="updateContractPartnerCalc()">
+          </div>
+          <div class="form-col"><label>Hisob-kitob davri (kun)</label>
+            <input type="number" class="form-control" id="ct-settle" min="1" max="90" value="10">
+          </div>
+          <div class="form-col"><label>Shartnoma muddati (oy)</label>
+            <input type="number" class="form-control" id="ct-term" min="0" max="60" value="12">
+          </div>
+        </div>
+        <small id="ct-partner-calc" style="display:block;color:var(--text-muted);font-size:11px;margin-bottom:12px"></small>
+      </div>
+
       <div class="form-col" style="margin-bottom:16px">
         <label>Izoh</label>
         <textarea class="form-control" id="ct-note" rows="2" placeholder="Qo'shimcha shartlar..."></textarea>
@@ -3739,6 +3800,23 @@
         <button class="modal-close" onclick="closeModal('contractViewModal')">✕</button>
       </div>
       <div class="modal-body" id="contractViewBody" style="padding:0 20px 20px"></div>
+    </div>
+  </div>
+
+  <!-- ===== SHARTNOMA HUJJATI — dizayn ko'rinishi (A4 varaqlar) ===== -->
+  <div class="modal-overlay" id="contractDocModal">
+    <div class="modal" style="max-width:980px">
+      <div class="modal-header">
+        <h3 id="contractDocTitle"><i class="fas fa-file-lines"
+            style="color:var(--primary);margin-right:8px"></i>Hujjat ko'rinishi</h3>
+        <button class="modal-close" onclick="closeModal('contractDocModal')">✕</button>
+      </div>
+      <div class="modal-body" id="contractDocBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('contractDocModal')">Yopish</button>
+        <button class="btn btn-primary" id="contractDocPrintBtn" onclick="">
+          <i class="fas fa-print"></i> Chop etish</button>
+      </div>
     </div>
   </div>
 
@@ -4254,7 +4332,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.8.0"></script>
+  <script src="scripts.js?v=1.10.0"></script>
   <script src="boss.js?v=2.5.0"></script>
     <script>
       /* Header: surilganda ixchamlashadi */

@@ -7006,6 +7006,30 @@ canvas {
         box-shadow: none;
     }
 
+    /* Shartnoma varaqlari (to'lovlar jadvali / hisob-faktura / to'liq
+       matnli shablonlar) atrofida qog'oz chegarasi qoldiriladi.
+       Pastdan 16mm: varaq kolontituli (sahifa raqami) shu joyda turadi. */
+    #printArea.contract-mode .tp-ct-page {
+        padding: 12mm 14mm 16mm;
+    }
+
+    /* Hujjat dizaynining to'q ko'k sarlavhalari oq-qora printerda ham
+       to'g'ri chiqishi uchun fon ranglari majburiy bosiladi */
+    #printArea.contract-mode .tp-ct-mono,
+    #printArea.contract-mode .tp-ct-t thead th,
+    #printArea.contract-mode .tp-ct-t tfoot td,
+    #printArea.contract-mode .tp-ct-t tbody tr:nth-child(even) td,
+    #printArea.contract-mode .tp-ct-req td:first-child,
+    #printArea.contract-mode .tp-ct-stat,
+    #printArea.contract-mode .tp-ct-total,
+    #printArea.contract-mode .tp-ct-note,
+    #printArea.contract-mode .tp-ct-appx,
+    #printArea.contract-mode .tp-ct-tag,
+    #printArea.contract-mode .tp-ct h2 {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
     #printArea.contract-mode .cd-head,
     #printArea.contract-mode .cd-title,
     #printArea.contract-mode .cd-meta,
@@ -16910,3 +16934,174 @@ body {
     .cf-pg-side { width: 100%; justify-content: space-between; }
 }
 
+
+/* ============================================================
+   SHARTNOMA HUJJATI — dizayn ko'rinishi (modal ichida A4 varaqlar)
+   Bu ko'rinish chop etishdagi hujjat bilan bir xil HTML/CSS dan
+   foydalanadi, shuning uchun ekranda ko'ringan narsa qog'ozga ham
+   aynan shunday chiqadi.
+   ============================================================ */
+#contractDocModal .modal {
+    padding: 0;
+    overflow: hidden;
+    /* Hujjat A4 (210mm = 794px) enida ko'rinadi — ekrandagi ko'rinish
+       chop etiladigan varaq bilan bir xil bo'lishi uchun */
+    width: 1040px;
+    max-width: calc(100vw - 32px);
+}
+
+#contractDocModal .modal-body {
+    padding: 14px 16px;
+    background: var(--bg);
+    overflow: auto;
+}
+
+#contractDocBody .tp-ct {
+    width: 210mm;
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+#contractDocBody .tp-ct-page {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 8px 26px rgba(15, 23, 42, .18);
+    margin-bottom: 16px;
+}
+
+#contractDocBody .tp-ct-page:last-child {
+    margin-bottom: 0;
+}
+
+#contractDocModal .modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+}
+
+@media (max-width: 900px) {
+    #contractDocBody .tp-ct {
+        width: 100%;
+    }
+
+    #contractDocBody .tp-ct-page {
+        padding: 10mm 8mm 14mm;
+        min-height: 0;
+    }
+}
+
+/* ============================================================
+   SHARTNOMA HUJJATI — jadval tuzilishi himoyasi
+   Ilovada tor ekran uchun "karta" rejimi bor: u barcha <table>
+   elementlarini bloklarga aylantiradi. Hujjat (A4) bunday rejimda
+   ham haqiqiy jadval bo'lib qolishi kerak — aks holda ustunlar
+   yo'qolib, o'qib bo'lmaydigan holatga tushadi.
+   ============================================================ */
+@media (max-width: 900px) {
+    #contractDocBody table.tp-ct-t {
+        display: table !important;
+        width: 100% !important;
+        table-layout: fixed;
+        border-collapse: collapse !important;
+        border-spacing: 0 !important;
+        background: transparent !important;
+    }
+
+    #contractDocBody table.tp-ct-t thead {
+        display: table-header-group !important;
+    }
+
+    #contractDocBody table.tp-ct-t tbody {
+        display: table-row-group !important;
+    }
+
+    #contractDocBody table.tp-ct-t tfoot {
+        display: table-footer-group !important;
+    }
+
+    #contractDocBody table.tp-ct-t tr {
+        display: table-row !important;
+        border: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+    }
+
+    #contractDocBody table.tp-ct-t th,
+    #contractDocBody table.tp-ct-t td {
+        display: table-cell !important;
+        border: 1px solid #c7d2e2 !important;
+        padding: 4px 6px !important;
+        background: transparent;
+        vertical-align: top;
+        word-break: break-word;
+    }
+
+    #contractDocBody table.tp-ct-t thead th {
+        background: #14315e !important;
+        color: #fff !important;
+    }
+
+    #contractDocBody table.tp-ct-t tbody tr:nth-child(even) td {
+        background: #f7f9fd !important;
+    }
+
+    #contractDocBody table.tp-ct-t tfoot td {
+        background: #eef3fb !important;
+    }
+
+    #contractDocBody .tp-ct-req td:first-child {
+        background: #f1f5fb !important;
+        width: 26% !important;
+    }
+}
+
+@media print {
+
+    /* A4 shartnoma: tor oynadan (masalan telefondan) chop etilsa ham
+       jadval ustunlari saqlanadi */
+    #printArea.contract-mode table.tp-ct-t {
+        display: table !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
+        border-spacing: 0 !important;
+    }
+
+    #printArea.contract-mode table.tp-ct-t thead {
+        display: table-header-group !important;
+    }
+
+    #printArea.contract-mode table.tp-ct-t tbody {
+        display: table-row-group !important;
+    }
+
+    #printArea.contract-mode table.tp-ct-t tfoot {
+        display: table-footer-group !important;
+    }
+
+    #printArea.contract-mode table.tp-ct-t tr {
+        display: table-row !important;
+        border: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+    }
+
+    #printArea.contract-mode table.tp-ct-t th,
+    #printArea.contract-mode table.tp-ct-t td {
+        display: table-cell !important;
+        vertical-align: top;
+    }
+
+    #printArea.contract-mode .tp-ct-cols {
+        display: flex !important;
+    }
+}
