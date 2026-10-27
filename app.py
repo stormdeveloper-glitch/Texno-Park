@@ -3200,7 +3200,6 @@ def boss_staff_list():
             continue
         status = str(user.get('status') or 'active').strip().lower()
         if status_filter != 'all' and status != status_filter:
-=======
         if status_filter and status != status_filter:
             continue
         view = staff_public_view(
