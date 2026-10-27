@@ -3198,12 +3198,8 @@ def boss_staff_list():
             continue
         if branch_filter and str(user.get('branchId') or '') != branch_filter:
             continue
-<<<<<<< HEAD
         status = str(user.get('status') or 'active').strip().lower()
         if status_filter != 'all' and status != status_filter:
-=======
-        if status_filter and status != status_filter:
->>>>>>> 63b5a6cb3fec4c3db77987c8d960c30e7cc95233
             continue
         view = staff_public_view(
             user,
@@ -4426,16 +4422,9 @@ def boss_staff_delete(staff_id):
 
     revoke_login_sessions(target_login)
     audit_log('staff-delete', str(target.get('name', '')),
-<<<<<<< HEAD
               f'rol={target_role} · tarixiy bog\'lanishlar topilmadi', _actor_name())
     server_security_log('staff-deleted', 'medium',
                         f'Akount o\'chirildi (rol={target_role}; ID={staff_id})',
-=======
-              f'rol={target_role} · arxivlandi (nofaol), savdo tarixi saqlandi',
-              _actor_name())
-    server_security_log('staff-archived', 'medium',
-                        f'Akount arxivlandi: {target.get("name")} ({target_role})',
->>>>>>> 63b5a6cb3fec4c3db77987c8d960c30e7cc95233
                         _actor_name())
     return jsonify({
         'status': 'success',
