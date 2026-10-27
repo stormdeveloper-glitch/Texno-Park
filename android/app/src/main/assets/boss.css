@@ -319,7 +319,8 @@
 
 .boss-receipt {
     background: var(--card); border: 1px solid var(--border);
-    border-radius: var(--radius-md); margin-bottom: 12px; overflow: hidden;
+    border-radius: 11px; margin-bottom: 12px; overflow: hidden;
+    box-sizing: border-box; box-shadow: 0 3px 10px rgba(0, 0, 0, .12);
 }
 .boss-receipt-head {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
