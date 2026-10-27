@@ -1,0 +1,13 @@
+[SECURITY] BOSS_DEFAULT_PASSWORD .env'da yo'q — Boshliq akounti yaratilmadi.
+           Boshliq parolini .env ga yozing yoki `python _tp_create_boss.py` ishga tushiring.
+[SECURITY] Standart xodimlar uchun TASODIFIY parol yaratildi: TSaQB4D2F9bPtei0
+[SECURITY] Uni saqlab qo'ying — xodimlar birinchi kirishda almashtiradi yoki Boshliq panelidan yangi parol berasiz.
+[SECURITY] BOSS_DEFAULT_PASSWORD .env'da yo'q — Boshliq akounti yaratilmadi.
+           Boshliq parolini .env ga yozing yoki `python _tp_create_boss.py` ishga tushiring.
+Sayt domeni: (SITE_DOMAIN .env da yozilmagan) | kanonik yonaltirish: OFF
+Cloudflare: proxy ishonchi OFF | Turnstile: ochirilgan | avtomatik domen qoshish: OFF
+Server 5000-portda ishlamoqda. Baza turi: sqlite | DB: C:\Users\user\Desktop\texnopark\Texno-Park\Data\database.db
+Debug rejimi: o'chirilgan (xavfsiz)
+To'lov tizimlari: faqat Naqd/Karta
+ * Serving Flask app 'app'
+ * Debug mode: off

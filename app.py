@@ -2923,7 +2923,10 @@ def boss_staff_list():
     """Barcha xodimlar, ularning haqiqiy savdo ko'rsatkichlari va reytingi.
 
     Query: period (day|week|month|all), q (ism/telefon/role qidirish),
-           role, branchId, sort, order, limit, offset.
+           role, branchId, status (inactive → arxivlanganlar), sort, order, limit, offset.
+
+    ARXIVLANGAN (inactive) xodimlar standart ro'yxatda qaytarilmaydi — ular
+    o'chirilgan hisoblanadi va faqat aniq `status=inactive` so'rovda ko'rinadi.
     """
     store = db_manager.get_all() or {}
     all_staff = [u for u in unique_staff(load_staff())
@@ -2964,6 +2967,14 @@ def boss_staff_list():
     rows = []
     for user in all_staff:
         role = str(user.get('role', '')).strip().lower()
+        status = str(user.get('status') or 'active').strip().lower()
+        # O'CHIRILGAN (arxivlangan) xodim standart ro'yxatdan chiqariladi:
+        # sahifani yangilaganda, qidiruvda yoki boshqa filtr tanlaganda
+        # qayta paydo bo'lmasin. Uni faqat aniq «Nofaol» filtri
+        # (status=inactive) ochib ko'rsatadi — shu orqali arxivdan
+        # qayta faollashtirish ham davom ettiriladi.
+        if status == 'inactive' and status_filter != 'inactive':
+            continue
         if query:
             haystack = ' '.join([
                 str(user.get('name', '')), str(user.get('login', '')),
@@ -2975,7 +2986,6 @@ def boss_staff_list():
             continue
         if branch_filter and str(user.get('branchId') or '') != branch_filter:
             continue
-        status = str(user.get('status') or 'active').strip().lower()
         if status_filter and status != status_filter:
             continue
         view = staff_public_view(
@@ -3478,8 +3488,9 @@ def boss_staff_delete(staff_id):
 
     # Arxivlangan akountning sessiyalari darhol bekor qilinadi.
     revoke_login_sessions(target_login)
-    audit_log('staff-archive', str(target.get('name', '')),
-              f'rol={target_role} · nofaol qilindi', _actor_name())
+    audit_log('staff-delete', str(target.get('name', '')),
+              f'rol={target_role} · arxivlandi (nofaol), savdo tarixi saqlandi',
+              _actor_name())
     server_security_log('staff-archived', 'medium',
                         f'Akount arxivlandi: {target.get("name")} ({target_role})',
                         _actor_name())

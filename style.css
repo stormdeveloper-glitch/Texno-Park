@@ -12918,6 +12918,26 @@ body {
   }
   .table-wrap tbody tr:hover, table tbody tr:hover,
   .table tbody tr:hover { background: var(--card-hover); }
+    /* Sotuv qatorlari mobil kartalari: mahsulot kartasining mobil radiusi,
+         chegarasi va fonini aynan ishlatamiz; faqat Hisobotlar sahifasiga ta'sir qiladi. */
+    #page-reports #salesDetailBody {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 0;
+    }
+    #page-reports #salesDetailBody > tr {
+        box-sizing: border-box;
+        width: 100% !important;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: var(--shadow-sm);
+        overflow: visible;
+    }
   .table-wrap tbody td, table tbody td, .table tbody td,
   .table-wrap tfoot td, table tfoot td {
     display: flex !important;
@@ -16859,4 +16879,112 @@ body {
     .cf-pager { justify-content: center; }
     .cf-pg-side { width: 100%; justify-content: space-between; }
 }
+
+/* ============ XODIMNI O'CHIRISH (ARXIVLASH) TASDIQLASH MODALI ============ */
+#bossDelModal {
+    display: none !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .65);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    padding: 20px;
+    overflow-y: auto;
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+}
+
+#bossDelModal.open {
+    display: flex !important;
+    animation: fadeIn .2s ease;
+}
+
+#bossDelModal > .modal-box {
+    background: var(--card);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-xl);
+    padding: 30px;
+    width: 460px;
+    max-width: 92vw;
+    max-height: 92vh;
+    overflow-y: auto;
+    position: relative;
+    text-align: center;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .35);
+    animation: modalSlide .22s cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Yuqorida qizil savatcha ikonasi */
+.boss-del-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, .12);
+    color: var(--danger);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+}
+
+.boss-del-title {
+    font-size: 18px;
+    font-weight: 800;
+    margin: 0 0 10px;
+    color: var(--text);
+}
+
+.boss-del-text {
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0 0 14px;
+}
+
+.boss-del-text b { color: var(--text); }
+
+#bossDelModal .boss-hint { text-align: left; }
+
+/* O'chirish xatosi — modal ochiq qolgan holda ko'rinadi */
+.boss-form-error:not([hidden]) {
+    display: block;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(239, 68, 68, .35);
+    background: rgba(239, 68, 68, .1);
+    color: var(--danger);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: left;
+}
+
+.boss-del-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.boss-del-actions .btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+@media (max-width: 480px) {
+    #bossDelModal { padding: 12px; }
+    #bossDelModal > .modal-box { padding: 20px 16px; }
+    .boss-del-actions { flex-direction: column-reverse; }
+    .boss-del-actions .btn { width: 100%; }
+}
+/* ============ END XODIMNI O'CHIRISH MODALI ============ */
 

@@ -4004,6 +4004,26 @@
   <!-- Xodim kartochkasidagi uch nuqtali boshqaruv menyusi (mobil) -->
   <div class="boss-staff-menu" id="boss-staff-menu" role="menu" hidden></div>
 
+  <!-- Xodimni O'CHIRISH (arxivlash) — tasdiqlash oynasi -->
+  <div class="modal" id="bossDelModal" role="dialog" aria-modal="true"
+    aria-labelledby="boss-del-title" aria-describedby="boss-del-text">
+    <div class="modal-box">
+      <div class="boss-del-icon"><i class="fas fa-trash-can"></i></div>
+      <h3 class="boss-del-title" id="boss-del-title">Xodimni o'chirish</h3>
+      <p class="boss-del-text" id="boss-del-text"></p>
+      <div class="boss-hint"><i class="fas fa-box-archive"></i>
+        <span>Xodim faol ro'yxatdan olib tashlanadi va tizimga kira olmaydi. Savdo tarixi,
+          moliyaviy va audit yozuvlari <b>saqlanib</b> qoladi.</span></div>
+      <div class="boss-form-error" id="boss-del-error" role="alert" hidden></div>
+      <div class="boss-del-actions">
+        <button type="button" class="btn btn-outline" id="boss-del-cancel"
+          onclick="Boss.closeDelModal()">Bekor qilish</button>
+        <button type="button" class="btn btn-danger" id="boss-del-confirm"
+          onclick="Boss.confirmDeleteStaff()"><i class="fas fa-trash-can"></i> Ha, o'chirish</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="bossPassModal">
     <div class="modal-box">
       <div class="modal-head">

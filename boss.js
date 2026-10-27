@@ -28,6 +28,8 @@ const Boss = (() => {
         editingStaffOrig: null,    // tahrir ochilgandagi asl qiymatlar
         staffMenuId: null,         // ochiq uch nuqtali menyu (mobil)
         staffMenuBtn: null,
+        delStaffId: null,          // o'chirilayotgan xodim ID si (bossDelModal)
+        delBusy: false,            // DELETE so'rovi ketayotgan vaqt — takroriy bosishga himoya
         staffMode: null,           // oxirgi chizilgan rejim: 'card' | 'table'
         mqStaff: null,             // (max-width:768px) MediaQueryList — GC'dan himoya
         roStaff: null,             // ResizeObserver — layout zaxira sinxronizatsiyasi
@@ -360,11 +362,6 @@ function setPeriod(value) {
         renderStaffList();
         const head = document.getElementById('boss-staff-count');
         if (head) head.textContent = `${data.total || 0} ta xodim`;
-        // Sidebar'dagi xodimlar badge'i ham shu ma'lumotdan yangilanadi
-        // (oldingi versiyada HTMLda doimiy "0" qolgan — hech kim yangilamagan).
-        const navBadge = document.getElementById('navBossStaffBadge');
-        if (navBadge) navBadge.textContent = String(data.totalAll || data.total
-            || (data.staff || []).length || 0);
         // Statistika serverdan kelgan yagona manbadan olinadi. Ilgari
         // "Faol = jami − bloklangan" hisoblanardi — arxivlangan (inactive)
         // xodimlar ham "faol" bo'lib ko'rinardi. Endi uch holat alohida.
@@ -373,7 +370,17 @@ function setPeriod(value) {
         const active = Number(counts.active || 0);
         const blocked = Number(counts.blocked || 0);
         const inactive = Number(counts.inactive || 0);
-        setStaffStats(totalAll, active, blocked, inactive);
+        // "Jami/Barchasi" = HAQIQIY ko'rinib turgan ro'yxat (faol + bloklangan).
+        // Arxivlangan (o'chirilgan) xodimlar alohida "Nofaol" hisobida qoladi,
+        // shuning uchun hisoblagichlar ro'yxat bilan har doim mos bo'ladi.
+        const hasCounts = 'active' in counts || 'blocked' in counts || 'inactive' in counts;
+        const listTotal = hasCounts ? (active + blocked)
+            : Math.max(totalAll - inactive, 0);
+        setStaffStats(listTotal, active, blocked, inactive);
+        // Sidebar'dagi xodimlar badge'i ham shu hisobdan yangilanadi
+        // (oldingi versiyada HTMLda doimiy "0" qolgan — hech kim yangilamagan).
+        const navBadge = document.getElementById('navBossStaffBadge');
+        if (navBadge) navBadge.textContent = String(listTotal);
     }
 
     /** Joriy ekran turini aniqlaydi: telefonda kartochka, desktopda jadval. */
@@ -493,7 +500,7 @@ function setPeriod(value) {
                         aria-label="${blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash'}">
                         <i class="fas ${blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban'}"></i></button>` : ''}
                     ${canManage ? `<button class="boss-icon-btn danger" data-boss-del="${escapeHTML(String(s.id))}"
-                        title="Arxivlash (tarix saqlanadi)" aria-label="Arxivlash"><i class="fas fa-box-archive"></i></button>` : ''}
+                        title="O'chirish (arxivlanadi, tarix saqlanadi)" aria-label="O'chirish"><i class="fas fa-trash-can"></i></button>` : ''}
                 </td></tr>`;
         }).join('');
     }
@@ -1707,25 +1714,90 @@ function setPeriod(value) {
                     : 'Xodim blokdan chiqarildi');
     }
 
-    /** ArxIVLASH (soft delete) — tasdiqlash va server himoyasi. */
-    async function deleteStaff(id) {
+    /** O'CHIRISH (arxivlash) — tasdiqlash oynasi ochiladi: ism + ID ko'rsatiladi. */
+    function openDelModal(id) {
         const row = findStaffRow(id);
-        if (!row) return;
+        if (!row) {
+            showNotif('error', "Xodim topilmadi", 'Ro\'yxatni yangilab ko\'ring');
+            return;
+        }
         const isBossRow = String(row.role || '').toLowerCase() === 'boss';
         const me = !!(currentUser && (String(row.id) === String(currentUser.id)
             || row.login === currentUser.login));
         if (isBossRow || me) {
-            showNotif('error', "Ruxsat yo'q", "O'z yoki Boshliq akountini arxivlab bo'lmaydi");
+            showNotif('error', "Ruxsat yo'q", "O'z yoki Boshliq akountini o'chirib bo'lmaydi");
             return;
         }
-        if (!confirm(`"${row.name}" xodimini arxivlashni tasdiqlaysizmi?\n\n`
-            + 'Xodim tizimga kira olmaydi va ro\'yxatda «Nofaol» bo\'lib qoladi.\n'
-            + 'Savdo tarixi, moliya va audit jurnali SAQLANADI.')) return;
-        const res = await fetch('/api/boss/staff/' + encodeURIComponent(id),
-            { method: 'DELETE', headers: authHeaders() });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) { showNotif('error', 'Xatolik', body.message || "Arxivlab bo'lmadi"); return; }
-        showNotif('success', 'Arxivlandi', body.message || 'Xodim nofaol qilindi');
+        state.delStaffId = String(row.id);
+        state.delBusy = false;
+        const err = document.getElementById('boss-del-error');
+        if (err) { err.hidden = true; err.textContent = ''; }
+        const text = document.getElementById('boss-del-text');
+        if (text) {
+            text.innerHTML = 'Haqiqatan ham <b>' + escapeHTML(row.name || '—')
+                + '</b> (ID: ' + escapeHTML(String(row.id)) + ') xodimini o\'chirmoqchimisiz? '
+                + 'Bu amalni ortga qaytarib bo\'lmaydi.';
+        }
+        setDelBusy(false);
+        openModal('bossDelModal');
+    }
+
+    /** O'chirish davomida tugmalarni bloklaydi — takroriy so'rov yuborilmaydi. */
+    function setDelBusy(busy) {
+        state.delBusy = !!busy;
+        ['boss-del-confirm', 'boss-del-cancel'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !!busy;
+        });
+        const icon = document.querySelector('#boss-del-confirm i');
+        if (icon) icon.className = busy ? 'fas fa-spinner fa-spin' : 'fas fa-trash-can';
+    }
+
+    /** "Bekor qilish" — hech qanday ma'lumot o'zgarmaydi. */
+    function closeDelModal() {
+        if (state.delBusy) return;   // so'rov ketayotganda yopib bo'lmaydi
+        state.delStaffId = null;
+        closeModal('bossDelModal');
+    }
+
+    /** "Ha, o'chirish" — serverga DELETE yuboradi. Xatoda modal ochiq qoladi. */
+    async function confirmDeleteStaff() {
+        const id = state.delStaffId;
+        if (!id || state.delBusy) return;   // ketma-ket bosish → bitta so'rov
+        const err = document.getElementById('boss-del-error');
+        const showError = (msg) => {
+            if (err) {
+                err.hidden = false;
+                err.innerHTML = '<i class="fas fa-circle-exclamation"></i> ' + escapeHTML(msg);
+            }
+            showNotif('error', "O'chirib bo'lmadi", msg);
+            playError();
+        };
+        setDelBusy(true);
+        if (err) { err.hidden = true; err.textContent = ''; }
+        let res, body;
+        try {
+            res = await fetch('/api/boss/staff/' + encodeURIComponent(id),
+                { method: 'DELETE', headers: authHeaders() });
+            body = await res.json().catch(() => ({}));
+        } catch (e) {
+            setDelBusy(false);
+            showError("Serverga ulanib bo'lmadi — Internet yoki server holatini tekshiring");
+            return;   // modal ochiq qoladi
+        }
+        if (!res.ok) {
+            setDelBusy(false);
+            showError(body.message || (res.status === 403 ? "Ruxsat yo'q"
+                : res.status === 404 ? "Xodim topilmadi"
+                    : "O'chirib bo'lmadi"));
+            return;   // modal ochiq qoladi
+        }
+        // Muvaffaqiyat: modal yopiladi, ro'yxat, sonlar va reyting
+        // serverdagi YANGI holatdan qayta chiziladi.
+        state.delStaffId = null;
+        state.delBusy = false;
+        closeModal('bossDelModal');
+        showNotif('success', "O'chirildi", body.message || 'Xodim ro\'yxatdan olib tashlandi');
         await loadStaff();
     }
 /* ── 10) Parol modallari ─────────────────────────── */
@@ -1863,7 +1935,7 @@ function setPeriod(value) {
             items.push(['data-boss-pass', 'fa-key', 'Parolni yangilash', '']);
             items.push(['data-boss-block', blocked ? 'fa-unlock' : inactive ? 'fa-rotate-left' : 'fa-ban',
                 blocked ? 'Blokdan chiqarish' : inactive ? 'Faollashtirish' : 'Bloklash', '']);
-            items.push(['data-boss-del', 'fa-box-archive', 'Arxivlash', 'danger']);
+            items.push(['data-boss-del', 'fa-trash-can', 'O\'chirish', 'danger']);
         }
         menu.innerHTML = items.map(([attr, icon, label, cls]) =>
             `<button type="button" role="menuitem" class="${cls}" ${attr}="${escapeHTML(String(id))}">`
@@ -2108,7 +2180,7 @@ function setPeriod(value) {
             if (block) { await toggleBlock(block.dataset.bossBlock); return; }
 
             const del = ev.target.closest('[data-boss-del]');
-            if (del) { await deleteStaff(del.dataset.bossDel); return; }
+            if (del) { openDelModal(del.dataset.bossDel); return; }
 
             const view = ev.target.closest('[data-boss-view]');
             if (view) {
@@ -2292,7 +2364,8 @@ function setPeriod(value) {
         loadProducts, loadBranches, loadFinance, loadReports, loadAudit,
         loadFinanceCharts, renderCharts, paintCharts,
         openReceiptModal, openProductModal, openBranchModal,
-        createStaff, deleteStaff, toggleBlock, submitStaffPassword, openPassModal,
+        createStaff, openDelModal, closeDelModal, confirmDeleteStaff, toggleBlock,
+        submitStaffPassword, openPassModal,
         rerenderStaffTable,
         openEditStaff, openStaffMenu, closeStaffMenu, renderStaffList,
         toggleNewPassword, generatePassword, copyCredentials, resetNewStaffForm,

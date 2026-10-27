@@ -1,0 +1,88 @@
+[FISCAL] Modulni yuklab bo'lmadi: No module named 'fiscal'
+[SECURITY] Boshliq akounti yaratildi (telefon: +998901234554, rol: boshlq).
+
+=== 1) BOSHLIQ LOGIN ===
+[SECURITY] API_AUTH_SECRET .env'da yo'q — avtomatik kalit yaratildi. Productionda API_AUTH_SECRET ni .env ga qo'ying.
+  [OK]   Boshliq login HTTP 200
+  [OK]   role = boss
+  [OK]   token qaytarildi
+  [OK]   bazada boss akounti mavjud
+  [OK]   baza da ochiq parol YO'Q
+
+=== 2) BOSHLIQ-ONLY ENDPOINT: RBAC ===
+  [FAIL] BOSHLIQ GET /api/boss/overview -> 200  HTTP 403
+  [FAIL] BOSHLIQ GET /api/boss/staff -> 200  HTTP 403
+  [FAIL] BOSHLIQ GET /api/boss/products -> 200  HTTP 403
+  [FAIL] BOSHLIQ GET /api/boss/branches -> 200  HTTP 403
+  [FAIL] BOSHLIQ GET /api/boss/finance -> 200  HTTP 403
+  [FAIL] BOSHLIQ GET /api/boss/reports -> 200  HTTP 403
+  [FAIL] BOSHLIQ GET /api/boss/audit -> 200  HTTP 403
+  [OK]   ADMIN GET /api/boss/overview -> 403
+  [OK]   MANAGER GET /api/boss/overview -> 403
+  [OK]   CASHIER GET /api/boss/overview -> 403
+  [OK]   ADMIN GET /api/boss/staff -> 403
+  [OK]   MANAGER GET /api/boss/staff -> 403
+  [OK]   CASHIER GET /api/boss/staff -> 403
+  [OK]   ADMIN GET /api/boss/products -> 403
+  [OK]   MANAGER GET /api/boss/products -> 403
+  [OK]   CASHIER GET /api/boss/products -> 403
+  [OK]   ADMIN GET /api/boss/branches -> 403
+  [OK]   MANAGER GET /api/boss/branches -> 403
+  [OK]   CASHIER GET /api/boss/branches -> 403
+  [OK]   ADMIN GET /api/boss/finance -> 403
+  [OK]   MANAGER GET /api/boss/finance -> 403
+  [OK]   CASHIER GET /api/boss/finance -> 403
+  [OK]   ADMIN GET /api/boss/reports -> 403
+  [OK]   MANAGER GET /api/boss/reports -> 403
+  [OK]   CASHIER GET /api/boss/reports -> 403
+  [OK]   ADMIN GET /api/boss/audit -> 403
+  [OK]   MANAGER GET /api/boss/audit -> 403
+  [OK]   CASHIER GET /api/boss/audit -> 403
+
+=== 3) TOKENSIZ / SOFTA TOKEN ===
+  [OK]   tokensiz /api/boss/overview -> 401
+  [OK]   soxta token -> 401
+
+=== 4) IYERARXIYA: Boshliq admin imkoniyatlariga ega ===
+  [FAIL] BOSHLIQ /api/auth/staff -> 200  
+  [FAIL] BOSHLIQ /api/security/sessions -> 200  
+  [FAIL] ADMIN /api/security/sessions -> 200 (eski siyosat saqlanadi)  
+
+=== 5) XODIM QO'SHISH / ROL TAQIQLANISHI ===
+  [FAIL] xodim qo'shildi -> 201  HTTP 403
+  [FAIL] yangi xodim id qaytarildi  
+  [FAIL] BOSH roli tayinlash -> 400  HTTP 403
+  [OK]   ADMIN xodim qo'sha olmaydi -> 403
+  [FAIL] qisqa parol -> 400  HTTP 403
+
+=== 6) BLOKLASH -> LOGIN ISHLAMAYDI ===
+  [FAIL] bloklash -> 200  
+  [FAIL] bloklangan xodim login -> 403  
+  [FAIL] blokdan chiqarish -> 200  
+
+=== 7) O'ZINI HIMOYA QILISH ===
+  [OK]   boss o'zini o'chira olmaydi -> 403
+  [OK]   boss o'zini bloklay olmaydi -> 403
+  [OK]   ADMIN boss ni o'chira olmaydi -> 403
+
+=== 8) O'CHIRISH + AUDIT LOG ===
+  [FAIL] xodim o'chirildi -> 200  
+  [OK]   o'chirilgan xodim ro'yxatda yo'q
+  [FAIL] audit log bo'sh emas  
+  [FAIL] staff-create yozilgan  set()
+  [FAIL] staff-delete yozilgan  set()
+  [OK]   audit logda parol YO'Q
+
+=== 9) O'Z PAROLI ===
+  [OK]   noto'g'ri joriy parol -> 401
+  [OK]   tasdiqlanmagan parol -> 400
+
+=== 10) REYTING HAQIQIYMI ===
+  [FAIL] xodimlar ro'yxati bo'ldi  
+  [OK]   reyting savdo summasi bo'yicha kamayib boradi
+  [OK]   xodimda parol/xash yo'q
+  [FAIL] overview KPI kalitlari to'liq  
+  [FAIL] xodim qidiruvi ishlaydi  
+  [FAIL] CSV eksport ishlaydi  
+
+=== NATIJA: 38 o'tgan, 25 yiqilgan ===
