@@ -3198,7 +3198,6 @@ def boss_staff_list():
             continue
         if branch_filter and str(user.get('branchId') or '') != branch_filter:
             continue
-<<<<<<< HEAD
         status = str(user.get('status') or 'active').strip().lower()
         if status_filter != 'all' and status != status_filter:
 =======
