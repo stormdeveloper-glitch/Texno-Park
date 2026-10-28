@@ -15,7 +15,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=5.16.0">
+  <link rel="stylesheet" href="style.css?v=5.17.2">
   <link rel="stylesheet" href="boss.css?v=2.5.0">
 </head>
 
@@ -1740,85 +1740,101 @@
 
       <!-- ===== SHARTNOMALAR ===== -->
       <div class="page" id="page-contracts">
-        <div
-          style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-          <div>
-            <h2 style="font-size:20px;font-weight:700">📄 Shartnomalar</h2>
-            <p style="color:var(--muted);font-size:13px;margin-top:3px">
-              Shartnomalar <strong>avtomatik tuzilmaydi</strong> — kim bilan shartnoma tuzishni
-              administrator o'zi belgilaydi
-            </p>
+        <div class="ct-head">
+          <div class="ct-head-title">
+            <div class="ct-head-icon"><i class="fas fa-file-signature"></i></div>
+            <div>
+              <h2>Shartnomalar</h2>
+              <p>Shartnomalar <strong>avtomatik tuzilmaydi</strong> — kim bilan tuzishni administrator o'zi
+                belgilaydi · Oxirgi yangilanish: <span id="contractLastSync">—</span></p>
+            </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline btn-sm" onclick="Contracts.syncAll(true)"><i class="fas fa-rotate"></i>
-              Holatlarni yangilash</button>
+          <div class="ct-head-actions">
+            <button class="btn btn-outline btn-sm" onclick="Contracts.syncAll(true)" title="Kafolat muddatlarini qayta hisoblash">
+              <i class="fas fa-rotate"></i> Holatlar</button>
             <button class="btn btn-outline btn-sm" onclick="Contracts.importFromSales()"><i
                 class="fas fa-file-import"></i> Cheklardan import</button>
             <button class="btn btn-outline btn-sm" onclick="Contracts.exportCSV()"><i class="fas fa-file-csv"></i>
               CSV</button>
             <button class="btn btn-primary btn-sm" onclick="Contracts.openAddModal()"><i class="fas fa-plus"></i>
-              Qo'lda shartnoma</button>
+              Yangi shartnoma</button>
           </div>
         </div>
 
-        <div class="contract-auto-banner">
-          <div class="ca-icon"><i class="fas fa-user-shield"></i></div>
-          <div>
-            <strong>Shartnomalar faqat administrator tomonidan tuziladi</strong>
-            <div class="ca-sub">
-              Savdo qilinganda shartnoma o'zi yaratilmaydi. Kerakli mijoz bilan shartnoma «Qo'lda shartnoma»
-              tugmasi orqali tuziladi (mijozni ro'yxatdan yoki chekdan tanlab, summa va kafolat muddatini
-              belgilaysiz). Holatlar yangilab boriladi. Oxirgi yangilanish:
-              <span id="contractLastSync">—</span>
-            </div>
-          </div>
-          <div class="ca-badge" id="contractAutoCount">0 ta shartnoma</div>
+        <!-- Shablon tanlab tez tuzish (chop etiladigan PDF shu shablonda chiqadi) -->
+        <div class="ct-templates contract-auto-banner">
+          <button type="button" class="ct-tpl ct-tpl-installment" onclick="Contracts.openAddModal('installment')">
+            <span class="ct-tpl-icon"><i class="fas fa-calendar-check"></i></span>
+            <span class="ct-tpl-body">
+              <b>Muddatli to'lov shartnomasi</b>
+              <small>Shartnoma matni + to'lovlar jadvali (1-ilova) + yuk xati (2-ilova)</small>
+            </span>
+            <i class="fas fa-plus ct-tpl-go"></i>
+          </button>
+          <button type="button" class="ct-tpl ct-tpl-partnership" onclick="Contracts.openAddModal('partnership')">
+            <span class="ct-tpl-icon"><i class="fas fa-handshake"></i></span>
+            <span class="ct-tpl-body">
+              <b>Hamkorlik shartnomasi</b>
+              <small>Shartnoma matni + hisob-kitob shartlari va dalolatnomasi (1-ilova)</small>
+            </span>
+            <i class="fas fa-plus ct-tpl-go"></i>
+          </button>
+          <button type="button" class="ct-tpl ct-tpl-standard" onclick="Contracts.openAddModal('standard')">
+            <span class="ct-tpl-icon"><i class="fas fa-receipt"></i></span>
+            <span class="ct-tpl-body">
+              <b>Standart savdo hujjati</b>
+              <small>To'lovlar jadvali + yuk xati (hisob-faktura)</small>
+            </span>
+            <i class="fas fa-plus ct-tpl-go"></i>
+          </button>
         </div>
 
-        <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
-          <div class="stat-card" style="--card-accent:rgba(59,130,246,.12)">
-            <div class="stat-icon" style="background:rgba(59,130,246,.15);color:#60A5FA"><i
-                class="fas fa-file-signature"></i></div>
-            <div class="stat-num" id="contractTotal">0</div>
-            <div class="stat-label">Jami Shartnomalar</div>
+        <div class="ct-stats">
+          <div class="ct-stat">
+            <span class="ct-stat-icon tone-blue"><i class="fas fa-file-signature"></i></span>
+            <div><div class="ct-stat-num" id="contractTotal">0</div><div class="ct-stat-label">Jami shartnomalar</div>
+              <div class="ct-stat-sub" id="contractAutoCount">0 ta</div></div>
           </div>
-          <div class="stat-card" style="--card-accent:rgba(16,185,129,.12)">
-            <div class="stat-icon" style="background:rgba(16,185,129,.15);color:#34D399"><i
-                class="fas fa-circle-check"></i></div>
-            <div class="stat-num" id="contractActive">0</div>
-            <div class="stat-label">Faol (Kafolat ishlaydi)</div>
+          <div class="ct-stat">
+            <span class="ct-stat-icon tone-green"><i class="fas fa-circle-check"></i></span>
+            <div><div class="ct-stat-num" id="contractActive">0</div><div class="ct-stat-label">Faol</div></div>
           </div>
-          <div class="stat-card" style="--card-accent:rgba(245,158,11,.12)">
-            <div class="stat-icon" style="background:rgba(245,158,11,.15);color:#FBBF24"><i
-                class="fas fa-hourglass-half"></i></div>
-            <div class="stat-num" id="contractExpiring">0</div>
-            <div class="stat-label">Muddati yaqin (30 kun)</div>
+          <div class="ct-stat">
+            <span class="ct-stat-icon tone-amber"><i class="fas fa-hourglass-half"></i></span>
+            <div><div class="ct-stat-num" id="contractExpiring">0</div><div class="ct-stat-label">Muddati yaqin (30 kun)</div></div>
           </div>
-          <div class="stat-card" style="--card-accent:rgba(239,68,68,.12)">
-            <div class="stat-icon" style="background:rgba(239,68,68,.15);color:#FCA5A5"><i
-                class="fas fa-circle-xmark"></i></div>
-            <div class="stat-num" id="contractExpired">0</div>
-            <div class="stat-label">Muddati o'tgan</div>
+          <div class="ct-stat">
+            <span class="ct-stat-icon tone-red"><i class="fas fa-circle-xmark"></i></span>
+            <div><div class="ct-stat-num" id="contractExpired">0</div><div class="ct-stat-label">Muddati o'tgan</div></div>
+          </div>
+          <div class="ct-stat ct-stat-wide">
+            <span class="ct-stat-icon tone-primary"><i class="fas fa-sack-dollar"></i></span>
+            <div><div class="ct-stat-num" id="contractAmount">0</div><div class="ct-stat-label">Faol shartnomalar summasi, so'm</div></div>
           </div>
         </div>
 
-        <div class="panel">
-          <div class="panel-header" style="flex-wrap:wrap;gap:10px">
-            <h3><i class="fas fa-list-check" style="color:var(--primary)"></i> Shartnomalar ro'yxati</h3>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <input class="form-control" id="contractSearch" placeholder="Raqam / mijoz bo'yicha qidirish..."
-                style="min-width:220px;height:38px" oninput="debouncedContractsRender()">
-              <select class="form-control" id="contractStatusFilter" style="height:38px;width:auto"
-                onchange="Contracts.render()">
+        <div class="panel ct-panel">
+          <div class="ct-toolbar">
+            <h3><i class="fas fa-list-check"></i> Shartnomalar ro'yxati <span class="ct-count" id="contractListCount">0</span></h3>
+            <div class="ct-filters">
+              <div class="ct-search"><i class="fas fa-magnifying-glass"></i>
+                <input class="form-control" id="contractSearch" placeholder="Raqam, mijoz, hamkor, telefon..."
+                  oninput="debouncedContractsRender()"></div>
+              <select class="form-control" id="contractTemplateFilter" onchange="Contracts.render()" aria-label="Shablon">
+                <option value="">Barcha shablon</option>
+                <option value="installment">Muddatli to'lov</option>
+                <option value="partnership">Hamkorlik</option>
+                <option value="standard">Standart</option>
+              </select>
+              <select class="form-control" id="contractStatusFilter" onchange="Contracts.render()" aria-label="Holat">
                 <option value="">Barcha holat</option>
                 <option value="active">Faol</option>
                 <option value="expiring">Muddati yaqin</option>
                 <option value="expired">Muddati o'tgan</option>
                 <option value="cancelled">Bekor qilingan</option>
               </select>
-              <select class="form-control" id="contractTypeFilter" style="height:38px;width:auto"
-                onchange="Contracts.render()">
-                <option value="">Barcha tur</option>
+              <select class="form-control" id="contractTypeFilter" onchange="Contracts.render()" aria-label="Manba">
+                <option value="">Barcha manba</option>
                 <option value="auto">Chek asosida</option>
                 <option value="manual">Qo'lda kiritilgan</option>
               </select>
@@ -1826,16 +1842,16 @@
           </div>
           <div class="panel-body" style="padding:0">
             <div class="table-wrap">
-              <table>
+              <table class="ct-table">
                 <thead>
                   <tr>
-                    <th>Shartnoma №</th>
-                    <th>Mijoz</th>
-                    <th>Turi</th>
-                    <th>Summa</th>
+                    <th>Shartnoma</th>
+                    <th>Mijoz / hamkor</th>
+                    <th>Shablon</th>
+                    <th class="ct-r">Summa</th>
                     <th>Muddat</th>
                     <th>Holat</th>
-                    <th>Amallar</th>
+                    <th class="ct-r">Amallar</th>
                   </tr>
                 </thead>
                 <tbody id="contractsTable"></tbody>
@@ -4071,33 +4087,8 @@
   <!-- Xodim kartochkasidagi uch nuqtali boshqaruv menyusi (mobil) -->
   <div class="boss-staff-menu" id="boss-staff-menu" role="menu" hidden></div>
 
-<<<<<<< HEAD
   <div class="modal" id="bossPassModal" aria-labelledby="boss-pass-title">
     <div class="modal-box boss-pass-box">
-=======
-  <!-- Xodimni O'CHIRISH (arxivlash) — tasdiqlash oynasi -->
-  <div class="modal" id="bossDelModal" role="dialog" aria-modal="true"
-    aria-labelledby="boss-del-title" aria-describedby="boss-del-text">
-    <div class="modal-box">
-      <div class="boss-del-icon"><i class="fas fa-trash-can"></i></div>
-      <h3 class="boss-del-title" id="boss-del-title">Xodimni o'chirish</h3>
-      <p class="boss-del-text" id="boss-del-text"></p>
-      <div class="boss-hint"><i class="fas fa-box-archive"></i>
-        <span>Xodim faol ro'yxatdan olib tashlanadi va tizimga kira olmaydi. Savdo tarixi,
-          moliyaviy va audit yozuvlari <b>saqlanib</b> qoladi.</span></div>
-      <div class="boss-form-error" id="boss-del-error" role="alert" hidden></div>
-      <div class="boss-del-actions">
-        <button type="button" class="btn btn-outline" id="boss-del-cancel"
-          onclick="Boss.closeDelModal()">Bekor qilish</button>
-        <button type="button" class="btn btn-danger" id="boss-del-confirm"
-          onclick="Boss.confirmDeleteStaff()"><i class="fas fa-trash-can"></i> Ha, o'chirish</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="bossPassModal">
-    <div class="modal-box">
->>>>>>> 63b5a6cb3fec4c3db77987c8d960c30e7cc95233
       <div class="modal-head">
         <h3 id="boss-pass-title"><i class="fas fa-key"></i> Xodim parolini boshqarish</h3>
         <button type="button" class="modal-close" aria-label="Oynani yopish"
@@ -4357,7 +4348,7 @@
   </button>
   <script src="qrcode.min.js"></script>
   <script src="tour.js"></script>
-  <script src="scripts.js?v=1.10.0"></script>
+  <script src="scripts.js?v=1.11.1"></script>
   <script src="boss.js?v=2.5.0"></script>
     <script>
       /* Header: surilganda ixchamlashadi */

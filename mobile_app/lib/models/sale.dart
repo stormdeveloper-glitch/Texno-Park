@@ -1,106 +1,94 @@
+import 'product.dart';
+
 class CartItem {
-  final int id;
-  final String name;
-  final double price;
-  final String img;
+  final Product product;
   int qty;
 
-  CartItem({
-    required this.id,
-    required this.name,
-    required this.price,
-    required this.img,
-    required this.qty,
-  });
+  CartItem({required this.product, this.qty = 1});
 
-  factory CartItem.fromJson(Map<String, dynamic> json) {
-    return CartItem(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      price: (json['price'] ?? 0.0).toDouble(),
-      img: json['img'] ?? '',
-      qty: json['qty'] ?? 1,
-    );
-  }
+  String get key => product.key;
+  String get name => product.name;
+  double get price => product.price;
+  double get sum => price * qty;
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'price': price,
-      'img': img,
-      'qty': qty,
-    };
-  }
+  /// /api/sell uchun element (server narx, qoldiq va filialni qayta tekshiradi).
+  Map<String, dynamic> toSellJson() => {
+        'id': product.id,
+        'name': product.name,
+        'qty': qty,
+        'price': product.price,
+        'img': product.img,
+        'barcode': product.barcode,
+        if (product.raw['cost'] != null) 'cost': product.raw['cost'],
+        if (product.raw['ikpu'] != null) 'ikpu': product.raw['ikpu'],
+        if (product.raw['packageCode'] != null) 'packageCode': product.raw['packageCode'],
+        if (product.raw['vatPercent'] != null) 'vatPercent': product.raw['vatPercent'],
+      };
+}
+
+class SaleItem {
+  final String name;
+  final double price;
+  final int qty;
+
+  SaleItem({required this.name, required this.price, required this.qty});
+
+  factory SaleItem.fromJson(Map<String, dynamic> json) => SaleItem(
+        name: toStr(json['name']),
+        price: toDouble(json['price']),
+        qty: toInt(json['qty']) < 1 ? 1 : toInt(json['qty']),
+      );
 }
 
 class Sale {
-  final int id;
-  final List<CartItem> items;
+  final Object id;
+  final List<SaleItem> items;
   final double subtotal;
-  final double disc;
   final double discAmt;
   final double total;
   final String pay;
   final String time;
   final String date;
   final String cashier;
+  final String cashierLogin;
   final String customer;
-  final int? customerId;
+  final String branchId;
   String status;
 
   Sale({
     required this.id,
     required this.items,
     required this.subtotal,
-    required this.disc,
     required this.discAmt,
     required this.total,
     required this.pay,
     required this.time,
     required this.date,
     required this.cashier,
+    required this.cashierLogin,
     required this.customer,
-    this.customerId,
+    required this.branchId,
     required this.status,
   });
 
-  factory Sale.fromJson(Map<String, dynamic> json) {
-    var itemsList = json['items'] as List? ?? [];
-    List<CartItem> itemsMapped = itemsList.map((i) => CartItem.fromJson(i)).toList();
+  bool get isPaid => status == 'paid';
 
+  factory Sale.fromJson(Map<String, dynamic> json) {
+    final list = json['items'] is List ? json['items'] as List : const [];
     return Sale(
       id: json['id'] ?? 0,
-      items: itemsMapped,
-      subtotal: (json['subtotal'] ?? 0.0).toDouble(),
-      disc: (json['disc'] ?? 0.0).toDouble(),
-      discAmt: (json['discAmt'] ?? 0.0).toDouble(),
-      total: (json['total'] ?? 0.0).toDouble(),
-      pay: json['pay'] ?? 'Cash',
-      time: json['time'] ?? '',
-      date: json['date'] ?? '',
-      cashier: json['cashier'] ?? '',
-      customer: json['customer'] ?? '',
-      customerId: json['customerId'],
-      status: json['status'] ?? 'paid',
+      items: list.whereType<Map<String, dynamic>>().map(SaleItem.fromJson).toList(),
+      subtotal: toDouble(json['subtotal']),
+      discAmt: toDouble(json['discAmt']),
+      total: toDouble(json['total']),
+      pay: toStr(json['pay']).isEmpty ? 'Naqd' : toStr(json['pay']),
+      time: toStr(json['time']),
+      date: toStr(json['date']),
+      cashier: toStr(json['cashier']),
+      cashierLogin: toStr(json['cashierLogin']),
+      customer: toStr(json['customer']),
+      branchId: toStr(json['branchId']),
+      status: toStr(json['status']).isEmpty ? 'paid' : toStr(json['status']),
     );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'items': items.map((i) => i.toJson()).toList(),
-      'subtotal': subtotal,
-      'disc': disc,
-      'discAmt': discAmt,
-      'total': total,
-      'pay': pay,
-      'time': time,
-      'date': date,
-      'cashier': cashier,
-      'customer': customer,
-      'customerId': customerId,
-      'status': status,
-    };
   }
 }

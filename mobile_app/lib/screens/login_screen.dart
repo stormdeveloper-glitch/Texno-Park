@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import 'home_screen.dart';
+import '../services/api_service.dart';
 
+/// Kirish ekrani — onlayn do'kon ilovalari uslubida: yuqorida brend bloki,
+/// pastda yumaloq «varaq» ichida forma.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -14,179 +16,236 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscureText = true;
+  bool _busy = false;
   String? _errorMessage;
 
-  void _handleLogin() {
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text.trim();
-
-    if (username.isEmpty || password.isEmpty) {
-      setState(() {
-        _errorMessage = 'Login va parolni kiriting';
-      });
-      return;
-    }
-
-    final success = Provider.of<AppState>(context, listen: false).login(username, password);
-    if (success) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
-    } else {
-      setState(() {
-        _errorMessage = 'Login yoki parol xato!';
-      });
-    }
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
-  void _handleGoogleLogin() {
-    // Simulate Google Login
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Google orqali kirish simulyatsiya qilinmoqda...'),
-        duration: Duration(milliseconds: 600),
-      ),
-    );
-    Future.delayed(const Duration(milliseconds: 800), () {
-      final appState = Provider.of<AppState>(context, listen: false);
-      appState.login('customer', '123456'); // Simple client fallback
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
+  Future<void> _handleLogin() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'Login va parolni kiriting');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _errorMessage = null;
     });
+    try {
+      // Muvaffaqiyatda AppState o'zgaradi va asosiy ekran avtomatik ochiladi
+      await context.read<AppState>().login(username, password);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _errorMessage = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _errorMessage = "Kirishda kutilmagan xatolik");
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? [const Color(0xFF1E1B18), const Color(0xFF0F0E0D)]
-                : [const Color(0xFFF9F6F0), const Color(0xFFE8E5DC)],
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Card(
-                elevation: 8,
-                shadowColor: Colors.black26,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.precision_manufacturing, size: 36, color: Theme.of(context).colorScheme.primary),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Texno Park N1',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                  fontWeight: FontWeight.extrabold,
-                                  color: Theme.of(context).colorScheme.onSurface,
-                                ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'POS & Store Mobile Client',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
-                      ),
-                      const SizedBox(height: 32),
+    final scheme = Theme.of(context).colorScheme;
+    final media = MediaQuery.of(context);
 
-                      // Input Fields
-                      TextField(
-                        controller: _usernameController,
-                        decoration: InputDecoration(
-                          labelText: 'Foydalanuvchi nomi',
-                          prefixIcon: const Icon(Icons.person_outline),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+    return Scaffold(
+      // Brend gradientining pastki rangi — varaq burchaklari ortida ko'rinadi
+      backgroundColor: const Color(0xFFF46A16),
+      body: SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: media.size.height),
+          // Varaq (Expanded) ekran oxirigacha cho'ziladi, uzun bo'lsa sahifa aylanadi
+          child: IntrinsicHeight(
+            child: Column(
+              children: [
+                // ── Brend bloki ──
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.fromLTRB(24, media.padding.top + 36, 24, 40),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFFF8A3D), Color(0xFFF2600C)],
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 76,
+                        height: 76,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.12), blurRadius: 20, offset: const Offset(0, 8))
+                          ],
                         ),
+                        child: Icon(Icons.shopping_bag_rounded, color: scheme.primary, size: 40),
                       ),
                       const SizedBox(height: 16),
-                      TextField(
-                        controller: _passwordController,
-                        obscureText: _obscureText,
-                        decoration: InputDecoration(
-                          labelText: 'Parol (PIN)',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(_obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                            onPressed: () => setState(() => _obscureText = !_obscureText),
-                          ),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        keyboardType: TextInputType.visiblePassword,
-                      ),
-
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          _errorMessage!,
-                          style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-
-                      // Login Button
-                      ElevatedButton(
-                        onPressed: _handleLogin,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 2,
-                        ),
-                        child: const Text('Kirish', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Divider
-                      Row(
+                      const Text('Texno Park N1',
+                          style: TextStyle(
+                              color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                      const SizedBox(height: 4),
+                      Text('Maishiy texnika va elektronika do\'koni',
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 14)),
+                      const SizedBox(height: 22),
+                      const Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.center,
                         children: [
-                          Expanded(child: Divider(color: Colors.grey.shade400, endIndent: 10)),
-                          const Text('yoki', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                          Expanded(child: Divider(color: Colors.grey.shade400, indent: 10)),
+                          _Perk(icon: Icons.verified_outlined, text: 'Kafolat'),
+                          _Perk(icon: Icons.calendar_month_outlined, text: "Muddatli to'lov"),
+                          _Perk(icon: Icons.local_shipping_outlined, text: 'Yetkazib berish'),
                         ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Google Login Button
-                      OutlinedButton.icon(
-                        onPressed: _handleGoogleLogin,
-                        icon: const Icon(Icons.g_mobiledata, size: 28, color: Colors.blueAccent),
-                        label: const Text('Google orqali kirish'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          side: BorderSide(color: Colors.grey.shade300),
-                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
+                // ── Forma varag'i ──
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                    ),
+                    padding: EdgeInsets.fromLTRB(24, 28, 24, 24 + media.padding.bottom),
+                    alignment: Alignment.topCenter,
+                    child: Center(
+                      heightFactor: 1,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: AutofillGroup(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text('Xush kelibsiz!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 4),
+                              const Text('Hisobingizga kiring', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                              const SizedBox(height: 24),
+                              TextField(
+                                controller: _usernameController,
+                                enabled: !_busy,
+                                textInputAction: TextInputAction.next,
+                                autofillHints: const [AutofillHints.username, AutofillHints.telephoneNumber],
+                                decoration: const InputDecoration(
+                                  labelText: 'Telefon raqam yoki login',
+                                  hintText: '+998 90 123 45 67',
+                                  prefixIcon: Icon(Icons.phone_iphone),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              TextField(
+                                controller: _passwordController,
+                                enabled: !_busy,
+                                obscureText: _obscureText,
+                                textInputAction: TextInputAction.done,
+                                autofillHints: const [AutofillHints.password],
+                                onSubmitted: (_) => _handleLogin(),
+                                decoration: InputDecoration(
+                                  labelText: 'Parol',
+                                  prefixIcon: const Icon(Icons.lock_outline),
+                                  suffixIcon: IconButton(
+                                    tooltip: _obscureText ? "Parolni ko'rsatish" : 'Parolni yashirish',
+                                    icon:
+                                        Icon(_obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                                    onPressed: () => setState(() => _obscureText = !_obscureText),
+                                  ),
+                                ),
+                              ),
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 200),
+                                child: _errorMessage == null
+                                    ? const SizedBox(width: double.infinity)
+                                    : Container(
+                                        margin: const EdgeInsets.only(top: 14),
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withValues(alpha: 0.08),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(_errorMessage!,
+                                                  style: const TextStyle(
+                                                      color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                              ),
+                              const SizedBox(height: 22),
+                              FilledButton(
+                                onPressed: _busy ? null : _handleLogin,
+                                child: _busy
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                                    : const Text('Kirish'),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                "Parolni unutdingizmi? Do'kon administratoriga murojaat qiling.",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 12.5, color: Colors.grey, height: 1.4),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                Uri.parse(ApiService.baseUrl).host,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _Perk extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _Perk({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: Colors.white),
+            const SizedBox(width: 6),
+            Text(text, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
 }

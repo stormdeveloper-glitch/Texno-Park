@@ -127,9 +127,9 @@ const TOUR_STEPS = {
             text: 'Xaridlar soni, jami summasi va bonus ballari shu yerda. SMS belgisi — shu mijozga xabar yuborish, axlat belgisi — o\'chirish.'
         },
         {
-            page: 'page-contracts', target: '.contract-auto-banner',
+            page: 'page-contracts', target: '.ct-templates',
             title: 'Shartnomalar — faqat qo\'lda (admin qaroriga ko\'ra)',
-            text: 'Savdo qilinganda shartnoma avtomatik yaratilmaydi. Kim bilan shartnoma tuzishni administrator o\'zi hal qiladi: «Qo\'lda shartnoma» tugmasi bilan mijozni (ro\'yxatdan yoki chekdan) tanlab, summa va kafolat muddatini belgilaydi. «Cheklardan import» — eski savdolarni bir marta qo\'shish uchun, «Holatlarni yangilash» esa kafolat muddatlarini qayta hisoblaydi.'
+            text: 'Savdo qilinganda shartnoma avtomatik yaratilmaydi. Kim bilan shartnoma tuzishni administrator o\'zi hal qiladi: kerakli shablonni (Muddatli to\'lov, Hamkorlik yoki Standart) bosib, mijozni (ro\'yxatdan yoki chekdan) tanlaydi va summani kiritadi — PDF hujjat shu shablonda chiqadi. «Cheklardan import» — eski savdolarni bir marta qo\'shish uchun, «Holatlarni yangilash» esa kafolat muddatlarini qayta hisoblaydi.'
         },
         {
             page: 'page-contracts', target: '#contractsTable',
