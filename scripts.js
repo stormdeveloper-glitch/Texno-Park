@@ -2704,6 +2704,7 @@ function goTo(pageId, el) {
         if (typeof Boss !== 'undefined') Boss.onPageOpen(key);
     }
     if (key === 'categories') { if (typeof renderCategoriesPage === 'function') renderCategoriesPage(); }
+    if (key === 'customers' && typeof renderEmployeeRank === 'function') renderEmployeeRank();
     if (key === 'warehouse') { if (typeof renderWarehousePage === 'function') renderWarehousePage(); }
     if (key === 'discounts') { if (typeof renderDiscountsPage === 'function') renderDiscountsPage(); }
     if (key === 'contracts') Contracts.render();
@@ -5891,6 +5892,9 @@ function renderCustomers() {
     document.getElementById('customersTable').innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Hali mijozlar yo\'q — “Yangi Mijoz” tugmasi bilan qo\'shing</td></tr>';
     uiSetHtml('customersMobileList', cards.join('')
         || '<div class="tpm-empty">Hali mijozlar yo\'q — “Yangi Mijoz” tugmasi bilan qo\'shing</div>');
+    // Reyting ham shu sahifada — mijozlar ma'lumoti yangilanganda ko'rinish
+    // sinxron qolishi uchun qayta chiziladi (hisoblash o'zgarmagan).
+    renderEmployeeRank();
 }
 
 /** Menyudagi mijozlar sonini haqiqiy ma'lumot bilan yangilaydi. */
@@ -6090,6 +6094,11 @@ function openEmployeeDetail(id) {
 }
 
 function renderEmployees() {
+    // Xodimlar ma'lumoti o'zgarganda Mijozlar bo'limidagi reyting ham
+    // darhol yangilanadi (reyting jadvali endi shu sahifada). Bu chaqiruv
+    // sahifaga kirish huquqidan oldin turadi, chunki reyting paneli boshqa
+    // sahifada joylashgan.
+    renderEmployeeRank();
     if (currentUser && !canAccessPage('page-employees')) return;
     // Umumiy «Xodimlar» sahifasi olib tashlangan — xodimlar boshqaruvi endi
     // Boshliq → Xodimlar (page-bossStaff) ichida (boss.js). Shu sababli bu
@@ -6196,6 +6205,8 @@ function renderReports() {
 function renderEmployeeRank() {
     const ranked = employees.map(e => ({ ...e, ...employeeStats(e) })).sort((a, b) => b.total - a.total);
     const el = document.getElementById('employeeRank');
+    const meta = document.getElementById('employeeRankMeta');
+    if (meta) meta.textContent = ranked.length + ' ta xodim';
     if (!el) return;
     if (ranked.length === 0) {
         el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Xodimlar yo\'q</td></tr>';
@@ -6211,13 +6222,13 @@ function renderEmployeeRank() {
         const sharePct = grandTotal > 0 ? (total / grandTotal) * 100 : 0;
         const shareLabel = total > 0 ? sharePct.toFixed(1) + '%' : '0%';
         return `<tr>
-    <td><span style="font-weight:800;color:${i === 0 ? '#F59E0B' : i === 1 ? '#9CA3AF' : i === 2 ? '#CD7C2F' : 'var(--muted)'}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span></td>
-    <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:white">${escapeHTML(String(e.name || '?')[0])}</div>${escapeHTML(e.name)}</div></td>
-    <td>${e.sales || 0}</td>
-    <td style="font-weight:700;color:var(--primary)">${fmt(total)} so'm</td>
-    <td style="font-weight:700;color:${profit < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(profit)} so'm</td>
-    <td style="font-weight:700;color:var(--warning)">${fmt(kpi)} so'm</td>
-    <td><div style="display:flex;align-items:center;gap:8px"><div class="progress-bar" style="width:110px"><div class="progress-fill" style="width:${barPct}%;background:var(--primary)"></div></div><span style="font-size:12px;font-weight:700;color:var(--muted)">${shareLabel}</span></div></td>
+    <td data-label="#"><span class="cr-pos" style="font-weight:800;color:${i === 0 ? '#F59E0B' : i === 1 ? '#9CA3AF' : i === 2 ? '#CD7C2F' : 'var(--muted)'}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span></td>
+    <td data-label="Xodim"><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:white">${escapeHTML(String(e.name || '?')[0])}</div>${escapeHTML(e.name)}</div></td>
+    <td data-label="Sotuvlar">${e.sales || 0}</td>
+    <td data-label="Jami" style="font-weight:700;color:var(--primary)">${fmt(total)} so'm</td>
+    <td data-label="Foyda" style="font-weight:700;color:${profit < 0 ? 'var(--danger)' : 'var(--success)'}">${fmt(profit)} so'm</td>
+    <td data-label="KPI" style="font-weight:700;color:var(--warning)">${fmt(kpi)} so'm</td>
+    <td data-label="Ko'rsatkich"><div class="cr-share" style="display:flex;align-items:center;gap:8px"><div class="progress-bar" style="width:110px"><div class="progress-fill" style="width:${barPct}%;background:var(--primary)"></div></div><span style="font-size:12px;font-weight:700;color:var(--muted)">${shareLabel}</span></div></td>
   </tr>`;
     }).join('');
 }

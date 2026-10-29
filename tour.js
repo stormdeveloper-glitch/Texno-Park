@@ -142,7 +142,7 @@ const TOUR_STEPS = {
             text: 'Oxirgi 6 oyning savdo hajmi — faqat haqiqiy to\'lovlardan. Pastdagi grafik daromad dinamikasini ko\'rsatadi.'
         },
         {
-            page: 'page-reports', target: '#employeeRank',
+            page: 'page-customers', target: '#employeeRank',
             title: 'Xodimlar reytingi',
             text: 'Kim qancha sotgani bo\'yicha o\'rinlar. Ma\'lumot savdo tarixidan avtomatik hisoblanadi.'
         },
@@ -340,7 +340,7 @@ const TOUR_STEPS = {
             text: 'Oxirgi 6 oyning savdo hajmi faqat haqiqiy to\'lovlardan hisoblanadi. Excel tugmasi yuklab beradi.'
         },
         {
-            page: 'page-reports', target: '#employeeRank',
+            page: 'page-customers', target: '#employeeRank',
             title: 'Xodimlar reytingi jadvali',
             text: 'Medallar bilan eng yaxshi xodimlar. Ko\'rsatkichlar savdo tarixidan avtomatik yangilanadi.'
         },

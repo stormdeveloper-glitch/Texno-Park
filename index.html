@@ -1300,6 +1300,37 @@
             </div>
           </div>
         </div>
+
+        <!-- REYTING — avval Hisobotlar bo'limida edi; hisoblash va
+             ma'lumot manbai o'zgarmagan (employeeRank + renderEmployeeRank). -->
+        <div class="panel customer-rating-panel" id="customerRatingPanel">
+          <div class="panel-header">
+            <div class="cr-head">
+              <h3><i class="fas fa-trophy" style="color:var(--warning)"></i> Xodimlar Reytingi</h3>
+              <p class="cr-sub">Savdo natijalari asosida avtomatik yangilanadi</p>
+            </div>
+            <span class="cr-meta" id="employeeRankMeta"></span>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="table-wrap">
+              <table class="customer-rank-table" aria-label="Xodimlar reytingi">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Xodim</th>
+                    <th>Sotuvlar</th>
+                    <th>Jami</th>
+                    <th>Foyda</th>
+                    <th>KPI</th>
+                    <th>Ko'rsatkich</th>
+                  </tr>
+                </thead>
+                <tbody id="employeeRank"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <div class="panel">
           <div class="panel-header">
             <h3><i class="fas fa-users" style="color:var(--primary)"></i> Mijozlar Ro'yxati</h3>
@@ -2268,29 +2299,6 @@
                   </tr>
                 </thead>
                 <tbody id="salesDetailBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-header">
-            <h3><i class="fas fa-trophy" style="color:var(--warning)"></i> Xodimlar Reytingi</h3>
-          </div>
-          <div class="panel-body" style="padding:0">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Xodim</th>
-                    <th>Sotuvlar</th>
-                    <th>Jami</th>
-                    <th>Foyda</th>
-                    <th>KPI</th>
-                    <th>Ko'rsatkich</th>
-                  </tr>
-                </thead>
-                <tbody id="employeeRank"></tbody>
               </table>
             </div>
           </div>

@@ -17559,3 +17559,103 @@ body {
         display: flex !important;
     }
 }
+
+/* ============================================================
+   MIJOZLAR — REYTING PANELI
+   Reyting Hisobotlar bo'limidan shu yerga ko'chirildi. Jadval
+   tuzilishi va hisoblash o'zgarmadi — faqat joylashuv va ko'rinish
+   Mijozlar sahifasiga moslashtirildi.
+   ============================================================ */
+.customer-rating-panel .panel-header {
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.customer-rating-panel .cr-head {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+.customer-rating-panel .cr-sub {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+}
+.customer-rating-panel .cr-meta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(245, 158, 11, .28);
+    background: rgba(245, 158, 11, .12);
+    color: var(--warning);
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.customer-rating-panel .cr-meta:empty { display: none; }
+.customer-rank-table tbody td { vertical-align: middle; }
+.customer-rank-table .cr-pos {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    min-height: 30px;
+    font-size: 15px;
+}
+.customer-rank-table .cr-share { min-width: 0; }
+
+@media (max-width: 768px) {
+    .customer-rating-panel .panel-header { padding: 16px; }
+    .customer-rating-panel .cr-sub { font-size: 11px; }
+    .customer-rating-panel .cr-meta {
+        font-size: 10.5px;
+        min-height: 24px;
+        padding: 3px 9px;
+    }
+    /* Mobil kartada o'rin + xodim yuqori qatorda yonma-yon turadi,
+       qolgan ko'rsatkichlar pastda to'liq kenglikda davom etadi. */
+    #page-customers .customer-rank-table tbody tr {
+        display: grid !important;
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: 10px;
+    }
+    #page-customers .customer-rank-table td[data-label="#"] {
+        grid-column: 1;
+        grid-row: 1;
+        width: auto !important;
+        min-height: 0;
+        align-self: center;
+        padding: 0 0 8px 0 !important;
+        border-bottom: none !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    #page-customers .customer-rank-table td[data-label="#"]::before {
+        display: none !important;
+        content: "";
+    }
+    #page-customers .customer-rank-table td[data-label="Xodim"] {
+        grid-column: 2;
+        grid-row: 1;
+        width: auto !important;
+        align-self: center;
+        padding: 0 0 8px 0 !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    #page-customers .customer-rank-table td[data-label="Xodim"]::before {
+        display: none !important;
+        content: "";
+    }
+    #page-customers .customer-rank-table td:not([data-label="#"]):not([data-label="Xodim"]) {
+        grid-column: 1 / -1;
+    }
+    #page-customers .customer-rank-table .cr-share { width: 100%; }
+    #page-customers .customer-rank-table .cr-share .progress-bar {
+        width: auto !important;
+        flex: 1 1 auto;
+    }
+}
